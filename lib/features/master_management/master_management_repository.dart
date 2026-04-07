@@ -200,6 +200,69 @@ class MasterManagementRepository {
     }
   }
 
+  // ── RC Numbers ────────────────────────────────────────────────────────────
+
+  Future<List<RcNumberModel>> listRcNumbers() async {
+    try {
+      final response = await _apiClient.get('/rc-numbers');
+      final raw = _extractList(response.data);
+      return raw
+          .whereType<Map>()
+          .map((e) => RcNumberModel.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } on DioException catch (e) {
+      throw Exception(_mapDioError(e, fallback: 'Failed to load RC numbers.'));
+    } catch (_) {
+      throw Exception('Failed to load RC numbers.');
+    }
+  }
+
+  Future<void> createRcNumber({
+    required String rcNumber,
+    required String description,
+  }) async {
+    try {
+      await _apiClient.post(
+        '/rc-numbers',
+        data: {'rcNumber': rcNumber, 'description': description},
+      );
+    } on DioException catch (e) {
+      throw Exception(_mapDioError(e, fallback: 'Failed to create RC number.'));
+    } catch (_) {
+      throw Exception('Failed to create RC number.');
+    }
+  }
+
+  Future<void> updateRcNumber({
+    required String id,
+    String? rcNumber,
+    String? description,
+    String? status,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (rcNumber != null && rcNumber.trim().isNotEmpty) payload['rcNumber'] = rcNumber.trim();
+    if (description != null && description.trim().isNotEmpty) payload['description'] = description.trim();
+    if (status != null && status.trim().isNotEmpty) payload['status'] = status.trim();
+    if (payload.isEmpty) throw Exception('No RC number changes to update.');
+    try {
+      await _apiClient.patch('/rc-numbers/$id', data: payload);
+    } on DioException catch (e) {
+      throw Exception(_mapDioError(e, fallback: 'Failed to update RC number.'));
+    } catch (_) {
+      throw Exception('Failed to update RC number.');
+    }
+  }
+
+  Future<void> deleteRcNumber(String id) async {
+    try {
+      await _apiClient.delete('/rc-numbers/$id');
+    } on DioException catch (e) {
+      throw Exception(_mapDioError(e, fallback: 'Failed to delete RC number.'));
+    } catch (_) {
+      throw Exception('Failed to delete RC number.');
+    }
+  }
+
   List<dynamic> _extractList(dynamic responseData) {
     if (responseData is List) return responseData;
     if (responseData is Map) {

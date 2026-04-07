@@ -13,7 +13,7 @@ class ProductionEntryController extends _$ProductionEntryController {
   }
 
   // Utility to calculate Running Hours
-  double calculateRunningHours(TimeOfDay start, TimeOfDay end) {
+  double calculateRunningHours(TimeOfDay start, TimeOfDay end, {TimeOfDay? downtimeStart, TimeOfDay? downtimeEnd}) {
     int startMinutes = start.hour * 60 + start.minute;
     int endMinutes = end.hour * 60 + end.minute;
     
@@ -22,7 +22,22 @@ class ProductionEntryController extends _$ProductionEntryController {
       endMinutes += 24 * 60;
     }
     
-    return (endMinutes - startMinutes) / 60.0;
+    double runningHours = (endMinutes - startMinutes) / 60.0;
+
+    if (downtimeStart != null && downtimeEnd != null) {
+      int downStartMins = downtimeStart.hour * 60 + downtimeStart.minute;
+      int downEndMins = downtimeEnd.hour * 60 + downtimeEnd.minute;
+
+      if (downEndMins < downStartMins) {
+        downEndMins += 24 * 60;
+      }
+      double downtimeHours = (downEndMins - downStartMins) / 60.0;
+      
+      runningHours -= downtimeHours;
+      if (runningHours < 0) runningHours = 0;
+    }
+
+    return runningHours;
   }
 
   // Utility to calculate Parts per Hour

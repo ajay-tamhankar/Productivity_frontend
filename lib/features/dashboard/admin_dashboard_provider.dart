@@ -5,14 +5,20 @@ part 'admin_dashboard_provider.g.dart';
 
 class DashboardKPI {
   final int totalProduction;
+  final double totalProductionWeight;
   final int totalRejection;
+  final double totalRejectionWeight;
   final double totalRunningHours;
+  final double totalRunningHoursWeight;
   final double averagePartsPerHour;
 
   DashboardKPI({
     this.totalProduction = 0,
+    this.totalProductionWeight = 0,
     this.totalRejection = 0,
+    this.totalRejectionWeight = 0,
     this.totalRunningHours = 0,
+    this.totalRunningHoursWeight = 0,
     this.averagePartsPerHour = 0,
   });
 
@@ -31,8 +37,14 @@ class DashboardKPI {
 
     return DashboardKPI(
       totalProduction: parseInt(json['totalProduction']),
+      totalProductionWeight:
+          parseDouble(json['totalProductionWeight'] ?? json['totalProductionweight']),
       totalRejection: parseInt(json['totalRejection']),
+      totalRejectionWeight:
+          parseDouble(json['totalRejectionWeight'] ?? json['totalRejectionweight']),
       totalRunningHours: parseDouble(json['totalRunningHours']),
+      totalRunningHoursWeight:
+          parseDouble(json['totalRunningHoursWeight'] ?? json['totalRunningHoursweight']),
       averagePartsPerHour: parseDouble(json['averagePartsPerHour']),
     );
   }

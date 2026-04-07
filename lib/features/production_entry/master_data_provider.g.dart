@@ -34,7 +34,7 @@ final class MasterDataControllerProvider
 }
 
 String _$masterDataControllerHash() =>
-    r'8bccafc4022cf92d7f73d5a27c5a6b3bf55d5804';
+    r'7bfa8b83a7fb7ce15a2aed2e59216afb03526636';
 
 abstract class _$MasterDataController extends $AsyncNotifier<MasterDataState> {
   FutureOr<MasterDataState> build();

@@ -35,7 +35,7 @@ final class AdminDashboardControllerProvider
 }
 
 String _$adminDashboardControllerHash() =>
-    r'2ea7acc5d69620237d501fa8b2f7bdbdb461f6fc';
+    r'f29fe71ce2bbb1ac83523db05b097896b271feae';
 
 abstract class _$AdminDashboardController
     extends $AsyncNotifier<AdminDashboardState> {

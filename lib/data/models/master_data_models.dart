@@ -57,3 +57,26 @@ class CustomerModel {
     );
   }
 }
+
+class RcNumberModel {
+  final String id;
+  final String rcNumber;
+  final String description;
+  final String status;
+
+  RcNumberModel({
+    required this.id,
+    required this.rcNumber,
+    required this.description,
+    required this.status,
+  });
+
+  factory RcNumberModel.fromJson(Map<String, dynamic> json) {
+    return RcNumberModel(
+      id: json['id'] ?? json['_id'] ?? '',
+      rcNumber: json['rcNumber'] ?? json['number'] ?? '',
+      description: json['description'] ?? '',
+      status: json['status'] ?? '',
+    );
+  }
+}

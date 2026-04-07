@@ -6,7 +6,6 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/theme_mode_provider.dart';
 import '../../features/auth/auth_provider.dart';
 import '../../features/auth/change_password_dialog.dart';
-import '../master_management/customer_management_screen.dart';
 import '../master_management/item_management_screen.dart';
 import '../master_management/machine_management_screen.dart';
 import '../user_management/user_management_screen.dart';
@@ -21,7 +20,8 @@ class AdminDashboardScreen extends ConsumerStatefulWidget {
   const AdminDashboardScreen({super.key});
 
   @override
-  ConsumerState<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+  ConsumerState<AdminDashboardScreen> createState() =>
+      _AdminDashboardScreenState();
 }
 
 class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
@@ -45,7 +45,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
 
   void _refreshCurrentTabData() {
     final role =
-        ref.read(authControllerProvider).asData?.value?.role.trim().toUpperCase() ?? '';
+        ref
+            .read(authControllerProvider)
+            .asData
+            ?.value
+            ?.role
+            .trim()
+            .toUpperCase() ??
+        '';
     final hasReviewActions = role == AppConstants.roleSupervisor;
 
     if (_currentIndex == 0) {
@@ -68,7 +75,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
   @override
   Widget build(BuildContext context) {
     final role =
-        ref.watch(authControllerProvider).asData?.value?.role.trim().toUpperCase() ?? '';
+        ref
+            .watch(authControllerProvider)
+            .asData
+            ?.value
+            ?.role
+            .trim()
+            .toUpperCase() ??
+        '';
     final isSupervisor = role == AppConstants.roleSupervisor;
     final pages = <Widget>[
       const _AdminHomeView(),
@@ -76,16 +90,26 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
       isSupervisor ? const ReviewActionsScreen() : const _ManagementHubScreen(),
     ];
     final destinations = <NavigationDestination>[
-      const NavigationDestination(icon: Icon(Icons.dashboard), label: 'Dashboard'),
-      const NavigationDestination(icon: Icon(Icons.bar_chart), label: 'Reports'),
+      const NavigationDestination(
+        icon: Icon(Icons.dashboard),
+        label: 'Dashboard',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.bar_chart),
+        label: 'Reports',
+      ),
       NavigationDestination(
         icon: Icon(
-          isSupervisor ? Icons.fact_check_outlined : Icons.manage_accounts_outlined,
+          isSupervisor
+              ? Icons.fact_check_outlined
+              : Icons.manage_accounts_outlined,
         ),
         label: isSupervisor ? 'Review Actions' : 'Manage',
       ),
     ];
-    final selectedIndex = _currentIndex >= pages.length ? pages.length - 1 : _currentIndex;
+    final selectedIndex = _currentIndex >= pages.length
+        ? pages.length - 1
+        : _currentIndex;
 
     return Scaffold(
       body: pages[selectedIndex],
@@ -127,13 +151,6 @@ class _ManagementHubScreen extends StatelessWidget {
         subtitle: 'Manage item codes, descriptions, and master details.',
         icon: Icons.inventory_2_outlined,
         accent: Color(0xFF7A4DCC),
-      ),
-      _ManagementOption(
-        module: _ManagementModule.customer,
-        title: 'Customer Management',
-        subtitle: 'Maintain customer profiles and assignment data.',
-        icon: Icons.business_outlined,
-        accent: Color(0xFFDA7A00),
       ),
     ];
 
@@ -180,13 +197,10 @@ class _ManagementHubScreen extends StatelessWidget {
                       case _ManagementModule.item:
                         screen = const ItemManagementScreen();
                         break;
-                      case _ManagementModule.customer:
-                        screen = const CustomerManagementScreen();
-                        break;
                     }
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => screen),
-                    );
+                    Navigator.of(
+                      context,
+                    ).push(MaterialPageRoute(builder: (_) => screen));
                   },
                 ),
               ),
@@ -198,7 +212,7 @@ class _ManagementHubScreen extends StatelessWidget {
   }
 }
 
-enum _ManagementModule { user, machine, item, customer }
+enum _ManagementModule { user, machine, item }
 
 class _ManagementOption {
   final _ManagementModule module;
@@ -220,10 +234,7 @@ class _ManagementOptionCard extends StatelessWidget {
   final _ManagementOption option;
   final VoidCallback onTap;
 
-  const _ManagementOptionCard({
-    required this.option,
-    required this.onTap,
-  });
+  const _ManagementOptionCard({required this.option, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -258,8 +269,8 @@ class _ManagementOptionCard extends StatelessWidget {
                     Text(
                       option.title,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -283,7 +294,8 @@ class _AdminHomeView extends ConsumerWidget {
 
   String _getDashboardTitle(String role) {
     final normalized = role.trim().toUpperCase();
-    if (normalized == AppConstants.roleSupervisor) return 'Supervisor Dashboard';
+    if (normalized == AppConstants.roleSupervisor)
+      return 'Supervisor Dashboard';
     if (normalized == AppConstants.roleAdmin) return 'Admin Dashboard';
     return 'Dashboard';
   }
@@ -302,11 +314,13 @@ class _AdminHomeView extends ConsumerWidget {
     final displayName = name.isNotEmpty
         ? name
         : username.isNotEmpty
-            ? username
-            : (role.isNotEmpty ? role : 'User');
+        ? username
+        : (role.isNotEmpty ? role : 'User');
     final isDarkMode = themeMode == ThemeMode.dark;
     final isCompactAppBar = MediaQuery.of(context).size.width < 760;
-    final userInitial = displayName.isEmpty ? 'U' : displayName[0].toUpperCase();
+    final userInitial = displayName.isEmpty
+        ? 'U'
+        : displayName[0].toUpperCase();
 
     void handleMenuAction(_AdminMenuAction action) {
       switch (action) {
@@ -357,7 +371,9 @@ class _AdminHomeView extends ConsumerWidget {
                       child: ListTile(
                         dense: true,
                         leading: Icon(
-                          isDarkMode ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                          isDarkMode
+                              ? Icons.light_mode_outlined
+                              : Icons.dark_mode_outlined,
                         ),
                         title: Text(isDarkMode ? 'Light Mode' : 'Dark Mode'),
                       ),
@@ -383,7 +399,9 @@ class _AdminHomeView extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: CircleAvatar(
                       radius: 16,
-                      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.14),
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.primary.withOpacity(0.14),
                       child: Text(
                         userInitial,
                         style: const TextStyle(fontWeight: FontWeight.w700),
@@ -398,7 +416,9 @@ class _AdminHomeView extends ConsumerWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.10),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withOpacity(0.10),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     alignment: Alignment.center,
@@ -409,8 +429,8 @@ class _AdminHomeView extends ConsumerWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
@@ -418,17 +438,22 @@ class _AdminHomeView extends ConsumerWidget {
                 const SizedBox(width: 6),
                 IconButton(
                   icon: const Icon(Icons.refresh),
-                  onPressed: () =>
-                      ref.read(adminDashboardControllerProvider.notifier).refresh(),
+                  onPressed: () => ref
+                      .read(adminDashboardControllerProvider.notifier)
+                      .refresh(),
                   tooltip: 'Refresh',
                 ),
                 IconButton(
                   icon: Icon(
-                    isDarkMode ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                    isDarkMode
+                        ? Icons.light_mode_outlined
+                        : Icons.dark_mode_outlined,
                   ),
                   onPressed: () =>
                       ref.read(themeModeProvider.notifier).toggleThemeMode(),
-                  tooltip: isDarkMode ? 'Switch to light mode' : 'Switch to dark mode',
+                  tooltip: isDarkMode
+                      ? 'Switch to light mode'
+                      : 'Switch to dark mode',
                 ),
                 IconButton(
                   icon: const Icon(Icons.lock_reset_outlined),
@@ -447,7 +472,9 @@ class _AdminHomeView extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, stack) => Center(child: Text('Error: $err')),
         data: (data) => RefreshIndicator(
-          onRefresh: ref.read(adminDashboardControllerProvider.notifier).refresh,
+          onRefresh: ref
+              .read(adminDashboardControllerProvider.notifier)
+              .refresh,
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -466,7 +493,7 @@ class _AdminHomeView extends ConsumerWidget {
                     context,
                     'Total Production',
                     countFormat.format(data.kpi.totalProduction),
-                    'Units completed',
+                    'Weight: ${data.kpi.totalProductionWeight.toStringAsFixed(3)} kg',
                     Icons.inventory_2_outlined,
                     const Color(0xFF185ADB),
                   ),
@@ -474,15 +501,15 @@ class _AdminHomeView extends ConsumerWidget {
                     context,
                     'Total Rejection',
                     countFormat.format(data.kpi.totalRejection),
-                    'Units rejected',
+                    'Weight: ${data.kpi.totalRejectionWeight.toStringAsFixed(3)} kg',
                     Icons.rule_folder_outlined,
                     const Color(0xFFD64545),
                   ),
                   _buildKPICard(
                     context,
                     'Running Hours',
-                    data.kpi.totalRunningHours.toStringAsFixed(2),
-                    'Total hours',
+                    '${data.kpi.totalRunningHours.toStringAsFixed(2)} h',
+                    'Weight rate: ${data.kpi.totalRunningHoursWeight.toStringAsFixed(2)} kg/hr',
                     Icons.timer_outlined,
                     const Color(0xFF0E9F6E),
                   ),
@@ -490,21 +517,11 @@ class _AdminHomeView extends ConsumerWidget {
                     context,
                     'Average Parts/Hr',
                     data.kpi.averagePartsPerHour.toStringAsFixed(2),
-                    'Throughput rate',
+                    'Average throughput',
                     Icons.speed_outlined,
                     const Color(0xFF7A4DCC),
                   ),
                 ],
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Top Operators (Actual Production)',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 250,
-                child: _buildOperatorPerformanceChart(context, data.operatorPerformance),
               ),
               const SizedBox(height: 24),
               const Text(
@@ -517,7 +534,10 @@ class _AdminHomeView extends ConsumerWidget {
                 child: _buildMachineOutputChart(context, data.machineOutput),
               ),
               const SizedBox(height: 24),
-              const Text('Shift-wise Production', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text(
+                'Shift-wise Production',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 16),
               SizedBox(
                 height: 250,
@@ -534,16 +554,18 @@ class _AdminHomeView extends ConsumerWidget {
                             int idx = value.toInt();
                             if (idx >= 0 && idx < data.shiftProduction.length) {
                               return SideTitleWidget(
-                                meta: meta, 
-                                space: 8, 
+                                meta: meta,
+                                space: 8,
                                 child: Text(
-                                  'Shift ${data.shiftProduction[idx].shift}', 
+                                  'Shift ${data.shiftProduction[idx].shift}',
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.onSurface,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface,
                                     fontWeight: FontWeight.bold,
                                     fontSize: 14,
                                   ),
-                                )
+                                ),
                               );
                             }
                             return const SizedBox.shrink();
@@ -552,38 +574,64 @@ class _AdminHomeView extends ConsumerWidget {
                       ),
                     ),
                     borderData: FlBorderData(show: false),
-                    barGroups: data.shiftProduction.asMap().entries.map((entry) {
+                    barGroups: data.shiftProduction.asMap().entries.map((
+                      entry,
+                    ) {
                       final i = entry.key;
                       final s = entry.value;
-                      return BarChartGroupData(x: i, barRods: [BarChartRodData(toY: s.totalQuantity.toDouble(), color: Colors.blue, width: 22)]);
+                      return BarChartGroupData(
+                        x: i,
+                        barRods: [
+                          BarChartRodData(
+                            toY: s.totalQuantity.toDouble(),
+                            color: Colors.blue,
+                            width: 22,
+                          ),
+                        ],
+                      );
                     }).toList(),
                   ),
                 ),
               ),
               const SizedBox(height: 32),
-              const Text('Rejection Reasons Distribution', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text(
+                'Rejection Reasons Distribution',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 16),
               SizedBox(
                 height: 250,
                 child: data.rejectionReasons.isEmpty
-                ? const Center(child: Text('No rejections recorded.'))
-                : PieChart(
-                    PieChartData(
-                      sectionsSpace: 2,
-                      centerSpaceRadius: 40,
-                      sections: data.rejectionReasons.asMap().entries.map((entry) {
-                        final colors = [Colors.red.shade400, Colors.orange.shade400, Colors.yellow.shade600, Colors.purple.shade300, Colors.blueGrey];
-                        final r = entry.value;
-                      return PieChartSectionData(
-                          color: colors[entry.key % colors.length], 
-                          value: r.count.toDouble(), 
-                          title: '${r.count}\n${r.reason}', 
-                          radius: 50, 
-                          titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)
-                        );
-                      }).toList(),
-                    ),
-                  ),
+                    ? const Center(child: Text('No rejections recorded.'))
+                    : PieChart(
+                        PieChartData(
+                          sectionsSpace: 2,
+                          centerSpaceRadius: 40,
+                          sections: data.rejectionReasons.asMap().entries.map((
+                            entry,
+                          ) {
+                            final colors = [
+                              Colors.red.shade400,
+                              Colors.orange.shade400,
+                              Colors.yellow.shade600,
+                              Colors.purple.shade300,
+                              Colors.blueGrey,
+                            ];
+                            final r = entry.value;
+                            return PieChartSectionData(
+                              color: colors[entry.key % colors.length],
+                              value: r.count.toDouble(),
+                              title: '${r.count}\n${r.reason}',
+                              radius: 50,
+                              titleStyle: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
               ),
             ],
           ),
@@ -609,11 +657,12 @@ class _AdminHomeView extends ConsumerWidget {
         lastDate: DateTime(2100),
       );
       if (picked == null) return;
-      final adjustedEnd = (endDate != null && endDate.isBefore(picked)) ? picked : endDate;
-      await ref.read(adminDashboardControllerProvider.notifier).setDateRange(
-            startDate: picked,
-            endDate: adjustedEnd,
-          );
+      final adjustedEnd = (endDate != null && endDate.isBefore(picked))
+          ? picked
+          : endDate;
+      await ref
+          .read(adminDashboardControllerProvider.notifier)
+          .setDateRange(startDate: picked, endDate: adjustedEnd);
     }
 
     Future<void> pickEndDate() async {
@@ -624,11 +673,12 @@ class _AdminHomeView extends ConsumerWidget {
         lastDate: DateTime(2100),
       );
       if (picked == null) return;
-      final adjustedStart = (startDate != null && startDate.isAfter(picked)) ? picked : startDate;
-      await ref.read(adminDashboardControllerProvider.notifier).setDateRange(
-            startDate: adjustedStart,
-            endDate: picked,
-          );
+      final adjustedStart = (startDate != null && startDate.isAfter(picked))
+          ? picked
+          : startDate;
+      await ref
+          .read(adminDashboardControllerProvider.notifier)
+          .setDateRange(startDate: adjustedStart, endDate: picked);
     }
 
     return Container(
@@ -647,7 +697,9 @@ class _AdminHomeView extends ConsumerWidget {
             onPressed: pickStartDate,
             icon: const Icon(Icons.date_range_outlined),
             label: Text(
-              startDate == null ? 'Start Date' : 'Start: ${dateFmt.format(startDate)}',
+              startDate == null
+                  ? 'Start Date'
+                  : 'Start: ${dateFmt.format(startDate)}',
             ),
           ),
           OutlinedButton.icon(
@@ -659,7 +711,9 @@ class _AdminHomeView extends ConsumerWidget {
           ),
           if (hasFilter)
             TextButton.icon(
-              onPressed: () => ref.read(adminDashboardControllerProvider.notifier).setDateRange(),
+              onPressed: () => ref
+                  .read(adminDashboardControllerProvider.notifier)
+                  .setDateRange(),
               icon: const Icon(Icons.clear),
               label: const Text('Clear Filter'),
             ),
@@ -668,63 +722,6 @@ class _AdminHomeView extends ConsumerWidget {
     );
   }
 
-  Widget _buildOperatorPerformanceChart(
-    BuildContext context,
-    List<OperatorPerformanceData> operators,
-  ) {
-    if (operators.isEmpty) {
-      return const Center(child: Text('No operator performance data found.'));
-    }
-
-    return BarChart(
-      BarChartData(
-        alignment: BarChartAlignment.spaceAround,
-        maxY: _chartMaxYFromValues(operators.map((e) => e.value)),
-        titlesData: FlTitlesData(
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                final idx = value.toInt();
-                if (idx < 0 || idx >= operators.length) return const SizedBox.shrink();
-                return SideTitleWidget(
-                  meta: meta,
-                  space: 8,
-                  child: Text(
-                    _shortLabel(operators[idx].name, maxLength: 8),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 11,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 34)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        borderData: FlBorderData(show: false),
-        barGroups: operators.asMap().entries.map((entry) {
-          final i = entry.key;
-          final e = entry.value;
-          return BarChartGroupData(
-            x: i,
-            barRods: [
-              BarChartRodData(
-                toY: e.value.toDouble(),
-                color: const Color(0xFF2E7D32),
-                width: 18,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-              ),
-            ],
-          );
-        }).toList(),
-      ),
-    );
-  }
 
   Widget _buildMachineOutputChart(
     BuildContext context,
@@ -744,7 +741,8 @@ class _AdminHomeView extends ConsumerWidget {
               showTitles: true,
               getTitlesWidget: (value, meta) {
                 final idx = value.toInt();
-                if (idx < 0 || idx >= machines.length) return const SizedBox.shrink();
+                if (idx < 0 || idx >= machines.length)
+                  return const SizedBox.shrink();
                 final label = machines[idx].machineNumber.trim().isNotEmpty
                     ? machines[idx].machineNumber
                     : machines[idx].name;
@@ -763,9 +761,15 @@ class _AdminHomeView extends ConsumerWidget {
               },
             ),
           ),
-          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 34)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: true, reservedSize: 34),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
         ),
         borderData: FlBorderData(show: false),
         barGroups: machines.asMap().entries.map((entry) {
@@ -778,7 +782,9 @@ class _AdminHomeView extends ConsumerWidget {
                 toY: e.value.toDouble(),
                 color: const Color(0xFF185ADB),
                 width: 18,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(4),
+                ),
               ),
             ],
           );
@@ -799,9 +805,8 @@ class _AdminHomeView extends ConsumerWidget {
     final cardWidth = width > 900
         ? (width - 56) / 4
         : width > 640
-            ? (width - 44) / 2
-            : width - 32;
-
+        ? (width - 44) / 2
+        : (width - 44) / 2;
     return SizedBox(
       width: cardWidth,
       child: Card(
@@ -827,22 +832,22 @@ class _AdminHomeView extends ConsumerWidget {
                     Text(
                       title,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF4C596A),
-                            fontWeight: FontWeight.w600,
-                          ),
+                        color: const Color(0xFF4C596A),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       value,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     Text(
                       subtitle,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xFF687789),
-                          ),
+                        color: const Color(0xFF687789),
+                      ),
                     ),
                   ],
                 ),

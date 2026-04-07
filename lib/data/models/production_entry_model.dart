@@ -21,7 +21,7 @@ class ProductionEntryModel {
   final String? itemCode;
   final String? machineName;
   final String? itemDescription;
-  final String customerId;
+  final String? customerId;
   final String? customerName;
   final int ccd1Quantity;
   final int actualQuantity;
@@ -29,6 +29,10 @@ class ProductionEntryModel {
   final String startTime;
   final String endTime;
   final String? notes;
+  final String? machineDowntimeStartTime;
+  final String? machineDowntimeEndTime;
+  final String? rcNumberId;
+  final String? rcNumber;
   final List<RejectionDetailModel> rejectionDetails;
   
   // Calculated fields (computed by backend, thus optional on creation)
@@ -49,7 +53,7 @@ class ProductionEntryModel {
     this.itemCode,
     this.machineName,
     this.itemDescription,
-    required this.customerId,
+    this.customerId,
     this.customerName,
     required this.ccd1Quantity,
     required this.actualQuantity,
@@ -57,6 +61,10 @@ class ProductionEntryModel {
     required this.startTime,
     required this.endTime,
     this.notes,
+    this.machineDowntimeStartTime,
+    this.machineDowntimeEndTime,
+    this.rcNumberId,
+    this.rcNumber,
     this.rejectionDetails = const [],
     this.runningHours = 0.0,
     this.partsPerHour = 0.0,
@@ -95,8 +103,10 @@ class ProductionEntryModel {
     final itemObj = json['item'] is Map ? json['item'] as Map : null;
     final operatorObj = json['operator'] is Map ? json['operator'] as Map : null;
     final customerObj = json['customer'] is Map ? json['customer'] as Map : null;
+    final rcNumberObj = json['rcNumber'] is Map ? json['rcNumber'] as Map : null;
     final machineRaw = json['machine'];
     final itemRaw = json['item'];
+    final rcNumberRaw = json['rcNumber'];
 
     final operatorName = readString(json['operatorName']).trim().isNotEmpty
         ? readString(json['operatorName'])
@@ -134,6 +144,18 @@ class ProductionEntryModel {
         ? readString(json['itemCode'])
         : readNestedString(itemObj, ['code', 'itemCode', 'partNo']);
 
+    final rcNumberId = readString(json['rcNumberId']).trim().isNotEmpty
+        ? readString(json['rcNumberId'])
+        : readNestedString(rcNumberObj, ['id', 'rcNumberId']);
+
+    final rcNumber = readString(json['rcNumberText']).trim().isNotEmpty
+        ? readString(json['rcNumberText'])
+        : readString(json['rcNumberCode']).trim().isNotEmpty
+            ? readString(json['rcNumberCode'])
+        : (rcNumberRaw is String && rcNumberRaw.trim().isNotEmpty
+            ? rcNumberRaw
+            : readNestedString(rcNumberObj, ['rcNumber', 'number', 'code', 'name']));
+
     return ProductionEntryModel(
       id: json['id'],
       entryDate: (json['entryDate'] ?? json['date'] ?? '').toString(),
@@ -145,7 +167,7 @@ class ProductionEntryModel {
       itemCode: itemCode.isNotEmpty ? itemCode : null,
       machineName: machineName.isNotEmpty ? machineName : null,
       itemDescription: itemDescription.isNotEmpty ? itemDescription : null,
-      customerId: json['customerId'] ?? '',
+      customerId: json['customerId'],
       customerName: customerName.isNotEmpty ? customerName : null,
       ccd1Quantity: parseInt(json['ccd1Quantity']),
       actualQuantity: parseInt(json['actualQuantity']),
@@ -153,6 +175,12 @@ class ProductionEntryModel {
       startTime: json['startTime'] ?? '',
       endTime: json['endTime'] ?? '',
       notes: json['notes'],
+      machineDowntimeStartTime: json['machineDowntimeStartTime'],
+      machineDowntimeEndTime: json['machineDowntimeEndTime'],
+      rcNumberId: rcNumberId.isNotEmpty ? rcNumberId : null,
+      rcNumber: rcNumber.isNotEmpty
+          ? rcNumber
+          : (rcNumberId.isNotEmpty ? rcNumberId : null),
       runningHours: parseDouble(json['runningHours']),
       partsPerHour: parseDouble(json['partsPerHour']),
       weightInKGs: parseDouble(json['weightInKGs'] ?? json['weightInKgs']),
@@ -168,13 +196,15 @@ class ProductionEntryModel {
       'operatorId': operatorId,
       'machineId': machineId,
       'itemId': itemId,
-      'customerId': customerId,
       'ccd1Quantity': ccd1Quantity,
       'actualQuantity': actualQuantity,
       'rejectionQuantity': rejectionQuantity,
       'startTime': startTime,
       'endTime': endTime,
       if (notes != null && notes!.isNotEmpty) 'notes': notes,
+      if (machineDowntimeStartTime != null && machineDowntimeStartTime!.isNotEmpty) 'machineDowntimeStartTime': machineDowntimeStartTime,
+      if (machineDowntimeEndTime != null && machineDowntimeEndTime!.isNotEmpty) 'machineDowntimeEndTime': machineDowntimeEndTime,
+      if (rcNumberId != null && rcNumberId!.isNotEmpty) 'rcNumberId': rcNumberId,
       if (rejectionDetails.isNotEmpty) 'rejectionDetails': rejectionDetails.map((e) => e.toJson()).toList(),
     };
   }

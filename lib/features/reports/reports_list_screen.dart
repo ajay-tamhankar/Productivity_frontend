@@ -145,6 +145,17 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
     return raw;
   }
 
+  String _safeText(String? value) {
+    final text = (value ?? '').trim();
+    return text.isEmpty ? '-' : text;
+  }
+
+  String _formatDate(String rawDate) {
+    final parsed = DateTime.tryParse(rawDate);
+    if (parsed == null) return _safeText(rawDate);
+    return DateFormat('dd MMM yyyy').format(parsed);
+  }
+
   List<ProductionEntryModel> _filtered(List<ProductionEntryModel> source) {
     final query = _searchCtrl.text.trim().toLowerCase();
     return source.where((entry) {
@@ -474,13 +485,94 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                   subtitle: 'Try changing search or status filter.',
                 )
               else
-                ...entries.map(
-                  (entry) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _EntryCard(
-                      entry: entry,
-                      canManage: false,
-                      onAction: (action) => _handleAction(entry, action, state.currentPage),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.96),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2EAF6)),
+                  ),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      dataRowMinHeight: 72,
+                      dataRowMaxHeight: 92,
+                      horizontalMargin: 10,
+                      columnSpacing: 14,
+                      headingRowColor: MaterialStateProperty.all(
+                        const Color(0xFFF3F8FF),
+                      ),
+                      columns: const [
+                        DataColumn(label: Text('Date')),
+                        DataColumn(label: Text('Shift')),
+                        DataColumn(label: Text('Operator')),
+                        DataColumn(label: Text('Machine')),
+                        DataColumn(label: Text('Item')),
+                        DataColumn(label: Text('RC Number')),
+                        DataColumn(label: Text('Actual')),
+                        DataColumn(label: Text('Reject')),
+                        DataColumn(label: Text('Weight (KG)')),
+                        DataColumn(label: Text('Parts/Hr')),
+                        DataColumn(label: Text('Status')),
+                      ],
+                      rows: entries.map((entry) {
+                        final status = _safeText(entry.approvalStatus ?? 'PENDING').toUpperCase();
+                        final machine = _safeText(entry.machineName ?? entry.machineId);
+                        final item = _safeText(entry.itemDescription ?? entry.itemId);
+                        final rcNumber = _safeText(entry.rcNumber ?? entry.rcNumberId);
+
+                        return DataRow(
+                          cells: [
+                            DataCell(Text(_formatDate(entry.entryDate))),
+                            DataCell(Text(_safeText(entry.shift))),
+                            DataCell(
+                              SizedBox(
+                                width: 140,
+                                child: Text(
+                                  _safeText(entry.operatorName ?? entry.operatorId),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              SizedBox(
+                                width: 180,
+                                child: Text(
+                                  machine,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              SizedBox(
+                                width: 210,
+                                child: Text(
+                                  item,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              SizedBox(
+                                width: 130,
+                                child: Text(
+                                  rcNumber,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                            DataCell(Text(entry.actualQuantity.toString())),
+                            DataCell(Text(entry.rejectionQuantity.toString())),
+                            DataCell(Text(entry.weightInKGs.toStringAsFixed(2))),
+                            DataCell(Text(entry.partsPerHour.toStringAsFixed(1))),
+                            DataCell(_StatusPill(status: status)),
+                          ],
+                        );
+                      }).toList(),
                     ),
                   ),
                 ),
@@ -879,6 +971,11 @@ class _EntryCard extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
+            'Operator: ${_safeText(entry.operatorName ?? entry.operatorId)}',
+            style: const TextStyle(color: Color(0xFF5D6A7A)),
+          ),
+          const SizedBox(height: 3),
+          Text(
             'Actual: ${entry.actualQuantity} | Reject: ${entry.rejectionQuantity} | Parts/Hr: ${entry.partsPerHour.toStringAsFixed(1)}',
             style: const TextStyle(color: Color(0xFF5D6A7A)),
           ),
@@ -1138,7 +1235,7 @@ class _EntryEditDialogState extends State<_EntryEditDialog> {
     _shiftCtrl = TextEditingController(text: entry.shift);
     _machineCtrl = TextEditingController(text: entry.machineId);
     _itemCtrl = TextEditingController(text: entry.itemId);
-    _customerCtrl = TextEditingController(text: entry.customerId);
+    _customerCtrl = TextEditingController(text: entry.customerId ?? '');
     _ccd1Ctrl = TextEditingController(text: entry.ccd1Quantity.toString());
     _actualCtrl = TextEditingController(text: entry.actualQuantity.toString());
     _rejectionCtrl = TextEditingController(text: entry.rejectionQuantity.toString());
@@ -1217,7 +1314,7 @@ class _EntryEditDialogState extends State<_EntryEditDialog> {
     putIfChanged('shift', entry.shift.trim(), shift);
     putIfChanged('machineId', entry.machineId.trim(), machineId);
     putIfChanged('itemId', entry.itemId.trim(), itemId);
-    putIfChanged('customerId', entry.customerId.trim(), customerId);
+    putIfChanged('customerId', (entry.customerId ?? '').trim(), customerId);
     if (ccd1 != null) putIfChanged('ccd1Quantity', entry.ccd1Quantity, ccd1);
     if (actual != null) putIfChanged('actualQuantity', entry.actualQuantity, actual);
     if (rejection != null) putIfChanged('rejectionQuantity', entry.rejectionQuantity, rejection);

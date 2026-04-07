@@ -293,7 +293,7 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
                   if (feed.entries.isEmpty) {
                     return const _SectionEmptyCard(
                       title: 'No submissions yet',
-                      subtitle: 'Tap "New Entry" to add your first production log.',
+                      subtitle: 'Tap "Log Shift" to add your first production log.',
                     );
                   }
 
@@ -320,8 +320,8 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
           if (!mounted) return;
           await _refreshAll();
         },
-        label: const Text('New Entry'),
-        icon: const Icon(Icons.add),
+        label: const Text('Log Shift'),
+        icon: const Icon(Icons.add_task),
       ),
     );
   }
@@ -340,8 +340,11 @@ class _HeroStatsBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final stats = statsAsync.asData?.value;
     final totalProduction = stats?.totalProduction ?? 0;
+    final totalProductionWeight = stats?.totalProductionWeight ?? 0;
     final totalRejection = stats?.totalRejection ?? 0;
+    final totalRejectionWeight = stats?.totalRejectionWeight ?? 0;
     final avgParts = stats?.averagePartsPerHour ?? 0;
+    final weightPerRunningHour = stats?.totalRunningHoursWeight ?? 0;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -386,14 +389,17 @@ class _HeroStatsBanner extends StatelessWidget {
               _HeroBadge(
                 label: 'Production',
                 value: countFormat.format(totalProduction),
+                subtitle: '${totalProductionWeight.toStringAsFixed(3)} kg',
               ),
               _HeroBadge(
                 label: 'Rejection',
                 value: countFormat.format(totalRejection),
+                subtitle: '${totalRejectionWeight.toStringAsFixed(3)} kg',
               ),
               _HeroBadge(
                 label: 'Avg Parts/Hr',
-                value: avgParts.toStringAsFixed(0),
+                value: avgParts.toStringAsFixed(1),
+                subtitle: '${weightPerRunningHour.toStringAsFixed(2)} kg/hr',
               ),
             ],
           ),
@@ -406,10 +412,12 @@ class _HeroStatsBanner extends StatelessWidget {
 class _HeroBadge extends StatelessWidget {
   final String label;
   final String value;
+  final String? subtitle;
 
   const _HeroBadge({
     required this.label,
     required this.value,
+    this.subtitle,
   });
 
   @override
@@ -440,6 +448,17 @@ class _HeroBadge extends StatelessWidget {
               fontSize: 17,
             ),
           ),
+          if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              subtitle!,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -474,7 +493,7 @@ class _OperatorStatsGrid extends StatelessWidget {
                   child: _StatCard(
                     title: 'Total Production',
                     value: countFormat.format(stats.totalProduction),
-                    subtitle: 'Units completed',
+                    subtitle: 'Weight: ${stats.totalProductionWeight.toStringAsFixed(3)} kg',
                     icon: Icons.inventory_2_outlined,
                     color: const Color(0xFF185ADB),
                   ),
@@ -484,7 +503,7 @@ class _OperatorStatsGrid extends StatelessWidget {
                   child: _StatCard(
                     title: 'Total Rejection',
                     value: countFormat.format(stats.totalRejection),
-                    subtitle: 'Units rejected',
+                    subtitle: 'Weight: ${stats.totalRejectionWeight.toStringAsFixed(3)} kg',
                     icon: Icons.rule_folder_outlined,
                     color: const Color(0xFFD64545),
                   ),
@@ -493,8 +512,9 @@ class _OperatorStatsGrid extends StatelessWidget {
                   width: cardWidth,
                   child: _StatCard(
                     title: 'Running Hours',
-                    value: stats.totalRunningHours.toStringAsFixed(2),
-                    subtitle: 'Total hours',
+                    value: '${stats.totalRunningHours.toStringAsFixed(2)} h',
+                    subtitle:
+                        'Weight rate: ${stats.totalRunningHoursWeight.toStringAsFixed(2)} kg/hr',
                     icon: Icons.timer_outlined,
                     color: const Color(0xFF0E9F6E),
                   ),
@@ -504,7 +524,7 @@ class _OperatorStatsGrid extends StatelessWidget {
                   child: _StatCard(
                     title: 'Average Parts/Hr',
                     value: stats.averagePartsPerHour.toStringAsFixed(1),
-                    subtitle: 'Throughput rate',
+                    subtitle: 'Average throughput',
                     icon: Icons.speed_outlined,
                     color: const Color(0xFF7A4DCC),
                   ),
@@ -514,7 +534,10 @@ class _OperatorStatsGrid extends StatelessWidget {
           },
         ),
         const SizedBox(height: 12),
-        _RejectionReasonCard(rejectionReasons: stats.rejectionReasons),
+        _RejectionReasonCard(
+          rejectionReasons: stats.rejectionReasons,
+          countFormat: countFormat,
+        ),
       ],
     );
   }
@@ -591,9 +614,11 @@ class _StatCard extends StatelessWidget {
 
 class _RejectionReasonCard extends StatelessWidget {
   final List<OperatorRejectionReason> rejectionReasons;
+  final NumberFormat countFormat;
 
   const _RejectionReasonCard({
     required this.rejectionReasons,
+    required this.countFormat,
   });
 
   @override
@@ -628,7 +653,9 @@ class _RejectionReasonCard extends StatelessWidget {
               children: rejectionReasons
                   .map(
                     (reason) => Chip(
-                      label: Text('${reason.reason}: ${reason.count}'),
+                      label: Text(
+                        '${reason.reason}: ${countFormat.format(reason.count)} (${reason.weight.toStringAsFixed(3)} kg)',
+                      ),
                       backgroundColor: const Color(0xFFFFF1EE),
                       side: const BorderSide(color: Color(0xFFFFD9D0)),
                       labelStyle: const TextStyle(

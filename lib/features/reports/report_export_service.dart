@@ -16,10 +16,10 @@ class ReportExportService {
     'Date',
     'Shift',
     'Operator Name',
-    'Customer',
     'M/C NO',
     'Item Code',
     'Description',
+    'RC Number',
     'Finish Wt',
     'CCD1 Qty',
     'ACTUAL QTY',
@@ -218,18 +218,18 @@ class ReportExportService {
       final startTime = _normalizeTime(entry.startTime);
       final endTime = _normalizeTime(entry.endTime);
       final operator = _display(entry.operatorName, entry.operatorId);
-      final customer = _display(entry.customerName, entry.customerId);
       final itemCode = _display(entry.itemCode, entry.itemId);
+      final rcNumber = _safe(entry.rcNumber ?? entry.rcNumberId ?? '');
       final finishWt = entry.finishWeight > 0 ? entry.finishWeight.toStringAsFixed(2) : '-';
 
       return <String>[
         date,
         _safe(entry.shift),
         operator,
-        customer,
         machine,
         itemCode,
         item,
+        rcNumber,
         finishWt,
         entry.ccd1Quantity.toString(),
         entry.actualQuantity.toString(),

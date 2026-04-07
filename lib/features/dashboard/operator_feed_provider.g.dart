@@ -34,7 +34,7 @@ final class OperatorFeedControllerProvider
 }
 
 String _$operatorFeedControllerHash() =>
-    r'91453f366917c15abd191ae7f04971074d357eaf';
+    r'982d0a60e3331d01e898c6642a65c46758db55ba';
 
 abstract class _$OperatorFeedController
     extends $AsyncNotifier<PaginatedFeedState> {

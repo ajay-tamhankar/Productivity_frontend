@@ -4,31 +4,40 @@ import '../../data/api_services/api_client.dart';
 class OperatorRejectionReason {
   final String reason;
   final int count;
+  final double weight;
 
   const OperatorRejectionReason({
     required this.reason,
     required this.count,
+    required this.weight,
   });
 
   factory OperatorRejectionReason.fromJson(Map<String, dynamic> json) {
     return OperatorRejectionReason(
       reason: (json['reason'] ?? '').toString(),
       count: _toInt(json['count']),
+      weight: _toDouble(json['weight']),
     );
   }
 }
 
 class OperatorStats {
   final int totalProduction;
+  final double totalProductionWeight;
   final int totalRejection;
+  final double totalRejectionWeight;
   final double totalRunningHours;
+  final double totalRunningHoursWeight;
   final double averagePartsPerHour;
   final List<OperatorRejectionReason> rejectionReasons;
 
   const OperatorStats({
     required this.totalProduction,
+    required this.totalProductionWeight,
     required this.totalRejection,
+    required this.totalRejectionWeight,
     required this.totalRunningHours,
+    required this.totalRunningHoursWeight,
     required this.averagePartsPerHour,
     required this.rejectionReasons,
   });
@@ -44,8 +53,14 @@ class OperatorStats {
 
     return OperatorStats(
       totalProduction: _toInt(json['totalProduction']),
+      totalProductionWeight:
+          _toDouble(json['totalProductionWeight'] ?? json['totalProductionweight']),
       totalRejection: _toInt(json['totalRejection']),
+      totalRejectionWeight:
+          _toDouble(json['totalRejectionWeight'] ?? json['totalRejectionweight']),
       totalRunningHours: _toDouble(json['totalRunningHours']),
+      totalRunningHoursWeight:
+          _toDouble(json['totalRunningHoursWeight'] ?? json['totalRunningHoursweight']),
       averagePartsPerHour: _toDouble(json['averagePartsPerHour']),
       rejectionReasons: reasons,
     );
