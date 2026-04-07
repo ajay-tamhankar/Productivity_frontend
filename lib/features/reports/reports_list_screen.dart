@@ -507,8 +507,8 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                         DataColumn(label: Text('Shift')),
                         DataColumn(label: Text('Operator')),
                         DataColumn(label: Text('Machine')),
-                        DataColumn(label: Text('Item')),
                         DataColumn(label: Text('RC Number')),
+                        DataColumn(label: Text('Item')),
                         DataColumn(label: Text('Actual')),
                         DataColumn(label: Text('Reject')),
                         DataColumn(label: Text('Weight (KG)')),
@@ -518,8 +518,8 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                       rows: entries.map((entry) {
                         final status = _safeText(entry.approvalStatus ?? 'PENDING').toUpperCase();
                         final machine = _safeText(entry.machineName ?? entry.machineId);
+                        final rcNumber = _safeText(entry.rcNumber);
                         final item = _safeText(entry.itemDescription ?? entry.itemId);
-                        final rcNumber = _safeText(entry.rcNumber ?? entry.rcNumberId);
 
                         return DataRow(
                           cells: [
@@ -547,9 +547,9 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                             ),
                             DataCell(
                               SizedBox(
-                                width: 210,
+                                width: 120,
                                 child: Text(
-                                  item,
+                                  rcNumber,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -557,9 +557,9 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                             ),
                             DataCell(
                               SizedBox(
-                                width: 130,
+                                width: 210,
                                 child: Text(
-                                  rcNumber,
+                                  item,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -971,7 +971,7 @@ class _EntryCard extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            'Operator: ${_safeText(entry.operatorName ?? entry.operatorId)}',
+            'Operator: ${_safeText(entry.operatorName ?? entry.operatorId)} | RC: ${_safeText(entry.rcNumber)}',
             style: const TextStyle(color: Color(0xFF5D6A7A)),
           ),
           const SizedBox(height: 3),

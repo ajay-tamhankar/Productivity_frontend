@@ -31,7 +31,6 @@ class ProductionEntryModel {
   final String? notes;
   final String? machineDowntimeStartTime;
   final String? machineDowntimeEndTime;
-  final String? rcNumberId;
   final String? rcNumber;
   final List<RejectionDetailModel> rejectionDetails;
   
@@ -63,7 +62,6 @@ class ProductionEntryModel {
     this.notes,
     this.machineDowntimeStartTime,
     this.machineDowntimeEndTime,
-    this.rcNumberId,
     this.rcNumber,
     this.rejectionDetails = const [],
     this.runningHours = 0.0,
@@ -103,10 +101,8 @@ class ProductionEntryModel {
     final itemObj = json['item'] is Map ? json['item'] as Map : null;
     final operatorObj = json['operator'] is Map ? json['operator'] as Map : null;
     final customerObj = json['customer'] is Map ? json['customer'] as Map : null;
-    final rcNumberObj = json['rcNumber'] is Map ? json['rcNumber'] as Map : null;
     final machineRaw = json['machine'];
     final itemRaw = json['item'];
-    final rcNumberRaw = json['rcNumber'];
 
     final operatorName = readString(json['operatorName']).trim().isNotEmpty
         ? readString(json['operatorName'])
@@ -144,18 +140,6 @@ class ProductionEntryModel {
         ? readString(json['itemCode'])
         : readNestedString(itemObj, ['code', 'itemCode', 'partNo']);
 
-    final rcNumberId = readString(json['rcNumberId']).trim().isNotEmpty
-        ? readString(json['rcNumberId'])
-        : readNestedString(rcNumberObj, ['id', 'rcNumberId']);
-
-    final rcNumber = readString(json['rcNumberText']).trim().isNotEmpty
-        ? readString(json['rcNumberText'])
-        : readString(json['rcNumberCode']).trim().isNotEmpty
-            ? readString(json['rcNumberCode'])
-        : (rcNumberRaw is String && rcNumberRaw.trim().isNotEmpty
-            ? rcNumberRaw
-            : readNestedString(rcNumberObj, ['rcNumber', 'number', 'code', 'name']));
-
     return ProductionEntryModel(
       id: json['id'],
       entryDate: (json['entryDate'] ?? json['date'] ?? '').toString(),
@@ -177,10 +161,7 @@ class ProductionEntryModel {
       notes: json['notes'],
       machineDowntimeStartTime: json['machineDowntimeStartTime'],
       machineDowntimeEndTime: json['machineDowntimeEndTime'],
-      rcNumberId: rcNumberId.isNotEmpty ? rcNumberId : null,
-      rcNumber: rcNumber.isNotEmpty
-          ? rcNumber
-          : (rcNumberId.isNotEmpty ? rcNumberId : null),
+      rcNumber: json['rcNumber']?.toString(),
       runningHours: parseDouble(json['runningHours']),
       partsPerHour: parseDouble(json['partsPerHour']),
       weightInKGs: parseDouble(json['weightInKGs'] ?? json['weightInKgs']),
@@ -204,7 +185,7 @@ class ProductionEntryModel {
       if (notes != null && notes!.isNotEmpty) 'notes': notes,
       if (machineDowntimeStartTime != null && machineDowntimeStartTime!.isNotEmpty) 'machineDowntimeStartTime': machineDowntimeStartTime,
       if (machineDowntimeEndTime != null && machineDowntimeEndTime!.isNotEmpty) 'machineDowntimeEndTime': machineDowntimeEndTime,
-      if (rcNumberId != null && rcNumberId!.isNotEmpty) 'rcNumberId': rcNumberId,
+      if (rcNumber != null && rcNumber!.isNotEmpty) 'rcNumber': rcNumber,
       if (rejectionDetails.isNotEmpty) 'rejectionDetails': rejectionDetails.map((e) => e.toJson()).toList(),
     };
   }

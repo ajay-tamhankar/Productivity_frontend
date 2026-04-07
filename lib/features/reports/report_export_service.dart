@@ -17,9 +17,9 @@ class ReportExportService {
     'Shift',
     'Operator Name',
     'M/C NO',
+    'RC Number',
     'Item Code',
     'Description',
-    'RC Number',
     'Finish Wt',
     'CCD1 Qty',
     'ACTUAL QTY',
@@ -218,8 +218,8 @@ class ReportExportService {
       final startTime = _normalizeTime(entry.startTime);
       final endTime = _normalizeTime(entry.endTime);
       final operator = _display(entry.operatorName, entry.operatorId);
+      final rcNumber = _safe(entry.rcNumber ?? '');
       final itemCode = _display(entry.itemCode, entry.itemId);
-      final rcNumber = _safe(entry.rcNumber ?? entry.rcNumberId ?? '');
       final finishWt = entry.finishWeight > 0 ? entry.finishWeight.toStringAsFixed(2) : '-';
 
       return <String>[
@@ -227,9 +227,9 @@ class ReportExportService {
         _safe(entry.shift),
         operator,
         machine,
+        rcNumber,
         itemCode,
         item,
-        rcNumber,
         finishWt,
         entry.ccd1Quantity.toString(),
         entry.actualQuantity.toString(),

@@ -81,7 +81,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
           _machineId = prefs.getString('prod_machineId');
           _itemId = prefs.getString('prod_itemId');
           _customerId = prefs.getString('prod_customerId');
-          _rcNumberCtrl.text = prefs.getString('prod_rcNumberId') ?? '';
+          _rcNumberCtrl.text = prefs.getString('prod_rcNumber') ?? '';
 
           final stHour = prefs.getInt('prod_st_hour');
           final stMin = prefs.getInt('prod_st_min');
@@ -124,7 +124,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     if (_customerId != null)
       await prefs.setString('prod_customerId', _customerId!);
     final rcNumber = _rcNumberCtrl.text.trim();
-    if (rcNumber.isNotEmpty) await prefs.setString('prod_rcNumberId', rcNumber);
+    if (rcNumber.isNotEmpty) await prefs.setString('prod_rcNumber', rcNumber);
     await prefs.setInt('prod_st_hour', _startTime!.hour);
     await prefs.setInt('prod_st_min', _startTime!.minute);
     await prefs.setDouble('prod_itemWeightG', _itemWeightG);
@@ -147,7 +147,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     await prefs.remove('prod_machineId');
     await prefs.remove('prod_itemId');
     await prefs.remove('prod_customerId');
-    await prefs.remove('prod_rcNumberId');
+    await prefs.remove('prod_rcNumber');
     await prefs.remove('prod_st_hour');
     await prefs.remove('prod_st_min');
     await prefs.remove('prod_itemWeightG');
@@ -412,11 +412,10 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
       return;
     }
 
-    final rcNumber = _rcNumberCtrl.text.trim();
-
     final s = _toDate(_startTime)!;
     final e = _toDate(_endTime)!;
     final auth = ref.read(authControllerProvider).asData?.value;
+    final rcNumber = _rcNumberCtrl.text.trim();
 
     final entry = ProductionEntryModel(
       entryDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
@@ -424,12 +423,12 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
       operatorId: auth?.id ?? 'unknown',
       machineId: _machineId!,
       itemId: _itemId!,
-      rcNumberId: rcNumber.isEmpty ? null : rcNumber,
       ccd1Quantity: 0,
       actualQuantity: actual,
       rejectionQuantity: reject,
       startTime: s.toUtc().toIso8601String(),
       endTime: e.toUtc().toIso8601String(),
+      rcNumber: rcNumber.isEmpty ? null : rcNumber,
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       machineDowntimeStartTime:
           _addMachineDowntime && _downtimeStartTime != null
@@ -471,7 +470,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
         await prefs.remove('prod_machineId');
         await prefs.remove('prod_itemId');
         await prefs.remove('prod_customerId');
-        await prefs.remove('prod_rcNumberId');
+        await prefs.remove('prod_rcNumber');
         await prefs.remove('prod_st_hour');
         await prefs.remove('prod_st_min');
         await prefs.remove('prod_itemWeightG');
@@ -664,6 +663,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                                       ),
                                     ),
                                   ),
+                                  const SizedBox(height: 10),
                                 ],
                               ),
                             ),
