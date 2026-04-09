@@ -3,11 +3,15 @@ import 'package:flutter/material.dart';
 class AppShimmer extends StatefulWidget {
   final Widget child;
   final Duration duration;
+  final Color? baseColor;
+  final Color? highlightColor;
 
   const AppShimmer({
     super.key,
     required this.child,
     this.duration = const Duration(milliseconds: 1400),
+    this.baseColor,
+    this.highlightColor,
   });
 
   @override
@@ -36,12 +40,10 @@ class _AppShimmerState extends State<AppShimmer>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final baseColor = isDark
-        ? const Color(0xFF2A3442)
-        : const Color(0xFFE3EBF7);
-    final highlightColor = isDark
-        ? const Color(0xFF3A4656)
-        : const Color(0xFFF6FAFF);
+    final baseColor = widget.baseColor ??
+        (isDark ? const Color(0xFF2A3442) : const Color(0xFFE3EBF7));
+    final highlightColor = widget.highlightColor ??
+        (isDark ? const Color(0xFF3A4656) : const Color(0xFFF6FAFF));
 
     return AnimatedBuilder(
       animation: _controller,
@@ -94,6 +96,105 @@ class SkeletonBox extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         borderRadius: borderRadius,
+      ),
+    );
+  }
+}
+
+class ShimmerCenteredPlaceholder extends StatelessWidget {
+  final double verticalPadding;
+  final double titleWidth;
+  final double subtitleWidth;
+
+  const ShimmerCenteredPlaceholder({
+    super.key,
+    this.verticalPadding = 28,
+    this.titleWidth = 190,
+    this.subtitleWidth = 120,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AppShimmer(
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: verticalPadding),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SkeletonBox(height: 14, width: titleWidth),
+              const SizedBox(height: 10),
+              SkeletonBox(height: 12, width: subtitleWidth),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ShimmerButtonDots extends StatelessWidget {
+  final double size;
+  final double spacing;
+
+  const ShimmerButtonDots({
+    super.key,
+    this.size = 7,
+    this.spacing = 4,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AppShimmer(
+      baseColor: Colors.white54,
+      highlightColor: Colors.white,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _dot(),
+            SizedBox(width: spacing),
+            _dot(),
+            SizedBox(width: spacing),
+            _dot(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dot() {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+class ShimmerLinearBar extends StatelessWidget {
+  final double height;
+  final BorderRadiusGeometry borderRadius;
+
+  const ShimmerLinearBar({
+    super.key,
+    this.height = 2,
+    this.borderRadius = BorderRadius.zero,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AppShimmer(
+      child: Container(
+        height: height,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE3EBF7),
+          borderRadius: borderRadius,
+        ),
       ),
     );
   }

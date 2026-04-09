@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/widgets/shimmer_skeleton.dart';
 import '../../data/models/master_data_models.dart';
 import 'master_management_repository.dart';
 
@@ -249,7 +250,11 @@ class _MachineManagementScreenState extends ConsumerState<MachineManagementScree
               if (_isLoading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 28),
-                  child: Center(child: CircularProgressIndicator()),
+                  child: ShimmerCenteredPlaceholder(
+                    verticalPadding: 6,
+                    titleWidth: 190,
+                    subtitleWidth: 120,
+                  ),
                 )
               else if (filtered.isEmpty)
                 Container(
@@ -285,7 +290,7 @@ class _MachineManagementScreenState extends ConsumerState<MachineManagementScree
         icon: const Icon(Icons.add_business_outlined),
       ),
       bottomNavigationBar:
-          _isSubmitting ? const LinearProgressIndicator(minHeight: 2) : null,
+          _isSubmitting ? const ShimmerLinearBar(height: 2) : null,
     );
   }
 }

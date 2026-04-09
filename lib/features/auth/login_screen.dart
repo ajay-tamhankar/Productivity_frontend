@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/widgets/shimmer_skeleton.dart';
 import 'auth_repository.dart';
 import 'auth_provider.dart';
 
@@ -309,9 +310,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                             ? const SizedBox(
                                                 width: 22,
                                                 height: 22,
-                                                child: CircularProgressIndicator(
-                                                  strokeWidth: 2.6,
-                                                  color: Colors.white,
+                                                child: Center(
+                                                  child: ShimmerButtonDots(
+                                                    size: 7,
+                                                    spacing: 3.5,
+                                                  ),
                                                 ),
                                               )
                                             : const Text(

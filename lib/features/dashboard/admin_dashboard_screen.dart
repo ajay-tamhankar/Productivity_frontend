@@ -66,6 +66,19 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
     }
   }
 
+  String _pageTitle({required bool isSupervisor}) {
+    switch (_currentIndex) {
+      case 0:
+        return isSupervisor ? 'Supervisor Dashboard' : 'Admin Dashboard';
+      case 1:
+        return 'Reports';
+      case 2:
+        return isSupervisor ? 'Review Actions' : 'Management';
+      default:
+        return 'Dashboard';
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -84,11 +97,44 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
             .trim()
             .toUpperCase() ??
         '';
+    final authState = ref.watch(authControllerProvider);
+    final themeMode = ref.watch(themeModeProvider);
+    final isDarkMode = themeMode == ThemeMode.dark;
+    final user = authState.asData?.value;
+    final name = user?.name.trim() ?? '';
+    final username = user?.username.trim() ?? '';
+    final displayName = name.isNotEmpty
+        ? name
+        : username.isNotEmpty
+            ? username
+            : (role.isNotEmpty ? role : 'User');
+    final isCompactAppBar = MediaQuery.of(context).size.width < 760;
+    final userInitial = displayName.isEmpty ? 'U' : displayName[0].toUpperCase();
+
+    void handleMenuAction(_AdminMenuAction action) {
+      switch (action) {
+        case _AdminMenuAction.refresh:
+          _refreshCurrentTabData();
+          break;
+        case _AdminMenuAction.toggleTheme:
+          ref.read(themeModeProvider.notifier).toggleThemeMode();
+          break;
+        case _AdminMenuAction.changePassword:
+          showChangePasswordDialog(context, ref);
+          break;
+        case _AdminMenuAction.logout:
+          ref.read(authControllerProvider.notifier).logout();
+          break;
+      }
+    }
+
     final isSupervisor = role == AppConstants.roleSupervisor;
     final pages = <Widget>[
-      const _AdminHomeView(),
-      const ReportsListScreen(),
-      isSupervisor ? const ReviewActionsScreen() : const _ManagementHubScreen(),
+      const _AdminHomeView(embedded: true),
+      const ReportsListScreen(embedded: true),
+      isSupervisor
+          ? const ReviewActionsScreen(embedded: true)
+          : const _ManagementHubScreen(embedded: true),
     ];
     final destinations = <NavigationDestination>[
       const NavigationDestination(
@@ -113,6 +159,128 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
         : _currentIndex;
 
     return Scaffold(
+      appBar: AppBar(
+        centerTitle: false,
+        title: Text(_pageTitle(isSupervisor: isSupervisor)),
+        actions: isCompactAppBar
+            ? [
+                PopupMenuButton<_AdminMenuAction>(
+                  tooltip: displayName,
+                  onSelected: handleMenuAction,
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      enabled: false,
+                      child: Text(
+                        displayName,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
+                      value: _AdminMenuAction.refresh,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.refresh),
+                        title: Text('Refresh'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: _AdminMenuAction.toggleTheme,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(
+                          isDarkMode
+                              ? Icons.light_mode_outlined
+                              : Icons.dark_mode_outlined,
+                        ),
+                        title: Text(isDarkMode ? 'Light Mode' : 'Dark Mode'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: _AdminMenuAction.changePassword,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.lock_reset_outlined),
+                        title: Text('Change Password'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: _AdminMenuAction.logout,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.logout),
+                        title: Text('Logout'),
+                      ),
+                    ),
+                  ],
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: CircleAvatar(
+                      radius: 16,
+                      backgroundColor:
+                          Theme.of(context).colorScheme.primary.withOpacity(0.14),
+                      child: Text(
+                        userInitial,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ),
+              ]
+            : [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    alignment: Alignment.center,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 120),
+                      child: Text(
+                        displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _refreshCurrentTabData,
+                  tooltip: 'Refresh',
+                ),
+                IconButton(
+                  icon: Icon(
+                    isDarkMode
+                        ? Icons.light_mode_outlined
+                        : Icons.dark_mode_outlined,
+                  ),
+                  onPressed: () =>
+                      ref.read(themeModeProvider.notifier).toggleThemeMode(),
+                  tooltip:
+                      isDarkMode ? 'Switch to light mode' : 'Switch to dark mode',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.lock_reset_outlined),
+                  onPressed: () => showChangePasswordDialog(context, ref),
+                  tooltip: 'Change Password',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.logout),
+                  onPressed: () {
+                    ref.read(authControllerProvider.notifier).logout();
+                  },
+                ),
+              ],
+      ),
       body: pages[selectedIndex],
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
@@ -127,7 +295,11 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
 }
 
 class _ManagementHubScreen extends StatelessWidget {
-  const _ManagementHubScreen();
+  final bool embedded;
+
+  const _ManagementHubScreen({
+    this.embedded = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -155,60 +327,75 @@ class _ManagementHubScreen extends StatelessWidget {
       ),
     ];
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Management')),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFF8FBFF), Color(0xFFF2FFF9), Color(0xFFF7F2FF)],
-          ),
+    final body = Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF8FBFF), Color(0xFFF2FFF9), Color(0xFFF7F2FF)],
         ),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.95),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2EAF6)),
-              ),
-              child: const Text(
-                'Use these modules to maintain masters and control system setup.',
-                style: TextStyle(color: Color(0xFF5D6A7A)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...modules.map(
-              (module) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _ManagementOptionCard(
-                  option: module,
-                  onTap: () {
-                    Widget screen;
-                    switch (module.module) {
-                      case _ManagementModule.user:
-                        screen = const UserManagementScreen();
-                        break;
-                      case _ManagementModule.machine:
-                        screen = const MachineManagementScreen();
-                        break;
-                      case _ManagementModule.item:
-                        screen = const ItemManagementScreen();
-                        break;
-                    }
-                    Navigator.of(
-                      context,
-                    ).push(MaterialPageRoute(builder: (_) => screen));
-                  },
+      ),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        children: [
+          if (embedded)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 6),
+              child: Text(
+                'Management',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
-          ],
-        ),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2EAF6)),
+            ),
+            child: const Text(
+              'Use these modules to maintain masters and control system setup.',
+              style: TextStyle(color: Color(0xFF5D6A7A)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...modules.map(
+            (module) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _ManagementOptionCard(
+                option: module,
+                onTap: () {
+                  Widget screen;
+                  switch (module.module) {
+                    case _ManagementModule.user:
+                      screen = const UserManagementScreen();
+                      break;
+                    case _ManagementModule.machine:
+                      screen = const MachineManagementScreen();
+                      break;
+                    case _ManagementModule.item:
+                      screen = const ItemManagementScreen();
+                      break;
+                  }
+                  Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute(builder: (_) => screen));
+                },
+              ),
+            ),
+          ),
+        ],
       ),
+    );
+
+    if (embedded) return body;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Management')),
+      body: body,
     );
   }
 }
@@ -291,7 +478,11 @@ class _ManagementOptionCard extends StatelessWidget {
 }
 
 class _AdminHomeView extends ConsumerWidget {
-  const _AdminHomeView();
+  final bool embedded;
+
+  const _AdminHomeView({
+    this.embedded = false,
+  });
 
   String _getDashboardTitle(String role) {
     final normalized = role.trim().toUpperCase();
@@ -340,6 +531,178 @@ class _AdminHomeView extends ConsumerWidget {
           break;
       }
     }
+
+    final body = dashboardState.when(
+      loading: () => const _AdminDashboardLoadingView(),
+      error: (err, stack) => Center(child: Text('Error: $err')),
+      data: (data) => RefreshIndicator(
+        onRefresh: ref
+            .read(adminDashboardControllerProvider.notifier)
+            .refresh,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            _buildDateFilterPanel(
+              context,
+              ref,
+              startDate: data.startDate,
+              endDate: data.endDate,
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _buildKPICard(
+                  context,
+                  'Total Production',
+                  countFormat.format(data.kpi.totalProduction),
+                  'Weight: ${data.kpi.totalProductionWeight.toStringAsFixed(3)} kg',
+                  Icons.inventory_2_outlined,
+                  const Color(0xFF185ADB),
+                ),
+                _buildKPICard(
+                  context,
+                  'Total Rejection',
+                  countFormat.format(data.kpi.totalRejection),
+                  'Weight: ${data.kpi.totalRejectionWeight.toStringAsFixed(3)} kg',
+                  Icons.rule_folder_outlined,
+                  const Color(0xFFD64545),
+                ),
+                _buildKPICard(
+                  context,
+                  'Running Hours',
+                  '${data.kpi.totalRunningHours.toStringAsFixed(2)} h',
+                  'Weight rate: ${data.kpi.totalRunningHoursWeight.toStringAsFixed(2)} kg/hr',
+                  Icons.timer_outlined,
+                  const Color(0xFF0E9F6E),
+                ),
+                _buildKPICard(
+                  context,
+                  'Average Parts/Hr',
+                  data.kpi.averagePartsPerHour.toStringAsFixed(2),
+                  'Average throughput',
+                  Icons.speed_outlined,
+                  const Color(0xFF7A4DCC),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Machine Output',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 250,
+              child: _buildMachineOutputChart(context, data.machineOutput),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Shift-wise Production',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 250,
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  // Auto-calculate maxY with a safe non-zero minimum.
+                  maxY: _chartMaxY(data.shiftProduction),
+                  titlesData: FlTitlesData(
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          int idx = value.toInt();
+                          if (idx >= 0 && idx < data.shiftProduction.length) {
+                            return SideTitleWidget(
+                              meta: meta,
+                              space: 8,
+                              child: Text(
+                                'Shift ${data.shiftProduction[idx].shift}',
+                                style: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  barGroups: data.shiftProduction.asMap().entries.map((
+                    entry,
+                  ) {
+                    final i = entry.key;
+                    final s = entry.value;
+                    return BarChartGroupData(
+                      x: i,
+                      barRods: [
+                        BarChartRodData(
+                          toY: s.totalQuantity.toDouble(),
+                          color: Colors.blue,
+                          width: 22,
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+            const Text(
+              'Rejection Reasons Distribution',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 250,
+              child: data.rejectionReasons.isEmpty
+                  ? const Center(child: Text('No rejections recorded.'))
+                  : PieChart(
+                      PieChartData(
+                        sectionsSpace: 2,
+                        centerSpaceRadius: 40,
+                        sections: data.rejectionReasons.asMap().entries.map((
+                          entry,
+                        ) {
+                          final colors = [
+                            Colors.red.shade400,
+                            Colors.orange.shade400,
+                            Colors.yellow.shade600,
+                            Colors.purple.shade300,
+                            Colors.blueGrey,
+                          ];
+                          final r = entry.value;
+                          return PieChartSectionData(
+                            color: colors[entry.key % colors.length],
+                            value: r.count.toDouble(),
+                            title: '${r.count}\n${r.reason}',
+                            radius: 50,
+                            titleStyle: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (embedded) return body;
 
     return Scaffold(
       appBar: AppBar(
@@ -470,175 +833,7 @@ class _AdminHomeView extends ConsumerWidget {
                 ),
               ],
       ),
-      body: dashboardState.when(
-        loading: () => const _AdminDashboardLoadingView(),
-        error: (err, stack) => Center(child: Text('Error: $err')),
-        data: (data) => RefreshIndicator(
-          onRefresh: ref
-              .read(adminDashboardControllerProvider.notifier)
-              .refresh,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _buildDateFilterPanel(
-                context,
-                ref,
-                startDate: data.startDate,
-                endDate: data.endDate,
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  _buildKPICard(
-                    context,
-                    'Total Production',
-                    countFormat.format(data.kpi.totalProduction),
-                    'Weight: ${data.kpi.totalProductionWeight.toStringAsFixed(3)} kg',
-                    Icons.inventory_2_outlined,
-                    const Color(0xFF185ADB),
-                  ),
-                  _buildKPICard(
-                    context,
-                    'Total Rejection',
-                    countFormat.format(data.kpi.totalRejection),
-                    'Weight: ${data.kpi.totalRejectionWeight.toStringAsFixed(3)} kg',
-                    Icons.rule_folder_outlined,
-                    const Color(0xFFD64545),
-                  ),
-                  _buildKPICard(
-                    context,
-                    'Running Hours',
-                    '${data.kpi.totalRunningHours.toStringAsFixed(2)} h',
-                    'Weight rate: ${data.kpi.totalRunningHoursWeight.toStringAsFixed(2)} kg/hr',
-                    Icons.timer_outlined,
-                    const Color(0xFF0E9F6E),
-                  ),
-                  _buildKPICard(
-                    context,
-                    'Average Parts/Hr',
-                    data.kpi.averagePartsPerHour.toStringAsFixed(2),
-                    'Average throughput',
-                    Icons.speed_outlined,
-                    const Color(0xFF7A4DCC),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Machine Output',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 250,
-                child: _buildMachineOutputChart(context, data.machineOutput),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Shift-wise Production',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 250,
-                child: BarChart(
-                  BarChartData(
-                    alignment: BarChartAlignment.spaceAround,
-                    // Auto-calculate maxY with a safe non-zero minimum.
-                    maxY: _chartMaxY(data.shiftProduction),
-                    titlesData: FlTitlesData(
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          getTitlesWidget: (value, meta) {
-                            int idx = value.toInt();
-                            if (idx >= 0 && idx < data.shiftProduction.length) {
-                              return SideTitleWidget(
-                                meta: meta,
-                                space: 8,
-                                child: Text(
-                                  'Shift ${data.shiftProduction[idx].shift}',
-                                  style: TextStyle(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurface,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          },
-                        ),
-                      ),
-                    ),
-                    borderData: FlBorderData(show: false),
-                    barGroups: data.shiftProduction.asMap().entries.map((
-                      entry,
-                    ) {
-                      final i = entry.key;
-                      final s = entry.value;
-                      return BarChartGroupData(
-                        x: i,
-                        barRods: [
-                          BarChartRodData(
-                            toY: s.totalQuantity.toDouble(),
-                            color: Colors.blue,
-                            width: 22,
-                          ),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-              const Text(
-                'Rejection Reasons Distribution',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 250,
-                child: data.rejectionReasons.isEmpty
-                    ? const Center(child: Text('No rejections recorded.'))
-                    : PieChart(
-                        PieChartData(
-                          sectionsSpace: 2,
-                          centerSpaceRadius: 40,
-                          sections: data.rejectionReasons.asMap().entries.map((
-                            entry,
-                          ) {
-                            final colors = [
-                              Colors.red.shade400,
-                              Colors.orange.shade400,
-                              Colors.yellow.shade600,
-                              Colors.purple.shade300,
-                              Colors.blueGrey,
-                            ];
-                            final r = entry.value;
-                            return PieChartSectionData(
-                              color: colors[entry.key % colors.length],
-                              value: r.count.toDouble(),
-                              title: '${r.count}\n${r.reason}',
-                              radius: 50,
-                              titleStyle: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      body: body,
     );
   }
 

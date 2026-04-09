@@ -5,13 +5,19 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/widgets/shimmer_skeleton.dart';
 import '../../data/models/production_entry_model.dart';
 import '../auth/auth_provider.dart';
 import 'master_data_provider.dart';
 import 'production_entry_provider.dart';
 
 class ProductionEntryScreen extends ConsumerStatefulWidget {
-  const ProductionEntryScreen({super.key});
+  final bool embedded;
+
+  const ProductionEntryScreen({
+    super.key,
+    this.embedded = false,
+  });
 
   @override
   ConsumerState<ProductionEntryScreen> createState() =>
@@ -514,7 +520,20 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoadingPrefs) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      if (widget.embedded) {
+        return const ShimmerCenteredPlaceholder(
+          verticalPadding: 0,
+          titleWidth: 220,
+          subtitleWidth: 140,
+        );
+      }
+      return const Scaffold(
+        body: ShimmerCenteredPlaceholder(
+          verticalPadding: 0,
+          titleWidth: 220,
+          subtitleWidth: 140,
+        ),
+      );
     }
 
     ref.listen(productionEntryControllerProvider, (prev, next) async {
@@ -544,7 +563,11 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
               content: Text('Production entry submitted successfully.'),
             ),
           );
-          context.pop();
+          if (widget.embedded) {
+            await _cancelShift();
+          } else {
+            context.pop();
+          }
         }
       }
     });
@@ -552,14 +575,11 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     final submitState = ref.watch(productionEntryControllerProvider);
     final masterData = ref.watch(masterDataControllerProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _isStarted ? 'End Production Shift' : 'New Production Entry',
+    final content = masterData.when(
+        loading: () => const ShimmerCenteredPlaceholder(
+          titleWidth: 220,
+          subtitleWidth: 150,
         ),
-      ),
-      body: masterData.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(_err(e))),
         data: (d) => Container(
           decoration: const BoxDecoration(
@@ -636,7 +656,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                                 children: [
                                   DropdownButtonFormField<String>(
                                     key: ValueKey('shift_$_shift'),
-                                    initialValue: _shift,
+                                    value: _shift,
                                     decoration: const InputDecoration(
                                       labelText: 'Shift *',
                                       prefixIcon:
@@ -1046,11 +1066,12 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                                             ? const SizedBox(
                                                 width: 20,
                                                 height: 20,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2.4,
-                                                      color: Colors.white,
-                                                    ),
+                                                child: Center(
+                                                  child: ShimmerButtonDots(
+                                                    size: 6.5,
+                                                    spacing: 3.5,
+                                                  ),
+                                                ),
                                               )
                                             : const Icon(
                                                 Icons.check_circle_outline,
@@ -1076,7 +1097,19 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
             ],
           ),
         ),
+    );
+
+    if (widget.embedded) {
+      return content;
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          _isStarted ? 'End Production Shift' : 'New Production Entry',
+        ),
       ),
+      body: content,
     );
   }
 }

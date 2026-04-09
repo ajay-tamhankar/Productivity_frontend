@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../core/widgets/shimmer_skeleton.dart';
 import '../../data/models/production_entry_model.dart';
 import 'report_export_service.dart';
 import 'reports_provider.dart';
 
 class ReportsListScreen extends StatelessWidget {
-  const ReportsListScreen({super.key});
+  final bool embedded;
+
+  const ReportsListScreen({
+    super.key,
+    this.embedded = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -43,40 +49,55 @@ class ReportsListScreen extends StatelessWidget {
       ),
     ];
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Reports Hub')),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFF5F9FF), Color(0xFFF0FFF8), Color(0xFFF7F3FF)],
-          ),
+    final body = Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF5F9FF), Color(0xFFF0FFF8), Color(0xFFF7F3FF)],
         ),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
-          children: [
-            _ReportsHero(reportCount: reports.length),
-            const SizedBox(height: 16),
-            ...reports.map(
-              (meta) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _ReportCard(
-                  meta: meta,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ReportDetailScreen(reportName: meta.title),
-                      ),
-                    );
-                  },
+      ),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
+        children: [
+          if (embedded)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 6),
+              child: Text(
+                'Reports Hub',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
-          ],
-        ),
+          _ReportsHero(reportCount: reports.length),
+          const SizedBox(height: 16),
+          ...reports.map(
+            (meta) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _ReportCard(
+                meta: meta,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ReportDetailScreen(reportName: meta.title),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
       ),
+    );
+
+    if (embedded) return body;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Reports Hub')),
+      body: body,
     );
   }
 }
@@ -591,7 +612,9 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
         ),
       ),
       bottomNavigationBar:
-          (state.isLoading || _isExporting) ? const LinearProgressIndicator(minHeight: 2) : null,
+          (state.isLoading || _isExporting)
+              ? const ShimmerLinearBar(height: 2)
+              : null,
     );
   }
 }

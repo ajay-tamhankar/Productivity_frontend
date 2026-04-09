@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/widgets/shimmer_skeleton.dart';
 import 'user_management_model.dart';
 import 'user_management_provider.dart';
 
@@ -343,7 +344,11 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: const Color(0xFFE2EAF6)),
                   ),
-                  child: const Center(child: CircularProgressIndicator()),
+                  child: const ShimmerCenteredPlaceholder(
+                    verticalPadding: 10,
+                    titleWidth: 200,
+                    subtitleWidth: 130,
+                  ),
                 )
               else if (users.isEmpty)
                 Container(
@@ -382,7 +387,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
         label: const Text('Create User'),
       ),
       bottomNavigationBar:
-          state.isSubmitting ? const LinearProgressIndicator(minHeight: 2) : null,
+          state.isSubmitting ? const ShimmerLinearBar(height: 2) : null,
     );
   }
 }

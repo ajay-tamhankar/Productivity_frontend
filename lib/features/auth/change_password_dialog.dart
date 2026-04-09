@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/widgets/shimmer_skeleton.dart';
 import 'auth_repository.dart';
 
 Future<void> showChangePasswordDialog(BuildContext context, WidgetRef ref) async {
@@ -190,7 +191,9 @@ class _ChangePasswordDialogState extends ConsumerState<_ChangePasswordDialog> {
               ? const SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2.3, color: Colors.white),
+                  child: Center(
+                    child: ShimmerButtonDots(size: 6, spacing: 3),
+                  ),
                 )
               : const Text('Update Password'),
         ),

@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../core/widgets/shimmer_skeleton.dart';
 import '../../data/models/production_entry_model.dart';
 import 'report_export_service.dart';
 import 'reports_provider.dart';
 
 class ReviewActionsScreen extends ConsumerStatefulWidget {
-  const ReviewActionsScreen({super.key});
+  final bool embedded;
+
+  const ReviewActionsScreen({
+    super.key,
+    this.embedded = false,
+  });
 
   @override
   ConsumerState<ReviewActionsScreen> createState() => _ReviewActionsScreenState();
@@ -219,360 +225,389 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
         state.totalCount == 0 ? 1 : ((state.totalCount + _rowsPerPage - 1) ~/ _rowsPerPage);
     final canGoPrev = state.currentPage > 0;
     final canGoNext = state.currentPage + 1 < totalPages;
+    final isBusy = state.isLoading || _isExporting;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Review Actions'),
-        actions: [
-          PopupMenuButton<_ReviewFileAction>(
-            tooltip: 'Download / Share',
-            icon: const Icon(Icons.download_outlined),
-            onSelected: (value) => _handleReviewFileAction(value, entries),
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: _ReviewFileAction.downloadExcel,
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.table_view_outlined),
-                  title: Text('Download Excel'),
-                ),
-              ),
-              PopupMenuItem(
-                value: _ReviewFileAction.downloadPdf,
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.picture_as_pdf_outlined),
-                  title: Text('Download PDF'),
-                ),
-              ),
-              PopupMenuDivider(),
-              PopupMenuItem(
-                value: _ReviewFileAction.shareExcel,
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.ios_share_outlined),
-                  title: Text('Share Excel'),
-                ),
-              ),
-              PopupMenuItem(
-                value: _ReviewFileAction.sharePdf,
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.share_outlined),
-                  title: Text('Share PDF'),
-                ),
-              ),
-            ],
+    final actionWidgets = <Widget>[
+      PopupMenuButton<_ReviewFileAction>(
+        tooltip: 'Download / Share',
+        icon: const Icon(Icons.download_outlined),
+        onSelected: (value) => _handleReviewFileAction(value, entries),
+        itemBuilder: (context) => const [
+          PopupMenuItem(
+            value: _ReviewFileAction.downloadExcel,
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.table_view_outlined),
+              title: Text('Download Excel'),
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-            onPressed: () => _loadPage(state.currentPage),
+          PopupMenuItem(
+            value: _ReviewFileAction.downloadPdf,
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.picture_as_pdf_outlined),
+              title: Text('Download PDF'),
+            ),
+          ),
+          PopupMenuDivider(),
+          PopupMenuItem(
+            value: _ReviewFileAction.shareExcel,
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.ios_share_outlined),
+              title: Text('Share Excel'),
+            ),
+          ),
+          PopupMenuItem(
+            value: _ReviewFileAction.sharePdf,
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.share_outlined),
+              title: Text('Share PDF'),
+            ),
           ),
         ],
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFF8FBFF), Color(0xFFF2FFF9), Color(0xFFF7F2FF)],
-          ),
+      IconButton(
+        icon: const Icon(Icons.refresh),
+        tooltip: 'Refresh',
+        onPressed: () => _loadPage(state.currentPage),
+      ),
+    ];
+
+    final content = Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF8FBFF), Color(0xFFF2FFF9), Color(0xFFF7F2FF)],
         ),
-        child: RefreshIndicator(
-          onRefresh: () => _loadPage(state.currentPage),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-            children: [
+      ),
+      child: RefreshIndicator(
+        onRefresh: () => _loadPage(state.currentPage),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          children: [
+            if (widget.embedded && isBusy) const ShimmerLinearBar(height: 2),
+            if (widget.embedded && isBusy) const SizedBox(height: 10),
+            if (widget.embedded)
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Review Actions',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  ...actionWidgets,
+                ],
+              ),
+            if (widget.embedded) const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.95),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2EAF6)),
+              ),
+              child: const Text(
+                'Review and update entry approval status with direct actions.',
+                style: TextStyle(color: Color(0xFF5D6A7A)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.96),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2EAF6)),
+              ),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchCtrl,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Search machine, item, shift, status',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 36,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        for (final status in const [
+                          'ALL',
+                          'PENDING',
+                          'APPROVED',
+                          'REJECTED',
+                        ])
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(status),
+                              selected: _statusFilter == status,
+                              onSelected: (_) =>
+                                  setState(() => _statusFilter = status),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (state.isLoading && state.entries.isEmpty)
               Container(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.symmetric(vertical: 30),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2EAF6)),
+                ),
+                child: const ShimmerCenteredPlaceholder(
+                  verticalPadding: 8,
+                  titleWidth: 230,
+                  subtitleWidth: 140,
+                ),
+              )
+            else if (entries.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.95),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFFE2EAF6)),
                 ),
                 child: const Text(
-                  'Review and update entry approval status with direct actions.',
+                  'No entries found for selected filters.',
                   style: TextStyle(color: Color(0xFF5D6A7A)),
                 ),
-              ),
-              const SizedBox(height: 12),
+              )
+            else if (isCompactScreen)
+              Column(
+                children: [
+                  for (final entry in entries)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _ReviewEntryCard(
+                        entry: entry,
+                        onEdit: () => _handleAction(
+                          entry,
+                          _ReviewAction.edit,
+                          state.currentPage,
+                        ),
+                        onApprove: () => _handleAction(
+                          entry,
+                          _ReviewAction.approve,
+                          state.currentPage,
+                        ),
+                        onReject: () => _handleAction(
+                          entry,
+                          _ReviewAction.reject,
+                          state.currentPage,
+                        ),
+                      ),
+                    ),
+                ],
+              )
+            else
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.96),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFFE2EAF6)),
                 ),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _searchCtrl,
-                      onChanged: (_) => setState(() {}),
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search),
-                        hintText: 'Search machine, item, shift, status',
-                      ),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    dataRowMinHeight: 92,
+                    dataRowMaxHeight: 120,
+                    horizontalMargin: 10,
+                    columnSpacing: 14,
+                    headingRowColor: WidgetStateProperty.all(
+                      const Color(0xFFF3F8FF),
                     ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 36,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          for (final status in const [
-                            'ALL',
-                            'PENDING',
-                            'APPROVED',
-                            'REJECTED',
-                          ])
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text(status),
-                                selected: _statusFilter == status,
-                                onSelected: (_) => setState(() => _statusFilter = status),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (state.isLoading && state.entries.isEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 30),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE2EAF6)),
-                  ),
-                  child: const Center(child: CircularProgressIndicator()),
-                )
-              else if (entries.isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE2EAF6)),
-                  ),
-                  child: const Text(
-                    'No entries found for selected filters.',
-                    style: TextStyle(color: Color(0xFF5D6A7A)),
-                  ),
-                )
-              else if (isCompactScreen)
-                Column(
-                  children: [
-                    for (final entry in entries)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _ReviewEntryCard(
-                          entry: entry,
-                          onEdit: () => _handleAction(
-                            entry,
-                            _ReviewAction.edit,
-                            state.currentPage,
-                          ),
-                          onApprove: () => _handleAction(
-                            entry,
-                            _ReviewAction.approve,
-                            state.currentPage,
-                          ),
-                          onReject: () => _handleAction(
-                            entry,
-                            _ReviewAction.reject,
-                            state.currentPage,
-                          ),
-                        ),
-                      ),
-                  ],
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.96),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE2EAF6)),
-                  ),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: DataTable(
-                      dataRowMinHeight: 92,
-                      dataRowMaxHeight: 120,
-                      horizontalMargin: 10,
-                      columnSpacing: 14,
-                      headingRowColor: WidgetStateProperty.all(
-                        const Color(0xFFF3F8FF),
-                      ),
-                      columns: const [
-                        DataColumn(label: Text('Date')),
-                        DataColumn(label: Text('Shift')),
-                        DataColumn(label: Text('Operator')),
-                        DataColumn(label: Text('Machine')),
-                        DataColumn(label: Text('RC Number')),
-                        DataColumn(label: Text('Item')),
-                        DataColumn(label: Text('Qty')),
-                        DataColumn(label: Text('Reject')),
-                        DataColumn(label: Text('Weight (KG)')),
-                        DataColumn(label: Text('Status')),
-                        DataColumn(label: Text('Actions')),
-                      ],
-                      rows: entries.map((entry) {
-                        final status = _safeText(entry.approvalStatus ?? 'PENDING').toUpperCase();
-                        final machine = _safeText(entry.machineName ?? entry.machineId);
-                        final rcNumber = _safeText(entry.rcNumber);
-                        final item = _safeText(entry.itemDescription ?? entry.itemId);
+                    columns: const [
+                      DataColumn(label: Text('Date')),
+                      DataColumn(label: Text('Shift')),
+                      DataColumn(label: Text('Operator')),
+                      DataColumn(label: Text('Machine')),
+                      DataColumn(label: Text('RC Number')),
+                      DataColumn(label: Text('Item')),
+                      DataColumn(label: Text('Qty')),
+                      DataColumn(label: Text('Reject')),
+                      DataColumn(label: Text('Weight (KG)')),
+                      DataColumn(label: Text('Status')),
+                      DataColumn(label: Text('Actions')),
+                    ],
+                    rows: entries.map((entry) {
+                      final status =
+                          _safeText(entry.approvalStatus ?? 'PENDING').toUpperCase();
+                      final machine = _safeText(entry.machineName ?? entry.machineId);
+                      final rcNumber = _safeText(entry.rcNumber);
+                      final item = _safeText(entry.itemDescription ?? entry.itemId);
 
-                        return DataRow(
-                          cells: [
-                            DataCell(Text(_formatDate(entry.entryDate))),
-                            DataCell(Text(_safeText(entry.shift))),
-                            DataCell(Text(_safeText(entry.operatorName ?? entry.operatorId))),
-                            DataCell(
-                              SizedBox(
-                                width: 190,
-                                child: Text(
-                                  machine,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                      return DataRow(
+                        cells: [
+                          DataCell(Text(_formatDate(entry.entryDate))),
+                          DataCell(Text(_safeText(entry.shift))),
+                          DataCell(Text(_safeText(entry.operatorName ?? entry.operatorId))),
+                          DataCell(
+                            SizedBox(
+                              width: 190,
+                              child: Text(
+                                machine,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                            DataCell(
-                              SizedBox(
-                                width: 120,
-                                child: Text(
-                                  rcNumber,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              SizedBox(
-                                width: 190,
-                                child: Text(
-                                  item,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                            DataCell(Text(entry.actualQuantity.toString())),
-                            DataCell(Text(entry.rejectionQuantity.toString())),
-                            DataCell(Text(entry.weightInKGs.toStringAsFixed(2))),
-                            DataCell(_ReviewStatusChip(status: status)),
-                            DataCell(
-                              _ReviewActionCell(
-                                onEdit: () => _handleAction(
-                                  entry,
-                                  _ReviewAction.edit,
-                                  state.currentPage,
-                                ),
-                                onApprove: () => _handleAction(
-                                  entry,
-                                  _ReviewAction.approve,
-                                  state.currentPage,
-                                ),
-                                onReject: () => _handleAction(
-                                  entry,
-                                  _ReviewAction.reject,
-                                  state.currentPage,
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.95),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE2EAF6)),
-                ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isCompact = constraints.maxWidth < 700;
-                    if (!isCompact) {
-                      return Row(
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: canGoPrev ? () => _loadPage(state.currentPage - 1) : null,
-                            icon: const Icon(Icons.chevron_left),
-                            label: const Text('Previous'),
-                          ),
-                          const Spacer(),
-                          Text(
-                            'Page ${state.currentPage + 1} / $totalPages | ${state.totalCount} records',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF4C596A),
                             ),
                           ),
-                          const Spacer(),
-                          FilledButton.icon(
-                            onPressed: canGoNext ? () => _loadPage(state.currentPage + 1) : null,
-                            icon: const Icon(Icons.chevron_right),
-                            label: const Text('Next'),
+                          DataCell(
+                            SizedBox(
+                              width: 120,
+                              child: Text(
+                                rcNumber,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            SizedBox(
+                              width: 190,
+                              child: Text(
+                                item,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          DataCell(Text(entry.actualQuantity.toString())),
+                          DataCell(Text(entry.rejectionQuantity.toString())),
+                          DataCell(Text(entry.weightInKGs.toStringAsFixed(2))),
+                          DataCell(_ReviewStatusChip(status: status)),
+                          DataCell(
+                            _ReviewActionCell(
+                              onEdit: () => _handleAction(
+                                entry,
+                                _ReviewAction.edit,
+                                state.currentPage,
+                              ),
+                              onApprove: () => _handleAction(
+                                entry,
+                                _ReviewAction.approve,
+                                state.currentPage,
+                              ),
+                              onReject: () => _handleAction(
+                                entry,
+                                _ReviewAction.reject,
+                                state.currentPage,
+                              ),
+                            ),
                           ),
                         ],
                       );
-                    }
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                    }).toList(),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.95),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2EAF6)),
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isCompact = constraints.maxWidth < 700;
+                  if (!isCompact) {
+                    return Row(
                       children: [
+                        OutlinedButton.icon(
+                          onPressed: canGoPrev ? () => _loadPage(state.currentPage - 1) : null,
+                          icon: const Icon(Icons.chevron_left),
+                          label: const Text('Previous'),
+                        ),
+                        const Spacer(),
                         Text(
                           'Page ${state.currentPage + 1} / $totalPages | ${state.totalCount} records',
-                          textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             color: Color(0xFF4C596A),
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: canGoPrev ? () => _loadPage(state.currentPage - 1) : null,
-                                icon: const Icon(Icons.chevron_left),
-                                label: const Text('Previous'),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: FilledButton.icon(
-                                onPressed: canGoNext ? () => _loadPage(state.currentPage + 1) : null,
-                                icon: const Icon(Icons.chevron_right),
-                                label: const Text('Next'),
-                              ),
-                            ),
-                          ],
+                        const Spacer(),
+                        FilledButton.icon(
+                          onPressed: canGoNext ? () => _loadPage(state.currentPage + 1) : null,
+                          icon: const Icon(Icons.chevron_right),
+                          label: const Text('Next'),
                         ),
                       ],
                     );
-                  },
-                ),
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Page ${state.currentPage + 1} / $totalPages | ${state.totalCount} records',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF4C596A),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: canGoPrev ? () => _loadPage(state.currentPage - 1) : null,
+                              icon: const Icon(Icons.chevron_left),
+                              label: const Text('Previous'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: canGoNext ? () => _loadPage(state.currentPage + 1) : null,
+                              icon: const Icon(Icons.chevron_right),
+                              label: const Text('Next'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
+    );
+
+    if (widget.embedded) return content;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Review Actions'),
+        actions: actionWidgets,
+      ),
+      body: content,
       bottomNavigationBar:
-          (state.isLoading || _isExporting)
-              ? const LinearProgressIndicator(minHeight: 2)
-              : null,
+          isBusy ? const ShimmerLinearBar(height: 2) : null,
     );
   }
 }
