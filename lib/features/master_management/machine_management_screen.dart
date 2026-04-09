@@ -553,7 +553,7 @@ class _MachineEditDialogState extends State<_MachineEditDialog> {
               ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
-                value: _status,
+                initialValue: _status,
                 decoration: const InputDecoration(labelText: 'Status'),
                 items: const [
                   DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),

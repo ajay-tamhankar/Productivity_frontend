@@ -289,7 +289,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      value: state.roleFilter,
+                      initialValue: state.roleFilter,
                       decoration: const InputDecoration(
                         labelText: 'Role Filter',
                       ),
@@ -657,7 +657,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value: _role,
+                  initialValue: _role,
                   decoration: const InputDecoration(labelText: 'Role'),
                   items: const [
                     DropdownMenuItem(value: AppConstants.roleAdmin, child: Text('ADMIN')),

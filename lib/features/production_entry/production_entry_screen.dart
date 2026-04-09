@@ -46,12 +46,11 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
   bool _isStarted = false;
   bool _isLoadingPrefs = true;
 
-  static const _reasons = [
-    'Scratch',
-    'Dent',
-    'Discoloration',
-    'Flash',
-    'Short Shot',
+  static const _fallbackRejectionReasons = [
+    'Forging Defects',
+    'Rolling Defects',
+    'Finishing defects',
+    'All Process defect',
   ];
 
   @override
@@ -118,11 +117,13 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('production_started', true);
     await prefs.setString('prod_shift', _shift);
-    if (_machineId != null)
+    if (_machineId != null) {
       await prefs.setString('prod_machineId', _machineId!);
+    }
     if (_itemId != null) await prefs.setString('prod_itemId', _itemId!);
-    if (_customerId != null)
+    if (_customerId != null) {
       await prefs.setString('prod_customerId', _customerId!);
+    }
     final rcNumber = _rcNumberCtrl.text.trim();
     if (rcNumber.isNotEmpty) await prefs.setString('prod_rcNumber', rcNumber);
     await prefs.setInt('prod_st_hour', _startTime!.hour);
@@ -188,6 +189,32 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     return e.isAfter(s);
   }
 
+  bool _isDowntimeWithinShift() {
+    if (!_addMachineDowntime) return true;
+
+    final shiftStart = _toDate(_startTime);
+    final shiftEnd = _toDate(_endTime);
+    final downtimeStart = _toDate(_downtimeStartTime);
+    final downtimeEnd = _toDate(_downtimeEndTime);
+
+    if (shiftStart == null ||
+        shiftEnd == null ||
+        downtimeStart == null ||
+        downtimeEnd == null) {
+      return false;
+    }
+
+    if (!shiftEnd.isAfter(shiftStart)) return false;
+    if (!downtimeEnd.isAfter(downtimeStart)) return false;
+
+    final startsInRange =
+        !downtimeStart.isBefore(shiftStart) && !downtimeStart.isAfter(shiftEnd);
+    final endsInRange =
+        !downtimeEnd.isBefore(shiftStart) && !downtimeEnd.isAfter(shiftEnd);
+
+    return startsInRange && endsInRange;
+  }
+
   String? _timeError() {
     if (!_isStarted) return null; // Time validation not full in phase 1
     if (_startTime == null || _endTime == null) {
@@ -200,6 +227,17 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
       if (_downtimeStartTime == null || _downtimeEndTime == null) {
         return 'Both Downtime Start and Downtime End are required when downtime is enabled.';
       }
+      final downtimeStart = _toDate(_downtimeStartTime);
+      final downtimeEnd = _toDate(_downtimeEndTime);
+      if (downtimeStart == null || downtimeEnd == null) {
+        return 'Invalid downtime values.';
+      }
+      if (!downtimeEnd.isAfter(downtimeStart)) {
+        return 'Downtime End must be greater than Downtime Start.';
+      }
+      if (!_isDowntimeWithinShift()) {
+        return 'Downtime must be within Shift Start and Shift End.';
+      }
     }
     return null;
   }
@@ -208,11 +246,12 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     final controller = ref.read(productionEntryControllerProvider.notifier);
     final actual = _safeInt(_actualCtrl.text);
     if (_isTimeValid()) {
+      final useDowntime = _addMachineDowntime && _isDowntimeWithinShift();
       _runningHours = controller.calculateRunningHours(
         _startTime!,
         _endTime!,
-        downtimeStart: _addMachineDowntime ? _downtimeStartTime : null,
-        downtimeEnd: _addMachineDowntime ? _downtimeEndTime : null,
+        downtimeStart: useDowntime ? _downtimeStartTime : null,
+        downtimeEnd: useDowntime ? _downtimeEndTime : null,
       );
       _partsPerHour = controller.calculatePartsPerHour(actual, _runningHours);
     } else {
@@ -241,8 +280,9 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
   }
 
   Future<void> _pickTime(bool isStart) async {
-    if (isStart && _isStarted)
+    if (isStart && _isStarted) {
       return; // Prevent changing start time after started
+    }
 
     final picked = await showTimePicker(
       context: context,
@@ -277,7 +317,18 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     _recompute();
   }
 
-  Future<void> _showReasonDialog() async {
+  Future<void> _showReasonDialog({
+    required List<String> reasons,
+  }) async {
+    final availableReasons = reasons
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+    if (availableReasons.isEmpty) {
+      availableReasons.addAll(_fallbackRejectionReasons);
+    }
+
     final draft = Map<String, int>.from(_rejectionReasons);
     final actual = _safeInt(_actualCtrl.text);
     await showDialog<void>(
@@ -301,7 +352,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        for (final r in _reasons)
+                        for (final r in availableReasons)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 5),
                             child: Row(
@@ -408,6 +459,18 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     if (reject > actual) {
       setState(
         () => _formError = 'Rejection Quantity cannot exceed Actual Quantity.',
+      );
+      return;
+    }
+    final rejectionDetailTotal = _rejectionReasons.values.fold<int>(
+      0,
+      (sum, qty) => sum + qty,
+    );
+    if (_rejectionReasons.isNotEmpty && rejectionDetailTotal != reject) {
+      setState(
+        () =>
+            _formError =
+                'Rejection details total ($rejectionDetailTotal) must match Rejection Quantity ($reject).',
       );
       return;
     }
@@ -571,29 +634,32 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                               title: 'Basic Details',
                               child: Column(
                                 children: [
-                                  _SearchableDropdownFormField(
+                                  DropdownButtonFormField<String>(
                                     key: ValueKey('shift_$_shift'),
-                                    value: _shift,
-                                    labelText: 'Shift *',
-                                    prefixIcon: Icons.schedule_outlined,
-                                    hintText: 'Select shift',
-                                    options: const [
-                                      _SelectOption(
+                                    initialValue: _shift,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Shift *',
+                                      prefixIcon:
+                                          Icon(Icons.schedule_outlined),
+                                    ),
+                                    items: const [
+                                      DropdownMenuItem(
                                         value: 'A',
-                                        label: 'Shift A',
+                                        child: Text('Shift A'),
                                       ),
-                                      _SelectOption(
+                                      DropdownMenuItem(
                                         value: 'B',
-                                        label: 'Shift B',
+                                        child: Text('Shift B'),
                                       ),
-                                      _SelectOption(
+                                      DropdownMenuItem(
                                         value: 'C',
-                                        label: 'Shift C',
+                                        child: Text('Shift C'),
                                       ),
                                     ],
-                                    enabled: !_isStarted,
-                                    onChanged: (v) =>
-                                        setState(() => _shift = v ?? 'A'),
+                                    onChanged: _isStarted
+                                        ? null
+                                        : (v) =>
+                                              setState(() => _shift = v ?? 'A'),
                                   ),
                                   const SizedBox(height: 10),
                                   _SearchableDropdownFormField(
@@ -881,7 +947,9 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                                     Align(
                                       alignment: Alignment.centerRight,
                                       child: OutlinedButton.icon(
-                                        onPressed: _showReasonDialog,
+                                        onPressed: () => _showReasonDialog(
+                                          reasons: d.rejectionReasons,
+                                        ),
                                         icon: const Icon(Icons.playlist_add),
                                         label: const Text('Rejection Details'),
                                       ),
@@ -1190,7 +1258,7 @@ class _SearchableOptionsSheetState extends State<_SearchableOptionsSheet> {
                       )
                     : ListView.separated(
                         itemCount: filtered.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        separatorBuilder: (_, _) => const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final option = filtered[index];
                           final isSelected =

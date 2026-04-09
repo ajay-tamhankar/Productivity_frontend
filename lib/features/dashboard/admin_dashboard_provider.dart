@@ -197,7 +197,7 @@ class AdminDashboardController extends _$AdminDashboardController {
     final operatorJsonList = operatorRaw is List ? operatorRaw : <dynamic>[];
     final machineJsonList = machineRaw is List ? machineRaw : <dynamic>[];
     final kpiMap = kpiJson is Map
-        ? Map<String, dynamic>.from(kpiJson as Map)
+        ? Map<String, dynamic>.from(kpiJson)
         : <String, dynamic>{};
 
     return AdminDashboardState(

@@ -406,7 +406,7 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
                       dataRowMaxHeight: 120,
                       horizontalMargin: 10,
                       columnSpacing: 14,
-                      headingRowColor: MaterialStateProperty.all(
+                      headingRowColor: WidgetStateProperty.all(
                         const Color(0xFFF3F8FF),
                       ),
                       columns: const [
@@ -1045,7 +1045,7 @@ class _ReviewEntryEditDialogState extends State<_ReviewEntryEditDialog> {
                     decoration: const InputDecoration(labelText: 'Shift'),
                   ),
                   second: DropdownButtonFormField<String>(
-                    value: _approvalStatus,
+                    initialValue: _approvalStatus,
                     decoration: const InputDecoration(labelText: 'Approval Status'),
                     items: const [
                       DropdownMenuItem(value: 'PENDING', child: Text('PENDING')),

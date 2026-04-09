@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/theme_mode_provider.dart';
+import '../../core/widgets/shimmer_skeleton.dart';
 import '../../features/auth/auth_provider.dart';
 import '../../features/auth/change_password_dialog.dart';
 import '../master_management/item_management_screen.dart';
@@ -294,8 +295,9 @@ class _AdminHomeView extends ConsumerWidget {
 
   String _getDashboardTitle(String role) {
     final normalized = role.trim().toUpperCase();
-    if (normalized == AppConstants.roleSupervisor)
+    if (normalized == AppConstants.roleSupervisor) {
       return 'Supervisor Dashboard';
+    }
     if (normalized == AppConstants.roleAdmin) return 'Admin Dashboard';
     return 'Dashboard';
   }
@@ -469,7 +471,7 @@ class _AdminHomeView extends ConsumerWidget {
               ],
       ),
       body: dashboardState.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const _AdminDashboardLoadingView(),
         error: (err, stack) => Center(child: Text('Error: $err')),
         data: (data) => RefreshIndicator(
           onRefresh: ref
@@ -741,8 +743,9 @@ class _AdminHomeView extends ConsumerWidget {
               showTitles: true,
               getTitlesWidget: (value, meta) {
                 final idx = value.toInt();
-                if (idx < 0 || idx >= machines.length)
+                if (idx < 0 || idx >= machines.length) {
                   return const SizedBox.shrink();
+                }
                 final label = machines[idx].machineNumber.trim().isNotEmpty
                     ? machines[idx].machineNumber
                     : machines[idx].name;
@@ -881,5 +884,114 @@ class _AdminHomeView extends ConsumerWidget {
     if (text.isEmpty) return '-';
     if (text.length <= maxLength) return text;
     return '${text.substring(0, maxLength)}...';
+  }
+}
+
+class _AdminDashboardLoadingView extends StatelessWidget {
+  const _AdminDashboardLoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final cardWidth = width > 900
+        ? (width - 56) / 4
+        : width > 640
+            ? (width - 44) / 2
+            : (width - 44) / 2;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        AppShimmer(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    SkeletonBox(height: 40, width: 170),
+                    SkeletonBox(height: 40, width: 170),
+                    SkeletonBox(height: 40, width: 130),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: List.generate(
+                  4,
+                  (_) => SizedBox(
+                    width: cardWidth,
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.95),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        children: [
+                          SkeletonBox(height: 44, width: 44),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SkeletonBox(height: 12, width: 110),
+                                SizedBox(height: 8),
+                                SkeletonBox(height: 16, width: 90),
+                                SizedBox(height: 8),
+                                SkeletonBox(height: 11, width: 130),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const SkeletonBox(height: 20, width: 150),
+              const SizedBox(height: 16),
+              Container(
+                height: 250,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const SkeletonBox(height: 20, width: 170),
+              const SizedBox(height: 16),
+              Container(
+                height: 250,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const SkeletonBox(height: 20, width: 230),
+              const SizedBox(height: 16),
+              Container(
+                height: 250,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme/theme_mode_provider.dart';
+import '../../core/widgets/shimmer_skeleton.dart';
 import '../../data/models/production_entry_model.dart';
 import '../../features/auth/auth_provider.dart';
 import '../../features/auth/change_password_dialog.dart';
@@ -279,10 +280,7 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
               ),
               const SizedBox(height: 12),
               feedStateAsync.when(
-                loading: () => const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
+                loading: () => const _EntriesLoadingView(),
                 error: (error, _) => _SectionErrorCard(
                   title: 'Could not load recent entries',
                   message: _formatError(error),
@@ -304,7 +302,7 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
                       if (feed.isLoadingMore)
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 12),
-                          child: CircularProgressIndicator(),
+                          child: _EntriesLoadMoreShimmer(),
                         ),
                     ],
                   );
@@ -677,14 +675,124 @@ class _StatsLoadingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 18),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2EAF6)),
+    return AppShimmer(
+      child: Column(
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final twoColumns = constraints.maxWidth > 640;
+              final cardWidth = twoColumns
+                  ? (constraints.maxWidth - 12) / 2
+                  : constraints.maxWidth;
+
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: List.generate(
+                  4,
+                  (_) => SizedBox(
+                    width: cardWidth,
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.94),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: const Row(
+                        children: [
+                          SkeletonBox(height: 44, width: 44),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SkeletonBox(height: 12, width: 110),
+                                SizedBox(height: 8),
+                                SkeletonBox(height: 18, width: 100),
+                                SizedBox(height: 8),
+                                SkeletonBox(height: 11, width: 130),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.94),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SkeletonBox(height: 16, width: 150),
+                SizedBox(height: 10),
+                SkeletonBox(height: 28),
+                SizedBox(height: 8),
+                SkeletonBox(height: 28),
+              ],
+            ),
+          ),
+        ],
       ),
-      child: const Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+class _EntriesLoadingView extends StatelessWidget {
+  const _EntriesLoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    return AppShimmer(
+      child: Column(
+        children: List.generate(
+          3,
+          (_) => Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE3EAF5)),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SkeletonBox(height: 14, width: 240),
+                SizedBox(height: 8),
+                SkeletonBox(height: 12, width: 220),
+                SizedBox(height: 8),
+                SkeletonBox(height: 12, width: 200),
+                SizedBox(height: 8),
+                SkeletonBox(height: 12, width: 230),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EntriesLoadMoreShimmer extends StatelessWidget {
+  const _EntriesLoadMoreShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return const AppShimmer(
+      child: SkeletonBox(
+        height: 52,
+        borderRadius: BorderRadius.all(Radius.circular(14)),
+      ),
     );
   }
 }
