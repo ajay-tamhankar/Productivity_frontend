@@ -50,11 +50,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
             .read(authControllerProvider)
             .asData
             ?.value
-            ?.role
-            .trim()
-            .toUpperCase() ??
+            ?.role ??
         '';
-    final hasReviewActions = role == AppConstants.roleSupervisor;
+    final hasReviewActions = AppConstants.isSupervisorRole(role);
 
     if (_currentIndex == 0) {
       ref.read(adminDashboardControllerProvider.notifier).refresh();
@@ -93,9 +91,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
             .watch(authControllerProvider)
             .asData
             ?.value
-            ?.role
-            .trim()
-            .toUpperCase() ??
+            ?.role ??
         '';
     final authState = ref.watch(authControllerProvider);
     final themeMode = ref.watch(themeModeProvider);
@@ -128,7 +124,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
       }
     }
 
-    final isSupervisor = role == AppConstants.roleSupervisor;
+    final isSupervisor = AppConstants.isSupervisorRole(role);
     final pages = <Widget>[
       const _AdminHomeView(embedded: true),
       const ReportsListScreen(embedded: true),
@@ -485,7 +481,7 @@ class _AdminHomeView extends ConsumerWidget {
   });
 
   String _getDashboardTitle(String role) {
-    final normalized = role.trim().toUpperCase();
+    final normalized = AppConstants.normalizeRole(role);
     if (normalized == AppConstants.roleSupervisor) {
       return 'Supervisor Dashboard';
     }

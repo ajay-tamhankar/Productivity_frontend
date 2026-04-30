@@ -29,6 +29,15 @@ class ReportExportService {
     'End Time',
     'RUNNING HRS',
     'parts/Hr',
+    'Status',
+  ];
+  static const List<String> _productivityHeaders = <String>[
+    'Name',
+    'Pieces/Hr',
+    'KG/Hr',
+    'Total Qty',
+    'Total KG',
+    'Running Hrs',
   ];
 
   static Future<String?> exportExcel({
@@ -127,9 +136,18 @@ class ReportExportService {
     }
 
     final sheet = excel[sheetName];
-    sheet.appendRow(_headers.map(TextCellValue.new).toList());
-    for (final row in _rows(entries)) {
-      sheet.appendRow(row.map(TextCellValue.new).toList());
+    if (_isItemProductivityReport(reportName)) {
+      _appendProductivityExcel(sheet, entries);
+    } else {
+      sheet.appendRow(_headers.map(TextCellValue.new).toList());
+      for (final row in _rows(entries)) {
+        sheet.appendRow(row.map(TextCellValue.new).toList());
+      }
+      // append totals row for numeric columns
+      final totals = _mainTotalsRowFromEntries(entries);
+      if (totals.isNotEmpty) {
+        sheet.appendRow(totals.map(TextCellValue.new).toList());
+      }
     }
 
     final encoded = excel.encode();
@@ -144,7 +162,6 @@ class ReportExportService {
     List<ProductionEntryModel> entries,
   ) async {
     final pdf = pw.Document();
-    final rows = _rows(entries);
 
     pdf.addPage(
       pw.MultiPage(
@@ -153,10 +170,7 @@ class ReportExportService {
         build: (context) => <pw.Widget>[
           pw.Text(
             '$reportName Export',
-            style: pw.TextStyle(
-              fontSize: 16,
-              fontWeight: pw.FontWeight.bold,
-            ),
+            style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 8),
           pw.Text(
@@ -164,19 +178,23 @@ class ReportExportService {
             style: const pw.TextStyle(fontSize: 10),
           ),
           pw.SizedBox(height: 10),
-          pw.TableHelper.fromTextArray(
-            headers: _headers,
-            data: rows,
-            border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.4),
-            headerStyle: pw.TextStyle(
-              fontSize: 9,
-              fontWeight: pw.FontWeight.bold,
+          if (_isItemProductivityReport(reportName))
+            ..._productivityPdfWidgets(entries)
+          else
+            pw.TableHelper.fromTextArray(
+              headers: _headers,
+              data: <List<String>>[..._rows(entries), _mainTotalsRowFromEntries(entries)],
+              border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.4),
+              headerStyle: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+              ),
+              cellStyle: const pw.TextStyle(fontSize: 8),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFFEAF4FF),
+              ),
+              cellAlignment: pw.Alignment.centerLeft,
             ),
-            cellStyle: const pw.TextStyle(fontSize: 8),
-            headerDecoration:
-                const pw.BoxDecoration(color: PdfColor.fromInt(0xFFEAF4FF)),
-            cellAlignment: pw.Alignment.centerLeft,
-          ),
         ],
       ),
     );
@@ -191,9 +209,7 @@ class ReportExportService {
       '${_fileSlug(reportName)}_${_stamp()}.pdf';
 
   static String _sheetName(String source) {
-    final clean = source
-        .replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '')
-        .trim();
+    final clean = source.replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '').trim();
     if (clean.isEmpty) return 'Report';
     return clean.length <= 31 ? clean : clean.substring(0, 31);
   }
@@ -208,7 +224,211 @@ class ReportExportService {
     return clean.isEmpty ? 'report' : clean;
   }
 
-  static String _stamp() => DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+  static String _stamp() =>
+      DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+
+  static bool _isItemProductivityReport(String reportName) =>
+      reportName.trim().toLowerCase() == 'item productivity';
+
+  static void _appendProductivityExcel(
+    Sheet sheet,
+    List<ProductionEntryModel> entries,
+  ) {
+    final summaries = _productivitySummaries(entries);
+    if (summaries.isEmpty) {
+      sheet.appendRow([TextCellValue('No productivity data available.')]);
+      return;
+    }
+
+    for (final summary in summaries) {
+      sheet.appendRow([TextCellValue('Item: ${summary.itemName}')]);
+      sheet.appendRow([TextCellValue('Machine Productivity')]);
+      sheet.appendRow(_productivityHeaders.map(TextCellValue.new).toList());
+      for (final row in summary.machines) {
+        sheet.appendRow(_productivityRow(row).map(TextCellValue.new).toList());
+      }
+      // machines totals
+      final mTotals = _productivityTotalsRow(summary.machines);
+      if (mTotals.isNotEmpty) {
+        sheet.appendRow(mTotals.map(TextCellValue.new).toList());
+      }
+      sheet.appendRow(<CellValue?>[]);
+
+      sheet.appendRow([TextCellValue('Operator Productivity')]);
+      sheet.appendRow(_productivityHeaders.map(TextCellValue.new).toList());
+      for (final row in summary.operators) {
+        sheet.appendRow(_productivityRow(row).map(TextCellValue.new).toList());
+      }
+      // operators totals
+      final oTotals = _productivityTotalsRow(summary.operators);
+      if (oTotals.isNotEmpty) {
+        sheet.appendRow(oTotals.map(TextCellValue.new).toList());
+      }
+      sheet.appendRow(<CellValue?>[]);
+    }
+  }
+
+  static List<pw.Widget> _productivityPdfWidgets(
+    List<ProductionEntryModel> entries,
+  ) {
+    final summaries = _productivitySummaries(entries);
+    if (summaries.isEmpty) {
+      return [
+        pw.Text(
+          'No productivity data available. Entries need running hours to calculate productivity.',
+          style: const pw.TextStyle(fontSize: 10),
+        ),
+      ];
+    }
+
+    return summaries.expand((summary) {
+      return <pw.Widget>[
+        pw.Text(
+          'Item: ${summary.itemName}',
+          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 6),
+        _productivityPdfTable('Machine Productivity', summary.machines),
+        pw.SizedBox(height: 8),
+        _productivityPdfTable('Operator Productivity', summary.operators),
+        pw.SizedBox(height: 14),
+      ];
+    }).toList();
+  }
+
+  static pw.Widget _productivityPdfTable(
+    String title,
+    List<_ProductivityExportRow> rows,
+  ) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          title,
+          style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 4),
+        pw.TableHelper.fromTextArray(
+          headers: _productivityHeaders,
+          data: <List<String>>[...rows.map(_productivityRow).toList(), _productivityTotalsRow(rows)],
+          border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.4),
+          headerStyle: pw.TextStyle(
+            fontSize: 8,
+            fontWeight: pw.FontWeight.bold,
+          ),
+          cellStyle: const pw.TextStyle(fontSize: 8),
+          headerDecoration: const pw.BoxDecoration(
+            color: PdfColor.fromInt(0xFFEAF4FF),
+          ),
+          cellAlignment: pw.Alignment.centerLeft,
+        ),
+      ],
+    );
+  }
+
+  static List<String> _productivityRow(_ProductivityExportRow row) {
+    return <String>[
+      row.name,
+      row.piecesPerHour.toStringAsFixed(2),
+      row.kgPerHour.toStringAsFixed(2),
+      row.pieces.toString(),
+      row.kg.toStringAsFixed(2),
+      row.hours.toStringAsFixed(2),
+    ];
+  }
+
+  static List<String> _productivityTotalsRow(List<_ProductivityExportRow> rows) {
+    if (rows.isEmpty) return <String>[];
+    int pieces = 0;
+    double kg = 0;
+    double hours = 0;
+    for (final r in rows) {
+      pieces += r.pieces;
+      kg += r.kg;
+      hours += r.hours;
+    }
+    return <String>[
+      'Totals',
+      '', // Pieces/Hr total not meaningful
+      '', // KG/Hr total not meaningful
+      pieces.toString(),
+      kg.toStringAsFixed(2),
+      hours.toStringAsFixed(2),
+    ];
+  }
+
+  static List<String> _mainTotalsRowFromEntries(List<ProductionEntryModel> entries) {
+    if (entries.isEmpty) return <String>[];
+
+    int totalCcd1 = 0;
+    int totalActual = 0;
+    int totalRej = 0;
+    double totalKg = 0;
+    double totalRunning = 0;
+    double totalPartsPerHour = 0;
+
+    for (final e in entries) {
+      totalCcd1 += e.ccd1Quantity;
+      totalActual += e.actualQuantity;
+      totalRej += e.rejectionQuantity;
+      totalKg += e.weightInKGs;
+      totalRunning += e.runningHours;
+      totalPartsPerHour += e.partsPerHour;
+    }
+
+    final row = List<String>.filled(_headers.length, '');
+    row[0] = 'Totals';
+    row[7] = '';
+    row[8] = totalCcd1.toString();
+    row[9] = totalActual.toString();
+    row[10] = totalRej.toString();
+    row[11] = totalKg.toStringAsFixed(2);
+    row[12] = '';
+    row[13] = '';
+    row[14] = totalRunning.toStringAsFixed(2);
+    row[15] = totalPartsPerHour.toStringAsFixed(2);
+    return row;
+  }
+
+  static List<_ItemProductivityExportSummary> _productivitySummaries(
+    List<ProductionEntryModel> entries,
+  ) {
+    final byItem = <String, _ItemProductivityExportSummary>{};
+
+    for (final entry in entries) {
+      final hours = entry.runningHours;
+      if (hours <= 0) continue;
+
+      final itemName = _display(entry.itemDescription, entry.itemId);
+      final summary = byItem.putIfAbsent(
+        itemName.toLowerCase(),
+        () => _ItemProductivityExportSummary(itemName: itemName),
+      );
+      final kg = entry.weightInKGs > 0
+          ? entry.weightInKGs
+          : (entry.actualQuantity * entry.finishWeight) / 1000;
+
+      summary.addMachine(
+        name: _display(entry.machineName, entry.machineId),
+        pieces: entry.actualQuantity,
+        kg: kg,
+        hours: hours,
+      );
+      summary.addOperator(
+        name: _display(entry.operatorName, entry.operatorId),
+        pieces: entry.actualQuantity,
+        kg: kg,
+        hours: hours,
+      );
+    }
+
+    final summaries = byItem.values.toList()
+      ..sort((a, b) => a.itemName.compareTo(b.itemName));
+    for (final summary in summaries) {
+      summary.sortRows();
+    }
+    return summaries;
+  }
 
   static List<List<String>> _rows(List<ProductionEntryModel> entries) {
     return entries.map((entry) {
@@ -220,7 +440,9 @@ class ReportExportService {
       final operator = _display(entry.operatorName, entry.operatorId);
       final rcNumber = _safe(entry.rcNumber ?? '');
       final itemCode = _display(entry.itemCode, entry.itemId);
-      final finishWt = entry.finishWeight > 0 ? entry.finishWeight.toStringAsFixed(2) : '-';
+      final finishWt = entry.finishWeight > 0
+          ? entry.finishWeight.toStringAsFixed(2)
+          : '-';
 
       return <String>[
         date,
@@ -239,6 +461,7 @@ class ReportExportService {
         endTime,
         entry.runningHours.toStringAsFixed(2),
         entry.partsPerHour.toStringAsFixed(2),
+        _safe(entry.approvalStatus ?? ''),
       ];
     }).toList();
   }
@@ -275,5 +498,78 @@ class ReportExportService {
     if (parsed != null) return DateFormat('HH:mm').format(parsed);
 
     return text;
+  }
+}
+
+class _ItemProductivityExportSummary {
+  final String itemName;
+  final Map<String, _ProductivityExportRow> _machines = {};
+  final Map<String, _ProductivityExportRow> _operators = {};
+
+  _ItemProductivityExportSummary({required this.itemName});
+
+  List<_ProductivityExportRow> get machines => _machines.values.toList();
+  List<_ProductivityExportRow> get operators => _operators.values.toList();
+
+  void addMachine({
+    required String name,
+    required int pieces,
+    required double kg,
+    required double hours,
+  }) {
+    _add(_machines, name: name, pieces: pieces, kg: kg, hours: hours);
+  }
+
+  void addOperator({
+    required String name,
+    required int pieces,
+    required double kg,
+    required double hours,
+  }) {
+    _add(_operators, name: name, pieces: pieces, kg: kg, hours: hours);
+  }
+
+  void _add(
+    Map<String, _ProductivityExportRow> rows, {
+    required String name,
+    required int pieces,
+    required double kg,
+    required double hours,
+  }) {
+    final key = name.toLowerCase();
+    final row = rows.putIfAbsent(key, () => _ProductivityExportRow(name: name));
+    row.add(pieces: pieces, kg: kg, hours: hours);
+  }
+
+  void sortRows() {
+    final sortedMachines = machines
+      ..sort((a, b) => b.piecesPerHour.compareTo(a.piecesPerHour));
+    final sortedOperators = operators
+      ..sort((a, b) => b.piecesPerHour.compareTo(a.piecesPerHour));
+
+    _machines
+      ..clear()
+      ..addEntries(sortedMachines.map((row) => MapEntry(row.name, row)));
+    _operators
+      ..clear()
+      ..addEntries(sortedOperators.map((row) => MapEntry(row.name, row)));
+  }
+}
+
+class _ProductivityExportRow {
+  final String name;
+  int pieces = 0;
+  double kg = 0;
+  double hours = 0;
+
+  _ProductivityExportRow({required this.name});
+
+  double get piecesPerHour => hours <= 0 ? 0 : pieces / hours;
+  double get kgPerHour => hours <= 0 ? 0 : kg / hours;
+
+  void add({required int pieces, required double kg, required double hours}) {
+    this.pieces += pieces;
+    this.kg += kg;
+    this.hours += hours;
   }
 }

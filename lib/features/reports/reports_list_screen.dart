@@ -9,10 +9,7 @@ import 'reports_provider.dart';
 class ReportsListScreen extends StatelessWidget {
   final bool embedded;
 
-  const ReportsListScreen({
-    super.key,
-    this.embedded = false,
-  });
+  const ReportsListScreen({super.key, this.embedded = false});
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +44,12 @@ class ReportsListScreen extends StatelessWidget {
         icon: Icons.rule_folder_outlined,
         accent: Color(0xFFC62828),
       ),
+      _ReportMeta(
+        title: 'Item Productivity',
+        subtitle: 'Machine and operator output by item',
+        icon: Icons.speed_outlined,
+        accent: Color(0xFF00897B),
+      ),
     ];
 
     final body = Container(
@@ -65,10 +68,7 @@ class ReportsListScreen extends StatelessWidget {
               padding: EdgeInsets.only(bottom: 6),
               child: Text(
                 'Reports Hub',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
               ),
             ),
           _ReportsHero(reportCount: reports.length),
@@ -82,7 +82,8 @@ class ReportsListScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => ReportDetailScreen(reportName: meta.title),
+                      builder: (_) =>
+                          ReportDetailScreen(reportName: meta.title),
                     ),
                   );
                 },
@@ -112,6 +113,8 @@ class ReportDetailScreen extends ConsumerStatefulWidget {
 
 class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
   static const int _rowsPerPage = 10;
+  static const int _productivityRowsPerPage = 100;
+  static const int _reportDayStartHour = 7;
   final TextEditingController _searchCtrl = TextEditingController();
   final NumberFormat _countFormat = NumberFormat.decimalPattern();
   String _statusFilter = 'ALL';
@@ -131,15 +134,29 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
     super.dispose();
   }
 
+  bool get _isItemProductivityReport =>
+      widget.reportName.trim().toLowerCase() == 'item productivity';
+
+  int get _effectiveRowsPerPage =>
+      _isItemProductivityReport ? _productivityRowsPerPage : _rowsPerPage;
+
   Future<void> _loadPage(int pageIndex) async {
-    await ref.read(reportsControllerProvider.notifier).fetchPage(
-          pageIndex,
-          _rowsPerPage,
-        );
+    await ref
+        .read(reportsControllerProvider.notifier)
+        .fetchPage(pageIndex, _effectiveRowsPerPage);
   }
 
-  DateTime _startOfDay(DateTime value) => DateTime(value.year, value.month, value.day);
-  DateTime _endOfDay(DateTime value) => DateTime(value.year, value.month, value.day, 23, 59, 59);
+  DateTime _reportWindowStart(DateTime value) =>
+      DateTime(value.year, value.month, value.day, _reportDayStartHour);
+
+  DateTime _reportWindowEnd(DateTime value) =>
+      DateTime(value.year, value.month, value.day, _reportDayStartHour);
+
+  DateTime? _entryReportTime(ProductionEntryModel entry) {
+    final startTime = DateTime.tryParse(entry.startTime);
+    if (startTime != null) return startTime;
+    return DateTime.tryParse(entry.entryDate);
+  }
 
   Map<String, dynamic> _buildApiFilters() {
     final filters = <String, dynamic>{};
@@ -153,7 +170,9 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
   }
 
   Future<void> _applyFiltersAndLoad(int pageIndex) async {
-    ref.read(reportsControllerProvider.notifier).updateFilters(_buildApiFilters());
+    ref
+        .read(reportsControllerProvider.notifier)
+        .updateFilters(_buildApiFilters());
     await _loadPage(pageIndex);
   }
 
@@ -183,11 +202,15 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
       final status = (entry.approvalStatus ?? 'PENDING').trim().toUpperCase();
       if (_statusFilter != 'ALL' && status != _statusFilter) return false;
 
-      final entryDate = DateTime.tryParse(entry.entryDate);
-      if (_fromDate != null && entryDate != null && entryDate.isBefore(_startOfDay(_fromDate!))) {
+      final entryTime = _entryReportTime(entry);
+      if (_fromDate != null &&
+          entryTime != null &&
+          entryTime.isBefore(_reportWindowStart(_fromDate!))) {
         return false;
       }
-      if (_toDate != null && entryDate != null && entryDate.isAfter(_endOfDay(_toDate!))) {
+      if (_toDate != null &&
+          entryTime != null &&
+          entryTime.isAfter(_reportWindowEnd(_toDate!))) {
         return false;
       }
 
@@ -200,6 +223,48 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
           entry.shift.toLowerCase().contains(query) ||
           status.toLowerCase().contains(query);
     }).toList();
+  }
+
+  List<_ItemProductivitySummary> _buildItemProductivity(
+    List<ProductionEntryModel> entries,
+  ) {
+    final byItem = <String, _ItemProductivitySummary>{};
+
+    for (final entry in entries) {
+      final item = _safeText(entry.itemDescription ?? entry.itemId);
+      final itemKey = item.toLowerCase();
+      final summary = byItem.putIfAbsent(
+        itemKey,
+        () => _ItemProductivitySummary(itemName: item),
+      );
+
+      final runningHours = entry.runningHours;
+      if (runningHours <= 0) continue;
+
+      final kg = entry.weightInKGs > 0
+          ? entry.weightInKGs
+          : (entry.actualQuantity * entry.finishWeight) / 1000;
+
+      summary.addMachine(
+        name: _safeText(entry.machineName ?? entry.machineId),
+        pieces: entry.actualQuantity,
+        kg: kg,
+        hours: runningHours,
+      );
+      summary.addOperator(
+        name: _safeText(entry.operatorName ?? entry.operatorId),
+        pieces: entry.actualQuantity,
+        kg: kg,
+        hours: runningHours,
+      );
+    }
+
+    final summaries = byItem.values.toList()
+      ..sort((a, b) => a.itemName.compareTo(b.itemName));
+    for (final summary in summaries) {
+      summary.sortRows();
+    }
+    return summaries;
   }
 
   Future<void> _pickFromDate() async {
@@ -256,16 +321,19 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
     required String successMessage,
   }) async {
     try {
-      await ref.read(reportsControllerProvider.notifier).updateEntry(
-            id: entryId,
-            payload: payload,
-          );
+      await ref
+          .read(reportsControllerProvider.notifier)
+          .updateEntry(id: entryId, payload: payload);
       await _applyFiltersAndLoad(pageIndex);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(successMessage)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(successMessage)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_formatError(e))));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_formatError(e))));
     }
   }
 
@@ -282,9 +350,11 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
 
     setState(() => _isExporting = true);
     try {
-      final isExcel = action == _ReportFileAction.downloadExcel ||
+      final isExcel =
+          action == _ReportFileAction.downloadExcel ||
           action == _ReportFileAction.shareExcel;
-      final isShare = action == _ReportFileAction.shareExcel ||
+      final isShare =
+          action == _ReportFileAction.shareExcel ||
           action == _ReportFileAction.sharePdf;
 
       String? path;
@@ -321,14 +391,14 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
           : (path == null
                 ? '$exportedName download started.'
                 : '$exportedName exported to: $path');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_formatError(e))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_formatError(e))));
     } finally {
       if (mounted) {
         setState(() => _isExporting = false);
@@ -397,15 +467,21 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
     final entries = _filtered(state.entries);
 
     final approved = entries
-        .where((e) => (e.approvalStatus ?? 'PENDING').toUpperCase() == 'APPROVED')
+        .where(
+          (e) => (e.approvalStatus ?? 'PENDING').toUpperCase() == 'APPROVED',
+        )
         .length;
     final rejected = entries
-        .where((e) => (e.approvalStatus ?? 'PENDING').toUpperCase() == 'REJECTED')
+        .where(
+          (e) => (e.approvalStatus ?? 'PENDING').toUpperCase() == 'REJECTED',
+        )
         .length;
     final qty = entries.fold<int>(0, (sum, e) => sum + e.actualQuantity);
 
-    final totalPages =
-        state.totalCount == 0 ? 1 : ((state.totalCount + _rowsPerPage - 1) ~/ _rowsPerPage);
+    final rowsPerPage = _effectiveRowsPerPage;
+    final totalPages = state.totalCount == 0
+        ? 1
+        : ((state.totalCount + rowsPerPage - 1) ~/ rowsPerPage);
     final canGoPrev = state.currentPage > 0;
     final canGoNext = state.currentPage + 1 < totalPages;
 
@@ -479,10 +555,22 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                 spacing: 10,
                 runSpacing: 10,
                 children: [
-                  _StatCard(title: 'Records', value: _countFormat.format(entries.length)),
-                  _StatCard(title: 'Approved', value: _countFormat.format(approved)),
-                  _StatCard(title: 'Rejected', value: _countFormat.format(rejected)),
-                  _StatCard(title: 'Total Qty', value: _countFormat.format(qty)),
+                  _StatCard(
+                    title: 'Records',
+                    value: _countFormat.format(entries.length),
+                  ),
+                  _StatCard(
+                    title: 'Approved',
+                    value: _countFormat.format(approved),
+                  ),
+                  _StatCard(
+                    title: 'Rejected',
+                    value: _countFormat.format(rejected),
+                  ),
+                  _StatCard(
+                    title: 'Total Qty',
+                    value: _countFormat.format(qty),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -499,11 +587,19 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
               ),
               const SizedBox(height: 12),
               if (state.isLoading && state.entries.isEmpty)
-                const _StateCard(title: 'Loading entries...', subtitle: 'Fetching latest records.')
+                const _StateCard(
+                  title: 'Loading entries...',
+                  subtitle: 'Fetching latest records.',
+                )
               else if (entries.isEmpty)
                 const _StateCard(
                   title: 'No entries found',
                   subtitle: 'Try changing search or status filter.',
+                )
+              else if (_isItemProductivityReport)
+                _ItemProductivityView(
+                  summaries: _buildItemProductivity(entries),
+                  numberFormat: _countFormat,
                 )
               else
                 Container(
@@ -537,10 +633,16 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                         DataColumn(label: Text('Status')),
                       ],
                       rows: entries.map((entry) {
-                        final status = _safeText(entry.approvalStatus ?? 'PENDING').toUpperCase();
-                        final machine = _safeText(entry.machineName ?? entry.machineId);
+                        final status = _safeText(
+                          entry.approvalStatus ?? 'PENDING',
+                        ).toUpperCase();
+                        final machine = _safeText(
+                          entry.machineName ?? entry.machineId,
+                        );
                         final rcNumber = _safeText(entry.rcNumber);
-                        final item = _safeText(entry.itemDescription ?? entry.itemId);
+                        final item = _safeText(
+                          entry.itemDescription ?? entry.itemId,
+                        );
 
                         return DataRow(
                           cells: [
@@ -550,7 +652,9 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                               SizedBox(
                                 width: 140,
                                 child: Text(
-                                  _safeText(entry.operatorName ?? entry.operatorId),
+                                  _safeText(
+                                    entry.operatorName ?? entry.operatorId,
+                                  ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -588,8 +692,12 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                             ),
                             DataCell(Text(entry.actualQuantity.toString())),
                             DataCell(Text(entry.rejectionQuantity.toString())),
-                            DataCell(Text(entry.weightInKGs.toStringAsFixed(2))),
-                            DataCell(Text(entry.partsPerHour.toStringAsFixed(1))),
+                            DataCell(
+                              Text(entry.weightInKGs.toStringAsFixed(2)),
+                            ),
+                            DataCell(
+                              Text(entry.partsPerHour.toStringAsFixed(1)),
+                            ),
                             DataCell(_StatusPill(status: status)),
                           ],
                         );
@@ -604,23 +712,100 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                 totalRecords: state.totalCount,
                 canGoPrev: canGoPrev,
                 canGoNext: canGoNext,
-                onPrev: canGoPrev ? () => _applyFiltersAndLoad(state.currentPage - 1) : null,
-                onNext: canGoNext ? () => _applyFiltersAndLoad(state.currentPage + 1) : null,
+                onPrev: canGoPrev
+                    ? () => _applyFiltersAndLoad(state.currentPage - 1)
+                    : null,
+                onNext: canGoNext
+                    ? () => _applyFiltersAndLoad(state.currentPage + 1)
+                    : null,
               ),
             ],
           ),
         ),
       ),
-      bottomNavigationBar:
-          (state.isLoading || _isExporting)
-              ? const ShimmerLinearBar(height: 2)
-              : null,
+      bottomNavigationBar: (state.isLoading || _isExporting)
+          ? const ShimmerLinearBar(height: 2)
+          : null,
     );
   }
 }
 
 enum _RowAction { edit, approve, reject, pending }
+
 enum _ReportFileAction { downloadExcel, downloadPdf, shareExcel, sharePdf }
+
+class _ItemProductivitySummary {
+  final String itemName;
+  final Map<String, _ProductivityRow> _machines = {};
+  final Map<String, _ProductivityRow> _operators = {};
+
+  _ItemProductivitySummary({required this.itemName});
+
+  List<_ProductivityRow> get machines => _machines.values.toList();
+  List<_ProductivityRow> get operators => _operators.values.toList();
+
+  void addMachine({
+    required String name,
+    required int pieces,
+    required double kg,
+    required double hours,
+  }) {
+    _add(_machines, name: name, pieces: pieces, kg: kg, hours: hours);
+  }
+
+  void addOperator({
+    required String name,
+    required int pieces,
+    required double kg,
+    required double hours,
+  }) {
+    _add(_operators, name: name, pieces: pieces, kg: kg, hours: hours);
+  }
+
+  void _add(
+    Map<String, _ProductivityRow> rows, {
+    required String name,
+    required int pieces,
+    required double kg,
+    required double hours,
+  }) {
+    final key = name.toLowerCase();
+    final row = rows.putIfAbsent(key, () => _ProductivityRow(name: name));
+    row.add(pieces: pieces, kg: kg, hours: hours);
+  }
+
+  void sortRows() {
+    final sortedMachines = machines
+      ..sort((a, b) => b.piecesPerHour.compareTo(a.piecesPerHour));
+    final sortedOperators = operators
+      ..sort((a, b) => b.piecesPerHour.compareTo(a.piecesPerHour));
+
+    _machines
+      ..clear()
+      ..addEntries(sortedMachines.map((row) => MapEntry(row.name, row)));
+    _operators
+      ..clear()
+      ..addEntries(sortedOperators.map((row) => MapEntry(row.name, row)));
+  }
+}
+
+class _ProductivityRow {
+  final String name;
+  int pieces = 0;
+  double kg = 0;
+  double hours = 0;
+
+  _ProductivityRow({required this.name});
+
+  double get piecesPerHour => hours <= 0 ? 0 : pieces / hours;
+  double get kgPerHour => hours <= 0 ? 0 : kg / hours;
+
+  void add({required int pieces, required double kg, required double hours}) {
+    this.pieces += pieces;
+    this.kg += kg;
+    this.hours += hours;
+  }
+}
 
 class _ReportMeta {
   final String title;
@@ -658,16 +843,16 @@ class _ReportsHero extends StatelessWidget {
           Text(
             'Reports Command Center',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             'Explore $reportCount report views with cleaner insights and faster actions.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withOpacity(0.92),
-                ),
+              color: Colors.white.withOpacity(0.92),
+            ),
           ),
         ],
       ),
@@ -713,11 +898,14 @@ class _ReportCard extends StatelessWidget {
                     Text(
                       meta.title,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 2),
-                    Text(meta.subtitle, style: const TextStyle(color: Color(0xFF5D6A7A))),
+                    Text(
+                      meta.subtitle,
+                      style: const TextStyle(color: Color(0xFF5D6A7A)),
+                    ),
                   ],
                 ),
               ),
@@ -733,9 +921,7 @@ class _ReportCard extends StatelessWidget {
 class _ReportHeader extends StatelessWidget {
   final String reportName;
 
-  const _ReportHeader({
-    required this.reportName,
-  });
+  const _ReportHeader({required this.reportName});
 
   @override
   Widget build(BuildContext context) {
@@ -755,7 +941,10 @@ class _ReportHeader extends StatelessWidget {
               color: const Color(0xFF185ADB).withOpacity(0.12),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.insights_outlined, color: Color(0xFF185ADB)),
+            child: const Icon(
+              Icons.insights_outlined,
+              color: Color(0xFF185ADB),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -765,8 +954,8 @@ class _ReportHeader extends StatelessWidget {
                 Text(
                   reportName,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 Text(
                   'Read-only report insights. Use Review Actions tab for approval workflow.',
@@ -799,9 +988,15 @@ class _StatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(color: Color(0xFF617286), fontSize: 12)),
+          Text(
+            title,
+            style: const TextStyle(color: Color(0xFF617286), fontSize: 12),
+          ),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+          ),
         ],
       ),
     );
@@ -839,7 +1034,7 @@ class _FilterPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.96),
+        color: Colors.white.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -888,14 +1083,18 @@ class _FilterPanel extends StatelessWidget {
                 onPressed: onPickFromDate,
                 icon: const Icon(Icons.date_range_outlined),
                 label: Text(
-                  fromDate == null ? 'From Date' : 'From: ${dateFormat.format(fromDate!)}',
+                  fromDate == null
+                      ? 'From Date'
+                      : 'From: ${dateFormat.format(fromDate!)}',
                 ),
               ),
               OutlinedButton.icon(
                 onPressed: onPickToDate,
                 icon: const Icon(Icons.event_outlined),
                 label: Text(
-                  toDate == null ? 'To Date' : 'To: ${dateFormat.format(toDate!)}',
+                  toDate == null
+                      ? 'To Date'
+                      : 'To: ${dateFormat.format(toDate!)}',
                 ),
               ),
               if (hasDateFilter)
@@ -906,6 +1105,228 @@ class _FilterPanel extends StatelessWidget {
                 ),
             ],
           ),
+          if (hasDateFilter) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Date range uses 7:00 AM to 7:00 AM.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF5F6C7B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ItemProductivityView extends StatelessWidget {
+  final List<_ItemProductivitySummary> summaries;
+  final NumberFormat numberFormat;
+
+  const _ItemProductivityView({
+    required this.summaries,
+    required this.numberFormat,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (summaries.isEmpty) {
+      return const _StateCard(
+        title: 'No productivity data',
+        subtitle: 'Entries need running hours to calculate productivity.',
+      );
+    }
+
+    return Column(
+      children: summaries
+          .map(
+            (summary) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _ItemProductivityCard(
+                summary: summary,
+                numberFormat: numberFormat,
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _ItemProductivityCard extends StatelessWidget {
+  final _ItemProductivitySummary summary;
+  final NumberFormat numberFormat;
+
+  const _ItemProductivityCard({
+    required this.summary,
+    required this.numberFormat,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2EAF6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.inventory_2_outlined, color: Color(0xFF00897B)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  summary.itemName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stack = constraints.maxWidth < 780;
+              final machineTable = _ProductivityTable(
+                title: 'Machine Productivity',
+                nameLabel: 'Machine',
+                rows: summary.machines,
+                icon: Icons.precision_manufacturing_outlined,
+                numberFormat: numberFormat,
+              );
+              final operatorTable = _ProductivityTable(
+                title: 'Operator Productivity',
+                nameLabel: 'Operator',
+                rows: summary.operators,
+                icon: Icons.person_outline,
+                numberFormat: numberFormat,
+              );
+
+              if (stack) {
+                return Column(
+                  children: [
+                    machineTable,
+                    const SizedBox(height: 10),
+                    operatorTable,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: machineTable),
+                  const SizedBox(width: 10),
+                  Expanded(child: operatorTable),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProductivityTable extends StatelessWidget {
+  final String title;
+  final String nameLabel;
+  final List<_ProductivityRow> rows;
+  final IconData icon;
+  final NumberFormat numberFormat;
+
+  const _ProductivityTable({
+    required this.title,
+    required this.nameLabel,
+    required this.rows,
+    required this.icon,
+    required this.numberFormat,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FBFF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2EAF6)),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: const Color(0xFF185ADB)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          if (rows.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('No rows with running hours.'),
+              ),
+            )
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                dataRowMinHeight: 44,
+                dataRowMaxHeight: 56,
+                horizontalMargin: 10,
+                columnSpacing: 18,
+                columns: [
+                  DataColumn(label: Text(nameLabel)),
+                  const DataColumn(label: Text('Pieces/Hr')),
+                  const DataColumn(label: Text('KG/Hr')),
+                  const DataColumn(label: Text('Total Qty')),
+                  const DataColumn(label: Text('Hours')),
+                ],
+                rows: rows.map((row) {
+                  return DataRow(
+                    cells: [
+                      DataCell(
+                        SizedBox(
+                          width: 160,
+                          child: Text(
+                            row.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      DataCell(Text(numberFormat.format(row.piecesPerHour))),
+                      DataCell(Text(row.kgPerHour.toStringAsFixed(2))),
+                      DataCell(Text(numberFormat.format(row.pieces))),
+                      DataCell(Text(row.hours.toStringAsFixed(2))),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
         ],
       ),
     );
@@ -929,7 +1350,12 @@ class _StateCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
           const SizedBox(height: 4),
           Text(subtitle, style: const TextStyle(color: Color(0xFF5D6A7A))),
         ],
@@ -981,7 +1407,9 @@ class _EntryCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   '$machine | $item',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
               ),
               _StatusPill(status: status),
@@ -1004,7 +1432,10 @@ class _EntryCard extends StatelessWidget {
           ),
           if ((entry.notes ?? '').trim().isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text('Note: ${entry.notes!.trim()}', style: const TextStyle(color: Color(0xFF5D6A7A))),
+            Text(
+              'Note: ${entry.notes!.trim()}',
+              style: const TextStyle(color: Color(0xFF5D6A7A)),
+            ),
           ],
           if (canManage) ...[
             const SizedBox(height: 10),
@@ -1122,10 +1553,17 @@ class _StatusPill extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(999)),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
       child: Text(
         status,
-        style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 12),
+        style: TextStyle(
+          color: textColor,
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+        ),
       ),
     );
   }
@@ -1261,7 +1699,9 @@ class _EntryEditDialogState extends State<_EntryEditDialog> {
     _customerCtrl = TextEditingController(text: entry.customerId ?? '');
     _ccd1Ctrl = TextEditingController(text: entry.ccd1Quantity.toString());
     _actualCtrl = TextEditingController(text: entry.actualQuantity.toString());
-    _rejectionCtrl = TextEditingController(text: entry.rejectionQuantity.toString());
+    _rejectionCtrl = TextEditingController(
+      text: entry.rejectionQuantity.toString(),
+    );
     _startTimeCtrl = TextEditingController(text: entry.startTime);
     _endTimeCtrl = TextEditingController(text: entry.endTime);
     _notesCtrl = TextEditingController(text: entry.notes ?? '');
@@ -1339,12 +1779,20 @@ class _EntryEditDialogState extends State<_EntryEditDialog> {
     putIfChanged('itemId', entry.itemId.trim(), itemId);
     putIfChanged('customerId', (entry.customerId ?? '').trim(), customerId);
     if (ccd1 != null) putIfChanged('ccd1Quantity', entry.ccd1Quantity, ccd1);
-    if (actual != null) putIfChanged('actualQuantity', entry.actualQuantity, actual);
-    if (rejection != null) putIfChanged('rejectionQuantity', entry.rejectionQuantity, rejection);
-    if (startTime.isNotEmpty) putIfChanged('startTime', entry.startTime.trim(), startTime);
-    if (endTime.isNotEmpty) putIfChanged('endTime', entry.endTime.trim(), endTime);
+    if (actual != null)
+      putIfChanged('actualQuantity', entry.actualQuantity, actual);
+    if (rejection != null)
+      putIfChanged('rejectionQuantity', entry.rejectionQuantity, rejection);
+    if (startTime.isNotEmpty)
+      putIfChanged('startTime', entry.startTime.trim(), startTime);
+    if (endTime.isNotEmpty)
+      putIfChanged('endTime', entry.endTime.trim(), endTime);
     putIfChanged('notes', (entry.notes ?? '').trim(), notes);
-    putIfChanged('approvalStatus', (entry.approvalStatus ?? 'PENDING').trim().toUpperCase(), status);
+    putIfChanged(
+      'approvalStatus',
+      (entry.approvalStatus ?? 'PENDING').trim().toUpperCase(),
+      status,
+    );
     return payload;
   }
 
@@ -1355,13 +1803,18 @@ class _EntryEditDialogState extends State<_EntryEditDialog> {
     final actual = _parseIntOrNull(_actualCtrl.text.trim());
     final rejection = _parseIntOrNull(_rejectionCtrl.text.trim());
     if (actual != null && rejection != null && rejection > actual) {
-      setState(() => _dialogError = 'Rejection Quantity cannot exceed Actual Quantity.');
+      setState(
+        () =>
+            _dialogError = 'Rejection Quantity cannot exceed Actual Quantity.',
+      );
       return;
     }
     final start = _parseTimeInMinutes(_startTimeCtrl.text.trim());
     final end = _parseTimeInMinutes(_endTimeCtrl.text.trim());
     if (start != null && end != null && end <= start) {
-      setState(() => _dialogError = 'End time must be greater than Start time.');
+      setState(
+        () => _dialogError = 'End time must be greater than Start time.',
+      );
       return;
     }
 
@@ -1437,11 +1890,22 @@ class _EntryEditDialogState extends State<_EntryEditDialog> {
                   ),
                   second: DropdownButtonFormField<String>(
                     initialValue: _approvalStatus,
-                    decoration: const InputDecoration(labelText: 'Approval Status'),
+                    decoration: const InputDecoration(
+                      labelText: 'Approval Status',
+                    ),
                     items: const [
-                      DropdownMenuItem(value: 'PENDING', child: Text('PENDING')),
-                      DropdownMenuItem(value: 'APPROVED', child: Text('APPROVED')),
-                      DropdownMenuItem(value: 'REJECTED', child: Text('REJECTED')),
+                      DropdownMenuItem(
+                        value: 'PENDING',
+                        child: Text('PENDING'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'APPROVED',
+                        child: Text('APPROVED'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'REJECTED',
+                        child: Text('REJECTED'),
+                      ),
                     ],
                     onChanged: (value) {
                       if (value == null) return;
@@ -1469,33 +1933,49 @@ class _EntryEditDialogState extends State<_EntryEditDialog> {
                   first: TextFormField(
                     controller: _ccd1Ctrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'CCD1 Quantity'),
-                    validator: (value) => _validateNumberField(value, 'CCD1 Quantity'),
+                    decoration: const InputDecoration(
+                      labelText: 'CCD1 Quantity',
+                    ),
+                    validator: (value) =>
+                        _validateNumberField(value, 'CCD1 Quantity'),
                   ),
                   second: TextFormField(
                     controller: _actualCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Actual Quantity'),
-                    validator: (value) => _validateNumberField(value, 'Actual Quantity'),
+                    decoration: const InputDecoration(
+                      labelText: 'Actual Quantity',
+                    ),
+                    validator: (value) =>
+                        _validateNumberField(value, 'Actual Quantity'),
                   ),
                 ),
                 const SizedBox(height: 10),
                 TextFormField(
                   controller: _rejectionCtrl,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Rejection Quantity'),
-                  validator: (value) => _validateNumberField(value, 'Rejection Quantity'),
+                  decoration: const InputDecoration(
+                    labelText: 'Rejection Quantity',
+                  ),
+                  validator: (value) =>
+                      _validateNumberField(value, 'Rejection Quantity'),
                 ),
                 const SizedBox(height: 10),
                 _adaptivePair(
                   first: TextFormField(
                     controller: _startTimeCtrl,
-                    decoration: const InputDecoration(labelText: 'Start Time', hintText: 'HH:mm'),
-                    validator: (value) => _validateTimeField(value, 'Start time'),
+                    decoration: const InputDecoration(
+                      labelText: 'Start Time',
+                      hintText: 'HH:mm',
+                    ),
+                    validator: (value) =>
+                        _validateTimeField(value, 'Start time'),
                   ),
                   second: TextFormField(
                     controller: _endTimeCtrl,
-                    decoration: const InputDecoration(labelText: 'End Time', hintText: 'HH:mm'),
+                    decoration: const InputDecoration(
+                      labelText: 'End Time',
+                      hintText: 'HH:mm',
+                    ),
                     validator: (value) => _validateTimeField(value, 'End time'),
                   ),
                 ),
@@ -1511,7 +1991,10 @@ class _EntryEditDialogState extends State<_EntryEditDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
         FilledButton(onPressed: _submit, child: const Text('Apply Changes')),
       ],
     );

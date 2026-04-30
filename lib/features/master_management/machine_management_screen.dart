@@ -249,12 +249,8 @@ class _MachineManagementScreenState extends ConsumerState<MachineManagementScree
               ],
               if (_isLoading)
                 const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 28),
-                  child: ShimmerCenteredPlaceholder(
-                    verticalPadding: 6,
-                    titleWidth: 190,
-                    subtitleWidth: 120,
-                  ),
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: SkeletonList(count: 4),
                 )
               else if (filtered.isEmpty)
                 Container(

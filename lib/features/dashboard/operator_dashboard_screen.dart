@@ -16,7 +16,8 @@ class OperatorDashboardScreen extends ConsumerWidget {
   const OperatorDashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => const _OperatorHomeView();
+  Widget build(BuildContext context, WidgetRef ref) =>
+      const _OperatorHomeView();
 }
 
 class _OperatorHomeView extends ConsumerStatefulWidget {
@@ -69,6 +70,7 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
     await Future.wait([
       ref.read(operatorFeedControllerProvider.notifier).refresh(),
       ref.refresh(operatorStatsProvider.future),
+      ref.refresh(operatorProductivitySnapshotProvider.future),
     ]);
   }
 
@@ -81,9 +83,7 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
     return raw;
   }
 
-  void _handleMenuAction(
-    _OperatorMenuAction action,
-  ) {
+  void _handleMenuAction(_OperatorMenuAction action) {
     switch (action) {
       case _OperatorMenuAction.refresh:
         _refreshAll();
@@ -104,6 +104,7 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
   Widget build(BuildContext context) {
     final feedStateAsync = ref.watch(operatorFeedControllerProvider);
     final statsAsync = ref.watch(operatorStatsProvider);
+    final productivityAsync = ref.watch(operatorProductivitySnapshotProvider);
     final authState = ref.watch(authControllerProvider);
     final themeMode = ref.watch(themeModeProvider);
     final user = authState.asData?.value;
@@ -112,11 +113,13 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
     final displayName = name.isNotEmpty
         ? name
         : username.isNotEmpty
-            ? username
-            : 'Operator';
+        ? username
+        : 'Operator';
     final isDarkMode = themeMode == ThemeMode.dark;
     final isCompactAppBar = MediaQuery.of(context).size.width < 760;
-    final userInitial = displayName.isEmpty ? 'U' : displayName[0].toUpperCase();
+    final userInitial = displayName.isEmpty
+        ? 'U'
+        : displayName[0].toUpperCase();
 
     return Scaffold(
       appBar: AppBar(
@@ -150,7 +153,9 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
                       child: ListTile(
                         dense: true,
                         leading: Icon(
-                          isDarkMode ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                          isDarkMode
+                              ? Icons.light_mode_outlined
+                              : Icons.dark_mode_outlined,
                         ),
                         title: Text(isDarkMode ? 'Light Mode' : 'Dark Mode'),
                       ),
@@ -176,7 +181,9 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: CircleAvatar(
                       radius: 16,
-                      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.14),
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.primary.withOpacity(0.14),
                       child: Text(
                         userInitial,
                         style: const TextStyle(fontWeight: FontWeight.w700),
@@ -191,7 +198,9 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.10),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withOpacity(0.10),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     alignment: Alignment.center,
@@ -202,8 +211,8 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
@@ -216,10 +225,15 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
                 ),
                 IconButton(
                   icon: Icon(
-                    isDarkMode ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                    isDarkMode
+                        ? Icons.light_mode_outlined
+                        : Icons.dark_mode_outlined,
                   ),
-                  onPressed: () => ref.read(themeModeProvider.notifier).toggleThemeMode(),
-                  tooltip: isDarkMode ? 'Switch to light mode' : 'Switch to dark mode',
+                  onPressed: () =>
+                      ref.read(themeModeProvider.notifier).toggleThemeMode(),
+                  tooltip: isDarkMode
+                      ? 'Switch to light mode'
+                      : 'Switch to dark mode',
                 ),
                 IconButton(
                   icon: const Icon(Icons.lock_reset_outlined),
@@ -250,13 +264,16 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
             children: [
-              _HeroStatsBanner(statsAsync: statsAsync, countFormat: _countFormat),
+              _HeroStatsBanner(
+                statsAsync: statsAsync,
+                countFormat: _countFormat,
+              ),
               const SizedBox(height: 20),
               Text(
                 'Performance Snapshot',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 12),
               statsAsync.when(
@@ -266,17 +283,29 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
                   message: _formatError(error),
                   onRetry: () => ref.refresh(operatorStatsProvider),
                 ),
-                data: (stats) => _OperatorStatsGrid(
-                  stats: stats,
+                data: (stats) =>
+                    _OperatorStatsGrid(stats: stats, countFormat: _countFormat),
+              ),
+              const SizedBox(height: 12),
+              productivityAsync.when(
+                loading: () => const _ProductivitySnapshotLoadingCard(),
+                error: (error, _) => _SectionErrorCard(
+                  title: 'Could not load productivity snapshot',
+                  message: _formatError(error),
+                  onRetry: () =>
+                      ref.refresh(operatorProductivitySnapshotProvider),
+                ),
+                data: (snapshot) => _ProductivitySnapshotCard(
+                  snapshot: snapshot,
                   countFormat: _countFormat,
                 ),
               ),
               const SizedBox(height: 20),
               Text(
                 'Recent Entries',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 12),
               feedStateAsync.when(
@@ -284,14 +313,16 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
                 error: (error, _) => _SectionErrorCard(
                   title: 'Could not load recent entries',
                   message: _formatError(error),
-                  onRetry: () =>
-                      ref.read(operatorFeedControllerProvider.notifier).refresh(),
+                  onRetry: () => ref
+                      .read(operatorFeedControllerProvider.notifier)
+                      .refresh(),
                 ),
                 data: (feed) {
                   if (feed.entries.isEmpty) {
                     return const _SectionEmptyCard(
                       title: 'No submissions yet',
-                      subtitle: 'Tap "Log Shift" to add your first production log.',
+                      subtitle:
+                          'Tap "Log Shift" to add your first production log.',
                     );
                   }
 
@@ -329,10 +360,7 @@ class _HeroStatsBanner extends StatelessWidget {
   final AsyncValue<OperatorStats> statsAsync;
   final NumberFormat countFormat;
 
-  const _HeroStatsBanner({
-    required this.statsAsync,
-    required this.countFormat,
-  });
+  const _HeroStatsBanner({required this.statsAsync, required this.countFormat});
 
   @override
   Widget build(BuildContext context) {
@@ -367,17 +395,17 @@ class _HeroStatsBanner extends StatelessWidget {
           Text(
             'Today at a glance',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             'Track your output and maintain quality targets in real time.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withOpacity(0.9),
-                  height: 1.35,
-                ),
+              color: Colors.white.withOpacity(0.9),
+              height: 1.35,
+            ),
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -412,11 +440,7 @@ class _HeroBadge extends StatelessWidget {
   final String value;
   final String? subtitle;
 
-  const _HeroBadge({
-    required this.label,
-    required this.value,
-    this.subtitle,
-  });
+  const _HeroBadge({required this.label, required this.value, this.subtitle});
 
   @override
   Widget build(BuildContext context) {
@@ -467,10 +491,7 @@ class _OperatorStatsGrid extends StatelessWidget {
   final OperatorStats stats;
   final NumberFormat countFormat;
 
-  const _OperatorStatsGrid({
-    required this.stats,
-    required this.countFormat,
-  });
+  const _OperatorStatsGrid({required this.stats, required this.countFormat});
 
   @override
   Widget build(BuildContext context) {
@@ -479,8 +500,9 @@ class _OperatorStatsGrid extends StatelessWidget {
         LayoutBuilder(
           builder: (context, constraints) {
             final bool twoColumns = constraints.maxWidth > 640;
-            final double cardWidth =
-                twoColumns ? (constraints.maxWidth - 12) / 2 : constraints.maxWidth;
+            final double cardWidth = twoColumns
+                ? (constraints.maxWidth - 12) / 2
+                : constraints.maxWidth;
 
             return Wrap(
               spacing: 12,
@@ -491,7 +513,8 @@ class _OperatorStatsGrid extends StatelessWidget {
                   child: _StatCard(
                     title: 'Total Production',
                     value: countFormat.format(stats.totalProduction),
-                    subtitle: 'Weight: ${stats.totalProductionWeight.toStringAsFixed(3)} kg',
+                    subtitle:
+                        'Weight: ${stats.totalProductionWeight.toStringAsFixed(3)} kg',
                     icon: Icons.inventory_2_outlined,
                     color: const Color(0xFF185ADB),
                   ),
@@ -501,7 +524,8 @@ class _OperatorStatsGrid extends StatelessWidget {
                   child: _StatCard(
                     title: 'Total Rejection',
                     value: countFormat.format(stats.totalRejection),
-                    subtitle: 'Weight: ${stats.totalRejectionWeight.toStringAsFixed(3)} kg',
+                    subtitle:
+                        'Weight: ${stats.totalRejectionWeight.toStringAsFixed(3)} kg',
                     icon: Icons.rule_folder_outlined,
                     color: const Color(0xFFD64545),
                   ),
@@ -537,6 +561,214 @@ class _OperatorStatsGrid extends StatelessWidget {
           countFormat: countFormat,
         ),
       ],
+    );
+  }
+}
+
+class _ProductivitySnapshotCard extends StatelessWidget {
+  final OperatorProductivitySnapshot snapshot;
+  final NumberFormat countFormat;
+
+  const _ProductivitySnapshotCard({
+    required this.snapshot,
+    required this.countFormat,
+  });
+
+  String _formatDate(String rawDate) {
+    final parsed = DateTime.tryParse(rawDate);
+    if (parsed == null) return rawDate.trim().isEmpty ? '-' : rawDate;
+    return DateFormat('dd MMM yyyy').format(parsed.toLocal());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final previousShift = snapshot.previousShift;
+    final previousTitle = previousShift == null
+        ? 'Previous Shift'
+        : 'Previous Shift ${previousShift.shift.trim().isEmpty ? '' : previousShift.shift}'
+              .trim();
+    final previousSubtitle = previousShift == null
+        ? 'No completed shift found'
+        : _formatDate(previousShift.entryDate);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2EAF6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00897B).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.trending_up_outlined,
+                  color: Color(0xFF00897B),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Productivity Snapshot',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final twoColumns = constraints.maxWidth > 640;
+              final cardWidth = twoColumns
+                  ? (constraints.maxWidth - 10) / 2
+                  : constraints.maxWidth;
+
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  SizedBox(
+                    width: cardWidth,
+                    child: _ProductivityMiniCard(
+                      title: 'Yesterday',
+                      subtitle: snapshot.yesterday.hasData
+                          ? '${countFormat.format(snapshot.yesterday.totalProduction)} pieces | ${snapshot.yesterday.totalRunningHours.toStringAsFixed(2)} h'
+                          : 'No production found',
+                      metric: snapshot.yesterday,
+                      countFormat: countFormat,
+                    ),
+                  ),
+                  SizedBox(
+                    width: cardWidth,
+                    child: _ProductivityMiniCard(
+                      title: previousTitle,
+                      subtitle: previousSubtitle,
+                      metric: previousShift?.metric,
+                      countFormat: countFormat,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProductivityMiniCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final OperatorProductivityMetric? metric;
+  final NumberFormat countFormat;
+
+  const _ProductivityMiniCard({
+    required this.title,
+    required this.subtitle,
+    required this.metric,
+    required this.countFormat,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final value = metric == null || !metric!.hasData
+        ? '-'
+        : countFormat.format(metric!.piecesPerHour);
+    final kgRate = metric == null || !metric!.hasData
+        ? '- kg/hr'
+        : '${metric!.kgPerHour.toStringAsFixed(2)} kg/hr';
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FBFF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2EAF6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFF4C596A),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '$value pieces/hr',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            kgRate,
+            style: const TextStyle(
+              color: Color(0xFF00897B),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: const Color(0xFF667386),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProductivitySnapshotLoadingCard extends StatelessWidget {
+  const _ProductivitySnapshotLoadingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return AppShimmer(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.94),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                SkeletonBox(height: 42, width: 42),
+                SizedBox(width: 12),
+                SkeletonBox(height: 18, width: 190),
+              ],
+            ),
+            SizedBox(height: 14),
+            SkeletonBox(height: 74),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -584,22 +816,22 @@ class _StatCard extends StatelessWidget {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF4C596A),
-                        fontWeight: FontWeight.w600,
-                      ),
+                    color: const Color(0xFF4C596A),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   value,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 Text(
                   subtitle,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF687789),
-                      ),
+                    color: const Color(0xFF687789),
+                  ),
                 ),
               ],
             ),
@@ -634,9 +866,9 @@ class _RejectionReasonCard extends StatelessWidget {
         children: [
           Text(
             'Rejection Reasons',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
           if (rejectionReasons.isEmpty)
@@ -824,15 +1056,12 @@ class _SectionErrorCard extends StatelessWidget {
           Text(
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: const Color(0xFFA1312D),
-                  fontWeight: FontWeight.w800,
-                ),
+              color: const Color(0xFFA1312D),
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 6),
-          Text(
-            message,
-            style: const TextStyle(color: Color(0xFF8A2A24)),
-          ),
+          Text(message, style: const TextStyle(color: Color(0xFF8A2A24))),
           const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: onRetry,
@@ -849,10 +1078,7 @@ class _SectionEmptyCard extends StatelessWidget {
   final String title;
   final String subtitle;
 
-  const _SectionEmptyCard({
-    required this.title,
-    required this.subtitle,
-  });
+  const _SectionEmptyCard({required this.title, required this.subtitle});
 
   @override
   Widget build(BuildContext context) {
@@ -869,15 +1095,12 @@ class _SectionEmptyCard extends StatelessWidget {
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: const TextStyle(color: Color(0xFF5F6B7A)),
-          ),
+          Text(subtitle, style: const TextStyle(color: Color(0xFF5F6B7A))),
         ],
       ),
     );
@@ -887,9 +1110,7 @@ class _SectionEmptyCard extends StatelessWidget {
 class _OperatorEntryCard extends StatelessWidget {
   final ProductionEntryModel entry;
 
-  const _OperatorEntryCard({
-    required this.entry,
-  });
+  const _OperatorEntryCard({required this.entry});
 
   String _safeValue(String value) => value.trim().isEmpty ? '-' : value;
 
@@ -936,9 +1157,9 @@ class _OperatorEntryCard extends StatelessWidget {
               children: [
                 Text(
                   '$machine | $item',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -974,9 +1195,7 @@ class _OperatorEntryCard extends StatelessWidget {
 class _ApprovalStatusPill extends StatelessWidget {
   final String status;
 
-  const _ApprovalStatusPill({
-    required this.status,
-  });
+  const _ApprovalStatusPill({required this.status});
 
   @override
   Widget build(BuildContext context) {

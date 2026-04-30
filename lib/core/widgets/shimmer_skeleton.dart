@@ -9,7 +9,7 @@ class AppShimmer extends StatefulWidget {
   const AppShimmer({
     super.key,
     required this.child,
-    this.duration = const Duration(milliseconds: 1400),
+    this.duration = const Duration(milliseconds: 1100),
     this.baseColor,
     this.highlightColor,
   });
@@ -53,14 +53,14 @@ class _AppShimmerState extends State<AppShimmer>
           blendMode: BlendMode.srcATop,
           shaderCallback: (bounds) {
             return LinearGradient(
-              begin: Alignment(-1.0 - (2 * _controller.value), 0),
-              end: Alignment(1.0 + (2 * _controller.value), 0),
+              begin: Alignment(-1.0 + (2 * _controller.value), 0),
+              end: Alignment(0.0 + (2 * _controller.value), 0),
               colors: <Color>[
-                baseColor,
-                highlightColor,
-                baseColor,
+                baseColor.withOpacity(0.95),
+                highlightColor.withOpacity(0.98),
+                baseColor.withOpacity(0.95),
               ],
-              stops: const <double>[0.35, 0.5, 0.65],
+              stops: const <double>[0.25, 0.5, 0.75],
             ).createShader(bounds);
           },
           child: child,
@@ -194,6 +194,62 @@ class ShimmerLinearBar extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFFE3EBF7),
           borderRadius: borderRadius,
+        ),
+      ),
+    );
+  }
+}
+
+class SkeletonCard extends StatelessWidget {
+  final BorderRadiusGeometry borderRadius;
+  const SkeletonCard({
+    super.key,
+    this.borderRadius = const BorderRadius.all(Radius.circular(16)),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AppShimmer(
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.02),
+          borderRadius: borderRadius,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SkeletonBox(height: 14, width: 180),
+            const SizedBox(height: 8),
+            SkeletonBox(height: 12, width: 120),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                SkeletonBox(height: 10, width: 60, borderRadius: BorderRadius.circular(999)),
+                const SizedBox(width: 8),
+                SkeletonBox(height: 10, width: 60, borderRadius: BorderRadius.circular(999)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SkeletonList extends StatelessWidget {
+  final int count;
+  final double spacing;
+  const SkeletonList({super.key, this.count = 4, this.spacing = 10});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(
+        count,
+        (i) => Padding(
+          padding: EdgeInsets.only(bottom: i == count - 1 ? 0 : spacing),
+          child: const SkeletonCard(),
         ),
       ),
     );

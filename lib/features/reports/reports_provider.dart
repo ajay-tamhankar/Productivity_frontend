@@ -61,18 +61,22 @@ class ReportsController extends _$ReportsController {
   Future<void> fetchPage(int pageIndex, int pageSize) async {
     // Page index is 0-based for Datatable, but API is usually 1-based
     final apiPage = pageIndex + 1;
+    final apiLimit = pageSize.clamp(1, 100).toInt();
     state = state.copyWith(isLoading: true);
 
     try {
       final client = ref.read(apiClientProvider);
-      
+
       final Map<String, dynamic> queryParams = {
         'page': apiPage,
-        'limit': pageSize,
+        'limit': apiLimit,
         ...state.filters,
       };
 
-      final response = await client.get('/reports/detailed', queryParameters: queryParams);
+      final response = await client.get(
+        '/reports/detailed',
+        queryParameters: queryParams,
+      );
 
       List<dynamic> dataList = [];
       int totalCount = 0;
@@ -85,15 +89,16 @@ class ReportsController extends _$ReportsController {
         totalCount = dataList.length;
       }
 
-      final newEntries =
-          dataList.map((j) => ProductionEntryModel.fromJson(j)).toList();
+      final newEntries = dataList
+          .map((j) => ProductionEntryModel.fromJson(j))
+          .toList();
 
       state = state.copyWith(
         entries: newEntries,
         totalCount: totalCount,
         isLoading: false,
         currentPage: pageIndex,
-        pageSize: pageSize,
+        pageSize: apiLimit,
       );
     } catch (e) {
       state = state.copyWith(isLoading: false);
@@ -117,8 +122,7 @@ class ReportsController extends _$ReportsController {
       await client.patch('/production/entries/$id', data: payload);
     } on DioException catch (e) {
       final data = e.response?.data;
-      final apiMessage = data is Map ? data['message']?.toString()
-          : null;
+      final apiMessage = data is Map ? data['message']?.toString() : null;
       throw Exception(apiMessage ?? 'Failed to update production entry.');
     } catch (e) {
       throw Exception('Failed to update production entry: $e');

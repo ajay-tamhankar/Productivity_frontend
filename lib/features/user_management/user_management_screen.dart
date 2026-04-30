@@ -5,6 +5,52 @@ import '../../core/widgets/shimmer_skeleton.dart';
 import 'user_management_model.dart';
 import 'user_management_provider.dart';
 
+const String _allRolesValue = 'ALL';
+
+List<DropdownMenuItem<String>> _buildRoleDropdownItems({
+  bool includeAll = false,
+  bool uppercaseLabels = false,
+}) {
+  final items = <DropdownMenuItem<String>>[];
+
+  if (includeAll) {
+    items.add(
+      const DropdownMenuItem(
+        value: _allRolesValue,
+        child: Text('All Roles'),
+      ),
+    );
+  }
+
+  for (final role in AppConstants.assignableRoles) {
+    items.add(
+      DropdownMenuItem(
+        value: role,
+        child: Text(
+          uppercaseLabels ? AppConstants.normalizeRole(role) : AppConstants.roleLabel(role),
+        ),
+      ),
+    );
+  }
+
+  return items;
+}
+
+Color _roleColorFor(String role) {
+  switch (AppConstants.normalizeRole(role)) {
+    case AppConstants.roleAdmin:
+      return const Color(0xFF1E63D3);
+    case AppConstants.roleSupervisor:
+      return const Color(0xFF7A4DCC);
+    case AppConstants.roleBrin:
+      return const Color(0xFFCC7A00);
+    case AppConstants.roleOperator:
+      return const Color(0xFF0E9F6E);
+    default:
+      return const Color(0xFF5D6A7A);
+  }
+}
+
 class UserManagementScreen extends ConsumerStatefulWidget {
   const UserManagementScreen({super.key});
 
@@ -41,8 +87,8 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
   List<ManagedUser> _applyFilters(UserManagementState state) {
     final query = state.query.trim().toLowerCase();
     return state.users.where((user) {
-      final role = user.role.toUpperCase();
-      if (state.roleFilter != 'ALL' && state.roleFilter != role) {
+      final role = AppConstants.normalizeRole(user.role);
+      if (state.roleFilter != _allRolesValue && state.roleFilter != role) {
         return false;
       }
       if (query.isEmpty) return true;
@@ -265,7 +311,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                   border: Border.all(color: const Color(0xFFE2EAF6)),
                 ),
                 child: const Text(
-                  'Create and manage operators, supervisors, and admins.',
+                  'Create and manage admins, supervisors, BRIN users, and operators.',
                   style: TextStyle(color: Color(0xFF5D6A7A)),
                 ),
               ),
@@ -294,21 +340,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Role Filter',
                       ),
-                      items: const [
-                        DropdownMenuItem(value: 'ALL', child: Text('All Roles')),
-                        DropdownMenuItem(
-                          value: AppConstants.roleAdmin,
-                          child: Text('Admin'),
-                        ),
-                        DropdownMenuItem(
-                          value: AppConstants.roleSupervisor,
-                          child: Text('Supervisor'),
-                        ),
-                        DropdownMenuItem(
-                          value: AppConstants.roleOperator,
-                          child: Text('Operator'),
-                        ),
-                      ],
+                      items: _buildRoleDropdownItems(includeAll: true),
                       onChanged: (value) {
                         if (value == null) return;
                         ref.read(userManagementControllerProvider.notifier).setRoleFilter(value);
@@ -407,13 +439,8 @@ class _UserCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final role = user.role.toUpperCase();
-    final roleColor =
-        role == AppConstants.roleAdmin
-            ? const Color(0xFF1E63D3)
-            : role == AppConstants.roleSupervisor
-                ? const Color(0xFF7A4DCC)
-                : const Color(0xFF0E9F6E);
+    final role = AppConstants.normalizeRole(user.role);
+    final roleColor = _roleColorFor(role);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -580,7 +607,10 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     _usernameCtrl = TextEditingController(text: widget.initialUser?.username ?? '');
     _nameCtrl = TextEditingController(text: widget.initialUser?.name ?? '');
     _passwordCtrl = TextEditingController();
-    _role = widget.initialUser?.role.toUpperCase() ?? AppConstants.roleOperator;
+    _role =
+        widget.initialUser != null
+            ? AppConstants.normalizeRole(widget.initialUser!.role)
+            : AppConstants.roleOperator;
   }
 
   @override
@@ -664,17 +694,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                 DropdownButtonFormField<String>(
                   initialValue: _role,
                   decoration: const InputDecoration(labelText: 'Role'),
-                  items: const [
-                    DropdownMenuItem(value: AppConstants.roleAdmin, child: Text('ADMIN')),
-                    DropdownMenuItem(
-                      value: AppConstants.roleSupervisor,
-                      child: Text('SUPERVISOR'),
-                    ),
-                    DropdownMenuItem(
-                      value: AppConstants.roleOperator,
-                      child: Text('OPERATOR'),
-                    ),
-                  ],
+                  items: _buildRoleDropdownItems(uppercaseLabels: true),
                   onChanged: (value) {
                     if (value == null) return;
                     setState(() => _role = value);

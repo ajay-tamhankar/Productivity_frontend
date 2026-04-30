@@ -15,5 +15,40 @@ class AppConstants {
   // Roles
   static const String roleAdmin = 'ADMIN';
   static const String roleSupervisor = 'SUPERVISOR';
+  static const String roleBrin = 'BRIN';
   static const String roleOperator = 'OPERATOR';
+
+  static const List<String> assignableRoles = <String>[
+    roleAdmin,
+    roleSupervisor,
+    roleBrin,
+    roleOperator,
+  ];
+
+  static String normalizeRole(String role) => role.trim().toUpperCase();
+
+  static String roleLabel(String role) {
+    switch (normalizeRole(role)) {
+      case roleAdmin:
+        return 'Admin';
+      case roleSupervisor:
+        return 'Supervisor';
+      case roleBrin:
+        return 'BRIN';
+      case roleOperator:
+        return 'Operator';
+      default:
+        return normalizeRole(role);
+    }
+  }
+
+  static bool isSupervisorRole(String role) =>
+      normalizeRole(role) == roleSupervisor;
+
+  static bool isBrinRole(String role) => normalizeRole(role) == roleBrin;
+
+  static bool isAdminDashboardRole(String role) {
+    final normalized = normalizeRole(role);
+    return normalized == roleAdmin || normalized == roleSupervisor;
+  }
 }

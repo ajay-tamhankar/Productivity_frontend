@@ -8,14 +8,16 @@ import 'data/repositories/local_storage_repository.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Await shared preferences to prevent provider lookup errors
   final sharedPrefs = await SharedPreferences.getInstance();
 
   runApp(
     ProviderScope(
       overrides: [
-        sharedPreferencesProvider.overrideWithValue(AsyncValue.data(sharedPrefs)),
+        sharedPreferencesProvider.overrideWithValue(
+          AsyncValue.data(sharedPrefs),
+        ),
       ],
       child: const ProductionMonitoringApp(),
     ),
@@ -31,7 +33,7 @@ class ProductionMonitoringApp extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(
-      title: 'Production Sync',
+      title: 'Productivity Tracker',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,

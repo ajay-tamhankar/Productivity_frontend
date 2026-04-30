@@ -5,6 +5,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../features/auth/auth_provider.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/dashboard/admin_dashboard_screen.dart';
+import '../../features/dashboard/brin_dashboard_screen.dart';
 import '../../features/dashboard/operator_dashboard_screen.dart';
 import '../../features/production_entry/production_entry_screen.dart';
 import '../constants/app_constants.dart';
@@ -23,14 +24,21 @@ GoRouter appRouter(Ref ref) {
     redirect: (context, state) {
       const loginPath = '/login';
       const adminDashboardPath = '/admin-dashboard';
+      const brinDashboardPath = '/brin-dashboard';
       const operatorDashboardPath = '/operator-dashboard';
+      const newEntryPath = '/new-entry';
 
       final isAuth = authState.value != null;
       final isLoggingIn = state.matchedLocation == loginPath;
-      final role = authState.value?.role.trim().toUpperCase();
-      final isAdminRole =
-          role == AppConstants.roleAdmin || role == AppConstants.roleSupervisor;
-      
+      final role = authState.value?.role ?? '';
+      final isAdminRole = AppConstants.isAdminDashboardRole(role);
+      final isBrinRole = AppConstants.isBrinRole(role);
+      final defaultDashboardPath = isAdminRole
+          ? adminDashboardPath
+          : isBrinRole
+              ? brinDashboardPath
+              : operatorDashboardPath;
+
       // If still loading init state, don't redirect aggressively
       if (authState.isLoading && !isAuth) return null;
 
@@ -39,15 +47,22 @@ GoRouter appRouter(Ref ref) {
       }
 
       if (isLoggingIn || state.matchedLocation == '/') {
-        return isAdminRole ? adminDashboardPath : operatorDashboardPath;
+        return defaultDashboardPath;
       }
 
       // Keep users in role-appropriate dashboard routes.
       if (state.matchedLocation == adminDashboardPath && !isAdminRole) {
-        return operatorDashboardPath;
+        return defaultDashboardPath;
       }
-      if (state.matchedLocation == operatorDashboardPath && isAdminRole) {
-        return adminDashboardPath;
+      if (state.matchedLocation == brinDashboardPath && !isBrinRole) {
+        return defaultDashboardPath;
+      }
+      if (state.matchedLocation == operatorDashboardPath &&
+          (isAdminRole || isBrinRole)) {
+        return defaultDashboardPath;
+      }
+      if (state.matchedLocation == newEntryPath && isBrinRole) {
+        return brinDashboardPath;
       }
 
       return null;
@@ -64,6 +79,10 @@ GoRouter appRouter(Ref ref) {
       GoRoute(
         path: '/operator-dashboard',
         builder: (context, state) => const OperatorDashboardScreen(),
+      ),
+      GoRoute(
+        path: '/brin-dashboard',
+        builder: (context, state) => const BrinDashboardScreen(),
       ),
       GoRoute(
         path: '/new-entry',

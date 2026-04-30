@@ -4,10 +4,7 @@ class RejectionDetailModel {
 
   RejectionDetailModel({required this.reason, required this.quantity});
 
-  Map<String, dynamic> toJson() => {
-    'reason': reason,
-    'quantity': quantity,
-  };
+  Map<String, dynamic> toJson() => {'reason': reason, 'quantity': quantity};
 }
 
 class ProductionEntryModel {
@@ -32,8 +29,9 @@ class ProductionEntryModel {
   final String? machineDowntimeStartTime;
   final String? machineDowntimeEndTime;
   final String? rcNumber;
+  final String? location;
   final List<RejectionDetailModel> rejectionDetails;
-  
+
   // Calculated fields (computed by backend, thus optional on creation)
   final double runningHours;
   final double partsPerHour;
@@ -63,6 +61,7 @@ class ProductionEntryModel {
     this.machineDowntimeStartTime,
     this.machineDowntimeEndTime,
     this.rcNumber,
+    this.location,
     this.rejectionDetails = const [],
     this.runningHours = 0.0,
     this.partsPerHour = 0.0,
@@ -99,8 +98,12 @@ class ProductionEntryModel {
 
     final machineObj = json['machine'] is Map ? json['machine'] as Map : null;
     final itemObj = json['item'] is Map ? json['item'] as Map : null;
-    final operatorObj = json['operator'] is Map ? json['operator'] as Map : null;
-    final customerObj = json['customer'] is Map ? json['customer'] as Map : null;
+    final operatorObj = json['operator'] is Map
+        ? json['operator'] as Map
+        : null;
+    final customerObj = json['customer'] is Map
+        ? json['customer'] as Map
+        : null;
     final machineRaw = json['machine'];
     final itemRaw = json['item'];
 
@@ -115,18 +118,27 @@ class ProductionEntryModel {
     final machineName = readString(json['machineName']).trim().isNotEmpty
         ? readString(json['machineName'])
         : readString(json['machineDisplayName']).trim().isNotEmpty
-            ? readString(json['machineDisplayName'])
+        ? readString(json['machineDisplayName'])
         : (machineRaw is String && machineRaw.trim().isNotEmpty
-            ? machineRaw
-            : readNestedString(machineObj, ['name', 'machineName', 'displayName']));
+              ? machineRaw
+              : readNestedString(machineObj, [
+                  'name',
+                  'machineName',
+                  'displayName',
+                ]));
 
-    final itemDescription = readString(json['itemDescription']).trim().isNotEmpty
+    final itemDescription =
+        readString(json['itemDescription']).trim().isNotEmpty
         ? readString(json['itemDescription'])
         : readString(json['itemName']).trim().isNotEmpty
-            ? readString(json['itemName'])
+        ? readString(json['itemName'])
         : (itemRaw is String && itemRaw.trim().isNotEmpty
-            ? itemRaw
-            : readNestedString(itemObj, ['description', 'name', 'itemDescription']));
+              ? itemRaw
+              : readNestedString(itemObj, [
+                  'description',
+                  'name',
+                  'itemDescription',
+                ]));
 
     final machineId = readString(json['machineId']).trim().isNotEmpty
         ? readString(json['machineId'])
@@ -162,6 +174,7 @@ class ProductionEntryModel {
       machineDowntimeStartTime: json['machineDowntimeStartTime'],
       machineDowntimeEndTime: json['machineDowntimeEndTime'],
       rcNumber: json['rcNumber']?.toString(),
+      location: json['location']?.toString(),
       runningHours: parseDouble(json['runningHours']),
       partsPerHour: parseDouble(json['partsPerHour']),
       weightInKGs: parseDouble(json['weightInKGs'] ?? json['weightInKgs']),
@@ -183,10 +196,79 @@ class ProductionEntryModel {
       'startTime': startTime,
       'endTime': endTime,
       if (notes != null && notes!.isNotEmpty) 'notes': notes,
-      if (machineDowntimeStartTime != null && machineDowntimeStartTime!.isNotEmpty) 'machineDowntimeStartTime': machineDowntimeStartTime,
-      if (machineDowntimeEndTime != null && machineDowntimeEndTime!.isNotEmpty) 'machineDowntimeEndTime': machineDowntimeEndTime,
+      if (machineDowntimeStartTime != null &&
+          machineDowntimeStartTime!.isNotEmpty)
+        'machineDowntimeStartTime': machineDowntimeStartTime,
+      if (machineDowntimeEndTime != null && machineDowntimeEndTime!.isNotEmpty)
+        'machineDowntimeEndTime': machineDowntimeEndTime,
       if (rcNumber != null && rcNumber!.isNotEmpty) 'rcNumber': rcNumber,
-      if (rejectionDetails.isNotEmpty) 'rejectionDetails': rejectionDetails.map((e) => e.toJson()).toList(),
+      if (location != null && location!.isNotEmpty) 'location': location,
+      if (rejectionDetails.isNotEmpty)
+        'rejectionDetails': rejectionDetails.map((e) => e.toJson()).toList(),
     };
+  }
+
+  ProductionEntryModel copyWith({
+    String? id,
+    String? entryDate,
+    String? shift,
+    String? operatorId,
+    String? operatorName,
+    String? machineId,
+    String? itemId,
+    String? itemCode,
+    String? machineName,
+    String? itemDescription,
+    String? customerId,
+    String? customerName,
+    int? ccd1Quantity,
+    int? actualQuantity,
+    int? rejectionQuantity,
+    String? startTime,
+    String? endTime,
+    String? notes,
+    String? machineDowntimeStartTime,
+    String? machineDowntimeEndTime,
+    String? rcNumber,
+    String? location,
+    List<RejectionDetailModel>? rejectionDetails,
+    double? runningHours,
+    double? partsPerHour,
+    double? weightInKGs,
+    double? finishWeight,
+    String? approvalStatus,
+  }) {
+    return ProductionEntryModel(
+      id: id ?? this.id,
+      entryDate: entryDate ?? this.entryDate,
+      shift: shift ?? this.shift,
+      operatorId: operatorId ?? this.operatorId,
+      operatorName: operatorName ?? this.operatorName,
+      machineId: machineId ?? this.machineId,
+      itemId: itemId ?? this.itemId,
+      itemCode: itemCode ?? this.itemCode,
+      machineName: machineName ?? this.machineName,
+      itemDescription: itemDescription ?? this.itemDescription,
+      customerId: customerId ?? this.customerId,
+      customerName: customerName ?? this.customerName,
+      ccd1Quantity: ccd1Quantity ?? this.ccd1Quantity,
+      actualQuantity: actualQuantity ?? this.actualQuantity,
+      rejectionQuantity: rejectionQuantity ?? this.rejectionQuantity,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      notes: notes ?? this.notes,
+      machineDowntimeStartTime:
+          machineDowntimeStartTime ?? this.machineDowntimeStartTime,
+      machineDowntimeEndTime:
+          machineDowntimeEndTime ?? this.machineDowntimeEndTime,
+      rcNumber: rcNumber ?? this.rcNumber,
+      location: location ?? this.location,
+      rejectionDetails: rejectionDetails ?? this.rejectionDetails,
+      runningHours: runningHours ?? this.runningHours,
+      partsPerHour: partsPerHour ?? this.partsPerHour,
+      weightInKGs: weightInKGs ?? this.weightInKGs,
+      finishWeight: finishWeight ?? this.finishWeight,
+      approvalStatus: approvalStatus ?? this.approvalStatus,
+    );
   }
 }
