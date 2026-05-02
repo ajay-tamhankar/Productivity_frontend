@@ -48,6 +48,7 @@ void main() {
     // Validation should trigger
     expect(find.text('Machine is required.'), findsOneWidget);
     expect(find.text('Item is required.'), findsOneWidget);
+    expect(find.text('Start Time is required.'), findsOneWidget);
   });
 
   testWidgets('ProductionEntryScreen Phase 2 validation and dialog logic (End Shift)', (WidgetTester tester) async {

@@ -64,10 +64,6 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     super.initState();
     _actualCtrl.addListener(_recompute);
     _loadOngoingShift();
-    _autoTimeTimer = Timer.periodic(
-      const Duration(minutes: 1),
-      (_) => _syncAutoTimes(),
-    );
   }
 
   @override
@@ -77,7 +73,6 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     _rejectCtrl.dispose();
     _rcNumberCtrl.dispose();
     _notesCtrl.dispose();
-    _autoTimeTimer?.cancel();
     super.dispose();
   }
 
@@ -87,14 +82,31 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
   }
 
   void _syncAutoTimes() {
-    if (!mounted || _isLoadingPrefs) return;
+    // Auto-fetch disabled - use manual time selection only
+  }
 
+  Future<void> _pickStartTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _startTime ?? TimeOfDay.now(),
+    );
+    if (picked == null) return;
     setState(() {
-      if (_isStarted) {
-        _endTime = _currentTimeOfDay();
-      } else {
-        _startTime = _currentTimeOfDay();
-      }
+      _startTime = picked;
+      _formError = null;
+    });
+    _recompute();
+  }
+
+  Future<void> _pickEndTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _endTime ?? TimeOfDay.now(),
+    );
+    if (picked == null) return;
+    setState(() {
+      _endTime = picked;
+      _formError = null;
     });
     _recompute();
   }
@@ -124,12 +136,11 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
       }
     } else if (mounted) {
       setState(() {
-        _startTime = _currentTimeOfDay();
+        _startTime = null;
       });
     }
     if (mounted) {
       setState(() => _isLoadingPrefs = false);
-      _syncAutoTimes();
     }
   }
 
@@ -144,7 +155,11 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
       setState(() => _formError = 'Mandatory fields must not be empty.');
       return;
     }
-    final startTime = _currentTimeOfDay();
+    if (_startTime == null) {
+      setState(() => _formError = 'Start Time is required.');
+      return;
+    }
+    final startTime = _startTime!;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('production_started', true);
@@ -165,7 +180,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     if (!mounted) return;
     setState(() {
       _startTime = startTime;
-      _endTime = _currentTimeOfDay();
+      _endTime = null;
       _isStarted = true;
       _submittedOnce = false; // Reset validations for phase 2
       _formError = null;
@@ -451,7 +466,6 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     setState(() {
       _submittedOnce = true;
       _formError = null;
-      _endTime = _currentTimeOfDay();
     });
     _recompute();
 
@@ -758,18 +772,17 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                           // START SHIFT BUTTON IF NOT STARTED
                           if (!_isStarted) ...[
                             _Section(
-                              title: 'Start Time',
+                              title: 'Start Time *',
                               child: OutlinedButton.icon(
                                 style: OutlinedButton.styleFrom(
                                   minimumSize: const Size.fromHeight(52),
                                   alignment: Alignment.centerLeft,
-                                  disabledForegroundColor: Colors.grey.shade700,
                                 ),
-                                onPressed: null,
+                                onPressed: _pickStartTime,
                                 icon: const Icon(Icons.schedule_outlined),
                                 label: Text(
                                   _startTime == null
-                                      ? 'Current Time'
+                                      ? 'Start Time'
                                       : _startTime!.format(context),
                                 ),
                               ),
@@ -807,10 +820,8 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                                               52,
                                             ),
                                             alignment: Alignment.centerLeft,
-                                            disabledForegroundColor:
-                                                Colors.grey.shade600,
                                           ),
-                                          onPressed: null, // Readonly
+                                          onPressed: _pickStartTime,
                                           icon: const Icon(
                                             Icons.login_outlined,
                                           ),
@@ -829,16 +840,14 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                                               52,
                                             ),
                                             alignment: Alignment.centerLeft,
-                                            disabledForegroundColor:
-                                                Colors.grey.shade600,
                                           ),
-                                          onPressed: null,
+                                          onPressed: _pickEndTime,
                                           icon: const Icon(
                                             Icons.logout_outlined,
                                           ),
                                           label: Text(
                                             _endTime == null
-                                                ? 'Current Time'
+                                                ? 'End Time *'
                                                 : _endTime!.format(context),
                                           ),
                                         ),
