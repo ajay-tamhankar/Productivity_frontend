@@ -29,22 +29,73 @@ class AuthRepository {
         },
       );
 
-      final data = response.data;
-      final token = data['token'] as String;
-      final userJson = data['user'] as Map<String, dynamic>;
+      final raw = response.data;
+      if (raw is! Map) {
+        throw const AuthException('Unexpected login response from server.');
+      }
+      final data = Map<String, dynamic>.from(raw);
+
+      final token = _extractToken(data);
+      if (token == null || token.isEmpty) {
+        throw const AuthException(
+          'Login succeeded but no token was returned by the server.',
+        );
+      }
+
+      final userJson = _extractUser(data);
+      final user = UserModel.fromJson(userJson);
 
       return UserModel(
-        id: userJson['id'],
-        username: userJson['username'],
-        name: userJson['name'],
-        role: userJson['role'],
+        id: user.id,
+        username: user.username.isNotEmpty ? user.username : username,
+        name: user.name,
+        role: user.role,
         token: token,
       );
+    } on AuthException {
+      rethrow;
     } on DioException catch (e) {
       throw AuthException(_mapDioErrorToMessage(e));
     } catch (_) {
       throw const AuthException('Something went wrong. Please try again.');
     }
+  }
+
+  String? _extractToken(Map<String, dynamic> data) {
+    final candidates = [
+      data['token'],
+      data['accessToken'],
+      data['access_token'],
+      data['jwt'],
+    ];
+    for (final c in candidates) {
+      if (c is String && c.trim().isNotEmpty) return c.trim();
+    }
+    // Nested under 'data' (some backends wrap responses).
+    final nested = data['data'];
+    if (nested is Map) {
+      return _extractToken(Map<String, dynamic>.from(nested));
+    }
+    return null;
+  }
+
+  Map<String, dynamic> _extractUser(Map<String, dynamic> data) {
+    final user = data['user'] ?? data['profile'];
+    if (user is Map) {
+      return Map<String, dynamic>.from(user);
+    }
+    final nested = data['data'];
+    if (nested is Map) {
+      final m = Map<String, dynamic>.from(nested);
+      final nestedUser = m['user'] ?? m['profile'];
+      if (nestedUser is Map) {
+        return Map<String, dynamic>.from(nestedUser);
+      }
+      // Flat shape under data.
+      return m;
+    }
+    // Flat shape at top level (id/role/etc. alongside token).
+    return data;
   }
 
   Future<void> changePassword({

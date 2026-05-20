@@ -1,5 +1,6 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../core/constants/app_constants.dart';
+import '../../data/api_services/auth_session_events.dart';
 import '../../data/models/user_model.dart';
 import '../../data/repositories/local_storage_repository.dart';
 import '../dpl/core/dpl_api_service.dart';
@@ -11,6 +12,18 @@ part 'auth_provider.g.dart';
 class AuthController extends _$AuthController {
   @override
   FutureOr<UserModel?> build() async {
+    // Listen for server-side session invalidation (401 from any
+    // authenticated endpoint). The Dio interceptor clears prefs and
+    // pings this bus; we drop our cached user so the router redirects
+    // back to /login.
+    final sessionEvents = ref.watch(authSessionEventsProvider);
+    final sub = sessionEvents.onUnauthorized.listen((_) {
+      if (state.asData?.value != null) {
+        state = const AsyncValue.data(null);
+      }
+    });
+    ref.onDispose(sub.cancel);
+
     // Init block: check persisted auth session.
     final prefs = ref.read(localStorageRepositoryProvider);
     final token = prefs.getToken();

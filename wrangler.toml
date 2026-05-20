@@ -1,0 +1,11 @@
+# Cloudflare Workers (Static Assets) config for the Flutter web app.
+# `npx wrangler deploy` reads this file and uploads everything under
+# the `directory` below. `single-page-application` makes Cloudflare
+# serve `index.html` for any unknown path so Flutter's client-side
+# router (go_router) handles deep links correctly.
+name = "productivity-frontend"
+compatibility_date = "2025-05-01"
+
+[assets]
+directory = "./build/web"
+not_found_handling = "single-page-application"

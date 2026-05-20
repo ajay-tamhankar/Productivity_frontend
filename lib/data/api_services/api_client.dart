@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../core/constants/app_constants.dart';
 import '../repositories/local_storage_repository.dart';
+import 'auth_session_events.dart';
 
 part 'api_client.g.dart';
 
@@ -30,7 +31,8 @@ class ApiClient {
 @riverpod
 Dio dio(Ref ref) {
   final prefs = ref.watch(localStorageRepositoryProvider);
-  
+  final sessionEvents = ref.watch(authSessionEventsProvider);
+
   final dio = Dio(BaseOptions(
     baseUrl: AppConstants.apiBaseUrl,
     connectTimeout: const Duration(seconds: 30),
@@ -41,13 +43,21 @@ Dio dio(Ref ref) {
   dio.interceptors.add(InterceptorsWrapper(
     onRequest: (options, handler) {
       final token = prefs.getToken();
-      if (token != null) {
+      if (token != null && token.isNotEmpty) {
         options.headers['Authorization'] = 'Bearer $token';
       }
+      options.headers.putIfAbsent('Accept', () => 'application/json');
       return handler.next(options);
     },
-    onError: (DioException e, handler) {
-      // Handle global errors, e.g. token expiration
+    onError: (DioException e, handler) async {
+      final status = e.response?.statusCode;
+      final isLoginCall = e.requestOptions.path.contains('/auth/login');
+      if (status == 401 && !isLoginCall) {
+        // Token rejected by server — drop session so the router
+        // redirects the user back to the login screen.
+        await prefs.clearAll();
+        sessionEvents.notifyUnauthorized();
+      }
       return handler.next(e);
     },
   ));
