@@ -1779,14 +1779,18 @@ class _EntryEditDialogState extends State<_EntryEditDialog> {
     putIfChanged('itemId', entry.itemId.trim(), itemId);
     putIfChanged('customerId', (entry.customerId ?? '').trim(), customerId);
     if (ccd1 != null) putIfChanged('ccd1Quantity', entry.ccd1Quantity, ccd1);
-    if (actual != null)
+    if (actual != null) {
       putIfChanged('actualQuantity', entry.actualQuantity, actual);
-    if (rejection != null)
+    }
+    if (rejection != null) {
       putIfChanged('rejectionQuantity', entry.rejectionQuantity, rejection);
-    if (startTime.isNotEmpty)
+    }
+    if (startTime.isNotEmpty) {
       putIfChanged('startTime', entry.startTime.trim(), startTime);
-    if (endTime.isNotEmpty)
+    }
+    if (endTime.isNotEmpty) {
       putIfChanged('endTime', entry.endTime.trim(), endTime);
+    }
     putIfChanged('notes', (entry.notes ?? '').trim(), notes);
     putIfChanged(
       'approvalStatus',

@@ -1,7 +1,12 @@
 class AppConstants {
   static const String appName = 'Production Sync';
   static const String apiBaseUrl =
-      'https://productivity-backend-1-cvtc.onrender.com/api';
+      'https://vistar-crm.onrender.com/api/v1/productivity';
+
+  // Base URL for the Daily Production Loading (DPL) module. The DPL
+  // endpoints live under a parallel path on the same backend host.
+  static const String dplApiBaseUrl =
+      'https://vistar-crm.onrender.com/api/v1/dpl';
 
   // Shared Preferences Keys
   static const String tokenKey = 'AUTH_TOKEN';
@@ -17,6 +22,8 @@ class AppConstants {
   static const String roleSupervisor = 'SUPERVISOR';
   static const String roleBrin = 'BRIN';
   static const String roleOperator = 'OPERATOR';
+  static const String roleDplManager = 'DPL_MANAGER';
+  static const String roleDplSupervisor = 'DPL_SUPERVISOR';
 
   static const List<String> assignableRoles = <String>[
     roleAdmin,
@@ -37,6 +44,10 @@ class AppConstants {
         return 'BRIN';
       case roleOperator:
         return 'Operator';
+      case roleDplManager:
+        return 'DPL Manager';
+      case roleDplSupervisor:
+        return 'DPL Supervisor';
       default:
         return normalizeRole(role);
     }
@@ -51,4 +62,13 @@ class AppConstants {
     final normalized = normalizeRole(role);
     return normalized == roleAdmin || normalized == roleSupervisor;
   }
+
+  static bool isDplManagerRole(String role) =>
+      normalizeRole(role) == roleDplManager;
+
+  static bool isDplSupervisorRole(String role) =>
+      normalizeRole(role) == roleDplSupervisor;
+
+  static bool isDplRole(String role) =>
+      isDplManagerRole(role) || isDplSupervisorRole(role);
 }

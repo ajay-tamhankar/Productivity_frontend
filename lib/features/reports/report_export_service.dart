@@ -310,7 +310,7 @@ class ReportExportService {
         pw.SizedBox(height: 4),
         pw.TableHelper.fromTextArray(
           headers: _productivityHeaders,
-          data: <List<String>>[...rows.map(_productivityRow).toList(), _productivityTotalsRow(rows)],
+          data: <List<String>>[...rows.map(_productivityRow), _productivityTotalsRow(rows)],
           border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.4),
           headerStyle: pw.TextStyle(
             fontSize: 8,

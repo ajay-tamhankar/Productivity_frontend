@@ -45,6 +45,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         );
   }
 
+  void _onDplLogin() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _submittedOnce = false;
+      _inlineError = null;
+    });
+    ref.read(authControllerProvider.notifier).loginDpl(
+          'dpl.manager@vistarlogitek.com',
+          'ChangeMe@123',
+        );
+  }
+
+  void _onDplSupervisorLogin() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _submittedOnce = false;
+      _inlineError = null;
+    });
+    ref.read(authControllerProvider.notifier).loginDpl(
+          'dpl.supervisor1@vistarlogitek.com',
+          'ChangeMe@123',
+        );
+  }
+
   String? _validateUsername(String? value) {
     final username = value?.trim() ?? '';
     if (username.isEmpty) return 'Username is required.';
@@ -325,6 +349,74 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                                 ),
                                               ),
                                       ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: SizedBox(
+                                            height: 48,
+                                            child: OutlinedButton.icon(
+                                              onPressed: isLoading
+                                                  ? null
+                                                  : _onDplLogin,
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor:
+                                                    const Color(0xFF17A673),
+                                                side: const BorderSide(
+                                                  color: Color(0xFF17A673),
+                                                  width: 1.4,
+                                                ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(14),
+                                                ),
+                                              ),
+                                              icon: const Icon(
+                                                  Icons.factory_outlined),
+                                              label: const Text(
+                                                'DPL Manager',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 14,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: SizedBox(
+                                            height: 48,
+                                            child: OutlinedButton.icon(
+                                              onPressed: isLoading
+                                                  ? null
+                                                  : _onDplSupervisorLogin,
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor:
+                                                    const Color(0xFFB45309),
+                                                side: const BorderSide(
+                                                  color: Color(0xFFB45309),
+                                                  width: 1.4,
+                                                ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(14),
+                                                ),
+                                              ),
+                                              icon: const Icon(
+                                                  Icons.engineering_outlined),
+                                              label: const Text(
+                                                'DPL Supervisor',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 14,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     const SizedBox(height: 16),
                                     const Text(
