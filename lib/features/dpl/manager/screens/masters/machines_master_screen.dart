@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../core/widgets/shimmer_skeleton.dart';
 import '../../../core/dpl_api_service.dart';
+import '../../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../../models/dpl_machine.dart';
 import '../../providers/dpl_masters_provider.dart';
 import '../../widgets/dpl_manager_footer.dart';
@@ -20,9 +21,13 @@ class DplMachinesMasterScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Machines'),
         actions: [
-          IconButton(
-            onPressed: () => ref.invalidate(dplMachinesProvider),
-            icon: const Icon(Icons.refresh),
+          DplRefreshIconButton(
+            onRefresh: () async {
+              ref.invalidate(dplMachinesProvider);
+              try {
+                await ref.read(dplMachinesProvider.future);
+              } catch (_) {}
+            },
           ),
         ],
       ),

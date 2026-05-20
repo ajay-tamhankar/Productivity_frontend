@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/dpl_api_response.dart';
+import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../models/dpl_excel_preview.dart';
 import '../../models/dpl_machine.dart';
 import '../../models/dpl_part.dart';
@@ -118,12 +119,17 @@ class _DplUploadPlanScreenState extends ConsumerState<DplUploadPlanScreen> {
       appBar: AppBar(
         title: const Text('Upload Production Plan'),
         actions: [
-          IconButton(
+          DplRefreshIconButton(
             tooltip: 'Refresh masters',
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
+            onRefresh: () async {
               ref.invalidate(dplSupervisorsProvider);
               ref.invalidate(dplMachinesProvider);
+              try {
+                await Future.wait([
+                  ref.read(dplSupervisorsProvider.future),
+                  ref.read(dplMachinesProvider.future),
+                ]);
+              } catch (_) {}
             },
           ),
         ],

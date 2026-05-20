@@ -7,6 +7,7 @@ import '../../../auth/change_password_dialog.dart';
 import '../design/dpl_role.dart';
 import '../design/dpl_theme.dart';
 import 'dpl_buttons.dart';
+import 'dpl_refresh_icon_button.dart';
 import 'vistar_logo.dart';
 
 /// Unified app bar used by every DPL screen.
@@ -24,8 +25,11 @@ import 'vistar_logo.dart';
 class DplAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final String title;
   final String? subtitle;
-  final VoidCallback? onRefresh;
-  final bool refreshing;
+
+  /// Async refresh action. The icon morphs to a spinner while the
+  /// future is in flight so the user knows the tap registered.
+  final Future<void> Function()? onRefresh;
+
   final bool showProfile;
   final List<Widget> extraActions;
 
@@ -38,7 +42,6 @@ class DplAppBar extends ConsumerWidget implements PreferredSizeWidget {
     required this.title,
     this.subtitle,
     this.onRefresh,
-    this.refreshing = false,
     this.showProfile = true,
     this.extraActions = const [],
     this.leading,
@@ -108,24 +111,7 @@ class DplAppBar extends ConsumerWidget implements PreferredSizeWidget {
               ),
               ...extraActions,
               if (onRefresh != null)
-                IconButton(
-                  tooltip: 'Refresh',
-                  onPressed: refreshing ? null : onRefresh,
-                  icon: refreshing
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            valueColor:
-                                AlwaysStoppedAnimation(DplColors.primary),
-                          ),
-                        )
-                      : const Icon(
-                          Icons.refresh,
-                          color: DplColors.textPrimary,
-                        ),
-                ),
+                DplRefreshIconButton(onRefresh: onRefresh!),
               if (showProfile)
                 Padding(
                   padding: const EdgeInsets.only(right: DplSpacing.md),

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../../core/widgets/shimmer_skeleton.dart';
 import '../../../core/dpl_api_service.dart';
+import '../../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../../models/dpl_manpower_log.dart';
 import '../../../models/dpl_machine.dart';
 import '../../../models/dpl_shift.dart';
@@ -56,10 +57,13 @@ class DplManpowerMasterScreen extends ConsumerWidget {
             icon: const Icon(Icons.filter_alt_outlined),
             onPressed: () => _openFilterSheet(context, ref),
           ),
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(dplManpowerProvider),
+          DplRefreshIconButton(
+            onRefresh: () async {
+              ref.invalidate(dplManpowerProvider);
+              try {
+                await ref.read(dplManpowerProvider.future);
+              } catch (_) {}
+            },
           ),
         ],
       ),

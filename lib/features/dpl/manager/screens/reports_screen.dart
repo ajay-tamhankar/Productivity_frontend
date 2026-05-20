@@ -11,6 +11,7 @@ import '../../../reports/report_download_stub.dart'
     if (dart.library.io) '../../../reports/report_download_io.dart';
 import '../../core/dpl_api_service.dart';
 import '../../core/dpl_constants.dart';
+import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../models/dpl_machine.dart';
 import '../../models/dpl_monthly_chart.dart';
 import '../../models/dpl_reports.dart';
@@ -247,15 +248,25 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
                 : const Icon(Icons.download_outlined),
             onPressed: _isDownloading ? null : _downloadActiveTab,
           ),
-          IconButton(
+          DplRefreshIconButton(
             tooltip: 'Refresh all',
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
+            onRefresh: () async {
               ref.invalidate(dplPlanVsActualReportProvider);
               ref.invalidate(dplDowntimeReportProvider);
               ref.invalidate(dplSupervisorPerformanceReportProvider);
               ref.invalidate(dplPartWiseReportProvider);
               ref.invalidate(dplMonthlyChartProvider);
+              // Hold the spinner until at least one fetch completes
+              // so the user sees the icon morph back when fresh data
+              // is on screen, not the instant they tap.
+              try {
+                await Future.wait([
+                  ref.read(dplPlanVsActualReportProvider.future),
+                  ref.read(dplMonthlyChartProvider.future),
+                ]);
+              } catch (_) {
+                // Errors surface inline through the per-tab state.
+              }
             },
           ),
         ],

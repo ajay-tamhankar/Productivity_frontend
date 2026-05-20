@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/dpl_api_service.dart';
+import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../manager/widgets/empty_state.dart';
 import '../../manager/widgets/error_retry.dart';
 import '../../manager/widgets/status_badge.dart';
@@ -37,9 +38,13 @@ class MachinePlanScreen extends ConsumerWidget {
           orElse: () => const Text('Machine Plan'),
         ),
         actions: [
-          IconButton(
-            onPressed: () => ref.invalidate(machinePlanProvider(planId)),
-            icon: const Icon(Icons.refresh),
+          DplRefreshIconButton(
+            onRefresh: () async {
+              ref.invalidate(machinePlanProvider(planId));
+              try {
+                await ref.read(machinePlanProvider(planId).future);
+              } catch (_) {}
+            },
           ),
         ],
       ),

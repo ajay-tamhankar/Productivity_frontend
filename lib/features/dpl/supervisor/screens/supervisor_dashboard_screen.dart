@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/shimmer_skeleton.dart';
+import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../manager/widgets/empty_state.dart';
 import '../../manager/widgets/error_retry.dart';
 import '../../models/dpl_supervisor_today.dart';
@@ -23,10 +24,13 @@ class SupervisorDashboardScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text('Today — ${dateFmt.format(DateTime.now())}'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-            onPressed: () => ref.invalidate(todayPlansProvider),
+          DplRefreshIconButton(
+            onRefresh: () async {
+              ref.invalidate(todayPlansProvider);
+              try {
+                await ref.read(todayPlansProvider.future);
+              } catch (_) {}
+            },
           ),
         ],
       ),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/dpl_api_service.dart';
+import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../models/dpl_identity.dart';
 import '../../models/dpl_shift.dart';
 import '../providers/dpl_identity_audit_provider.dart';
@@ -29,11 +30,11 @@ class DplIdentityAuditScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Identity Audit'),
         actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh),
-            onPressed: () =>
-                ref.invalidate(dplIdentityAuditListProvider),
+          DplRefreshIconButton(
+            onRefresh: () async {
+              ref.invalidate(dplIdentityAuditListProvider);
+              await ref.read(dplIdentityAuditListProvider.future);
+            },
           ),
         ],
       ),
