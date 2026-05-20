@@ -389,18 +389,19 @@ class _PartCard extends StatelessWidget {
   }
 }
 
-class _PartDialog extends StatefulWidget {
+class _PartDialog extends ConsumerStatefulWidget {
   final DplPart? existing;
   const _PartDialog({this.existing});
 
   @override
-  State<_PartDialog> createState() => _PartDialogState();
+  ConsumerState<_PartDialog> createState() => _PartDialogState();
 }
 
-class _PartDialogState extends State<_PartDialog> {
+class _PartDialogState extends ConsumerState<_PartDialog> {
   late final TextEditingController _pnCtrl;
   late final TextEditingController _descCtrl;
   late final TextEditingController _nameCtrl;
+  String? _machineName;
   bool _isActive = true;
   String? _error;
 
@@ -411,6 +412,7 @@ class _PartDialogState extends State<_PartDialog> {
     _pnCtrl = TextEditingController(text: e?.partNumber ?? '');
     _descCtrl = TextEditingController(text: e?.description ?? '');
     _nameCtrl = TextEditingController(text: e?.name ?? '');
+    _machineName = (e?.machineName ?? '').isEmpty ? null : e!.machineName;
     _isActive = e?.isActive ?? true;
   }
 
@@ -431,17 +433,35 @@ class _PartDialogState extends State<_PartDialog> {
       setState(() => _error = 'Description is required.');
       return;
     }
+    if ((_machineName ?? '').isEmpty) {
+      setState(() => _error = 'Machine is required.');
+      return;
+    }
     Navigator.of(context).pop(DplPart(
       id: widget.existing?.id ?? 0,
       partNumber: _pnCtrl.text.trim(),
       description: _descCtrl.text.trim(),
       name: _nameCtrl.text.trim(),
+      machineName: _machineName!.trim(),
       isActive: _isActive,
     ));
   }
 
   @override
   Widget build(BuildContext context) {
+    final machinesAsync = ref.watch(dplMachinesProvider);
+    final machines = machinesAsync.asData?.value.data ?? const [];
+    final loadingMachines = machinesAsync.isLoading;
+
+    // If the part's stored machine isn't in the active list (e.g. it
+    // was deactivated), keep it visible so the user doesn't lose the
+    // existing selection on edit.
+    final names = <String>{
+      for (final m in machines) m.name,
+      if (_machineName != null && _machineName!.isNotEmpty) _machineName!,
+    }.toList()
+      ..sort();
+
     return AlertDialog(
       title: Text(widget.existing == null ? 'Add Part' : 'Edit Description'),
       content: SizedBox(
@@ -481,8 +501,28 @@ class _PartDialogState extends State<_PartDialog> {
               const SizedBox(height: 10),
               TextField(
                 controller: _nameCtrl,
-                decoration:
-                    const InputDecoration(labelText: 'Display Name (optional)'),
+                decoration: const InputDecoration(
+                  labelText: 'Display Name (optional)',
+                ),
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: _machineName,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: 'Machine',
+                  prefixIcon: const Icon(Icons.precision_manufacturing_outlined),
+                  helperText: loadingMachines
+                      ? 'Loading machines…'
+                      : 'Required by the backend (machine_name).',
+                ),
+                items: [
+                  for (final n in names)
+                    DropdownMenuItem<String>(value: n, child: Text(n)),
+                ],
+                onChanged: loadingMachines
+                    ? null
+                    : (v) => setState(() => _machineName = v),
               ),
               if (widget.existing != null)
                 SwitchListTile.adaptive(
