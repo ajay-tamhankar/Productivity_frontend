@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/widgets/shift_chip.dart';
 import '../../manager/widgets/status_badge.dart';
 import '../../models/dpl_production_plan_item.dart';
 
@@ -90,7 +91,16 @@ class PlanRowCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  DplStatusBadge(status: item.status),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      DplStatusBadge(status: item.status),
+                      if (item.pausedAt != null) ...[
+                        const SizedBox(height: 4),
+                        _PausedChip(pausedAt: item.pausedAt!),
+                      ],
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -109,11 +119,16 @@ class PlanRowCard extends StatelessWidget {
                   ),
                 ],
               ),
-              if (item.startTime != null || item.endTime != null) ...[
+              if (item.startTime != null ||
+                  item.endTime != null ||
+                  item.shiftDisplayLabel != null) ...[
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
+                  runSpacing: 4,
                   children: [
+                    if (item.shiftDisplayLabel != null)
+                      DplShiftChip(label: item.shiftDisplayLabel!),
                     if (item.startTime != null)
                       _chip(
                         icon: Icons.play_arrow_outlined,
@@ -180,6 +195,42 @@ class PlanRowCard extends StatelessWidget {
             style: TextStyle(
               color: color,
               fontWeight: FontWeight.w700,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Small "Paused" pill that sits beside the status badge whenever the
+/// supervisor has an open item-level pause on this row.
+class _PausedChip extends StatelessWidget {
+  final DateTime pausedAt;
+  const _PausedChip({required this.pausedAt});
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFFB45309);
+    final timeFmt = DateFormat('HH:mm');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.32)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.pause_circle_outline, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            'Paused ${timeFmt.format(pausedAt.toLocal())}',
+            style: const TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
               fontSize: 11,
             ),
           ),

@@ -120,6 +120,34 @@ class DplProductionPlan {
   double get completionPct =>
       totalPlanQty <= 0 ? 0 : (totalActualQty / totalPlanQty).clamp(0.0, 1.0);
 
+  /// Distinct shift tokens (code if available, else `#<id>`) derived
+  /// from this plan's items, sorted for stable display. Empty when no
+  /// item has been started yet — shift is auto-tagged on first START.
+  List<String> get shiftCodes {
+    final seen = <String>{};
+    for (final i in items) {
+      final code = (i.shiftCode ?? '').trim();
+      if (code.isNotEmpty) {
+        seen.add(code);
+      } else if (i.shiftId != null) {
+        seen.add('#${i.shiftId}');
+      }
+    }
+    final list = seen.toList()..sort();
+    return list;
+  }
+
+  /// Human label for [shiftCodes]:
+  ///   • single shift   → "Shift A"
+  ///   • multiple       → "Shifts A, B"
+  ///   • none assigned  → "" (caller should hide the chip)
+  String get shiftLabel {
+    final codes = shiftCodes;
+    if (codes.isEmpty) return '';
+    if (codes.length == 1) return 'Shift ${codes.first}';
+    return 'Shifts ${codes.join(', ')}';
+  }
+
   DplProductionPlan copyWith({
     int? id,
     DateTime? planDate,

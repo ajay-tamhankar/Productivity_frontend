@@ -21,6 +21,7 @@ import '../models/dpl_start_stop.dart';
 import '../models/dpl_supervisor.dart';
 import '../models/dpl_supervisor_plan_detail.dart';
 import '../models/dpl_identity.dart';
+import '../models/dpl_item_pause.dart';
 import '../models/dpl_supervisor_today.dart';
 import 'dpl_api_client.dart';
 import 'dpl_api_response.dart';
@@ -535,6 +536,47 @@ class DplApiService {
       () => _dio.post(DplPaths.planLock(id)),
       fallback: 'Failed to lock plan.',
       fromJson: _oneFrom<DplProductionPlan>(DplProductionPlan.fromJson),
+    );
+  }
+
+  /// `POST /manager/plans/:id/change-status` — manager moves a plan to
+  /// any of the 5 statuses. Both [status] and [reason] are mandatory.
+  Future<DplApiResponse<DplProductionPlan>> changePlanStatus(
+    int planId, {
+    required String status,
+    required String reason,
+  }) {
+    return _send<DplProductionPlan>(
+      () => _dio.post(
+        DplPaths.planChangeStatus(planId),
+        data: {'status': status, 'reason': reason},
+      ),
+      fallback: 'Failed to change plan status.',
+      fromJson: _oneFrom<DplProductionPlan>(DplProductionPlan.fromJson),
+    );
+  }
+
+  /// `GET /manager/plans/:id/pauses` — manager-side audit of every
+  /// item pause on a plan.
+  Future<DplApiResponse<List<DplItemPause>>> getManagerPlanPauses(
+    int planId,
+  ) {
+    return _send<List<DplItemPause>>(
+      () => _dio.get(DplPaths.managerPlanPauses(planId)),
+      fallback: 'Failed to load pauses.',
+      fromJson: _listFrom<DplItemPause>(DplItemPause.fromJson),
+    );
+  }
+
+  /// `GET /manager/plans/:id/items/:itemId/pauses` — audit per item.
+  Future<DplApiResponse<List<DplItemPause>>> getManagerItemPauses(
+    int planId,
+    int itemId,
+  ) {
+    return _send<List<DplItemPause>>(
+      () => _dio.get(DplPaths.managerPlanItemPauses(planId, itemId)),
+      fallback: 'Failed to load pauses.',
+      fromJson: _listFrom<DplItemPause>(DplItemPause.fromJson),
     );
   }
 
@@ -1253,6 +1295,74 @@ class DplApiService {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Item pauses — parallel to machine downtimes, scoped to one plan item.
+  // ---------------------------------------------------------------------------
+
+  /// `POST /supervisor/plans/:planId/items/:itemId/pause` — opens a
+  /// pause on a single in-progress item. [reasonText] is required;
+  /// [reasonId] optionally links to a downtime-reason master row.
+  Future<DplApiResponse<DplItemPause>> pauseItem(
+    int planId,
+    int itemId, {
+    required String reasonText,
+    int? reasonId,
+    DateTime? expectedResumeAt,
+  }) {
+    return _send<DplItemPause>(
+      () => _dio.post(
+        DplPaths.supervisorItemPause(planId, itemId),
+        data: {
+          'reason_text': reasonText,
+          'reason_id': ?reasonId,
+          if (expectedResumeAt != null)
+            'expected_resume_at':
+                expectedResumeAt.toUtc().toIso8601String(),
+        },
+      ),
+      fallback: 'Failed to pause item.',
+      fromJson: _oneFrom<DplItemPause>(DplItemPause.fromJson),
+    );
+  }
+
+  /// `POST /supervisor/plans/:planId/items/:itemId/resume` — closes the
+  /// current pause on an item. Returns the canonical duration and the
+  /// item's running total of paused minutes.
+  Future<DplApiResponse<DplItemResumeResult>> resumeItem(
+    int planId,
+    int itemId,
+  ) {
+    return _send<DplItemResumeResult>(
+      () => _dio.post(DplPaths.supervisorItemResume(planId, itemId)),
+      fallback: 'Failed to resume item.',
+      fromJson: _oneFrom<DplItemResumeResult>(DplItemResumeResult.fromJson),
+    );
+  }
+
+  /// `GET /supervisor/plans/:planId/pauses` — all pauses for a plan.
+  Future<DplApiResponse<List<DplItemPause>>> getSupervisorPlanPauses(
+    int planId,
+  ) {
+    return _send<List<DplItemPause>>(
+      () => _dio.get(DplPaths.supervisorPlanPauses(planId)),
+      fallback: 'Failed to load pauses.',
+      fromJson: _listFrom<DplItemPause>(DplItemPause.fromJson),
+    );
+  }
+
+  /// `GET /supervisor/plans/:planId/items/:itemId/pauses` — pauses for a
+  /// single item.
+  Future<DplApiResponse<List<DplItemPause>>> getSupervisorItemPauses(
+    int planId,
+    int itemId,
+  ) {
+    return _send<List<DplItemPause>>(
+      () => _dio.get(DplPaths.supervisorItemPauses(planId, itemId)),
+      fallback: 'Failed to load pauses.',
+      fromJson: _listFrom<DplItemPause>(DplItemPause.fromJson),
+    );
+  }
+
   /// `GET /supervisor/shift/summary?date=` — end-of-shift roll-up.
   Future<DplApiResponse<DplShiftSummary>> shiftSummary(DateTime date) {
     return _send<DplShiftSummary>(
@@ -1371,6 +1481,8 @@ class DplApiService {
       'manpowerLogs',
       'downtimes',
       'alerts',
+      'pauses',
+      'verifications',
     ];
 
     return (data) {

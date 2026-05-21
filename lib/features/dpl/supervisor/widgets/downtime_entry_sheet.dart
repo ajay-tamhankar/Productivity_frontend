@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/dpl_api_service.dart';
 import '../../core/dpl_constants.dart';
-import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../manager/widgets/error_retry.dart';
 import '../../models/dpl_downtime_reason.dart';
 import '../providers/downtime_provider.dart';

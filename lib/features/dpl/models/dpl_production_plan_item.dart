@@ -149,6 +149,38 @@ class DplProductionPlanItem {
   double get completionPct =>
       planQty <= 0 ? 0 : (actualQty / planQty).clamp(0.0, 1.0);
 
+  /// Display label for the shift, e.g. "Shift A".
+  ///
+  /// Backend returns `shift_id` as soon as the supervisor starts an
+  /// item but doesn't always join `shift_code`/`shift_name` text. Fall
+  /// back to "Shift #N" so the supervisor still sees something.
+  /// Returns `null` when neither id nor code is known.
+  String? get shiftDisplayLabel {
+    final code = (shiftCode ?? '').trim();
+    if (code.isNotEmpty) return 'Shift $code';
+    if (shiftId != null) return 'Shift #$shiftId';
+    return null;
+  }
+
+  /// Display-order rank.
+  ///
+  ///   0 → in_progress  (work the supervisor needs to touch first)
+  ///   1 → pending      (queued items, ordered by plan_no underneath)
+  ///   2 → completed    (done items pinned to the bottom)
+  ///   3 → anything else
+  int get _statusRank {
+    switch (status) {
+      case 'in_progress':
+        return 0;
+      case 'pending':
+        return 1;
+      case 'completed':
+        return 2;
+      default:
+        return 3;
+    }
+  }
+
   DplProductionPlanItem copyWith({
     int? id,
     int? planNo,
@@ -189,5 +221,27 @@ class DplProductionPlanItem {
       shiftName: shiftName ?? this.shiftName,
       remarks: remarks ?? this.remarks,
     );
+  }
+}
+
+/// Helpers for rendering plan-item lists.
+extension DplProductionPlanItemListSorting on List<DplProductionPlanItem> {
+  /// Returns a new list ordered for the operator's plan view:
+  ///   1. In-progress items first
+  ///   2. Pending items next, sorted by plan_no ascending
+  ///   3. Completed items pinned to the bottom (also by plan_no)
+  /// Ties are broken by `sequence` then `id` so the order is stable.
+  List<DplProductionPlanItem> sortedForExecution() {
+    final copy = List<DplProductionPlanItem>.from(this);
+    copy.sort((a, b) {
+      final byStatus = a._statusRank.compareTo(b._statusRank);
+      if (byStatus != 0) return byStatus;
+      final byPlanNo = a.planNo.compareTo(b.planNo);
+      if (byPlanNo != 0) return byPlanNo;
+      final bySequence = a.sequence.compareTo(b.sequence);
+      if (bySequence != 0) return bySequence;
+      return a.id.compareTo(b.id);
+    });
+    return copy;
   }
 }

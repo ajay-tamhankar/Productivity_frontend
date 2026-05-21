@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/widgets/shift_chip.dart';
 import '../../models/dpl_production_plan_item.dart';
 import 'status_badge.dart';
 
@@ -89,7 +90,16 @@ class DplPlanItemTile extends StatelessWidget {
                       ],
                     ),
                   ),
-                  DplStatusBadge(status: item.status),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      DplStatusBadge(status: item.status),
+                      if (item.shiftDisplayLabel != null) ...[
+                        const SizedBox(height: 4),
+                        DplShiftChip(label: item.shiftDisplayLabel!),
+                      ],
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 10),

@@ -5,12 +5,16 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/dpl_api_service.dart';
+import '../../core/widgets/dpl_pauses_panel.dart';
 import '../../core/widgets/dpl_refresh_icon_button.dart';
+import '../../core/widgets/shift_chip.dart';
 import '../../manager/widgets/empty_state.dart';
 import '../../manager/widgets/error_retry.dart';
 import '../../manager/widgets/status_badge.dart';
 import '../../models/dpl_downtime_event.dart';
+import '../../models/dpl_production_plan_item.dart';
 import '../../models/dpl_supervisor_plan_detail.dart';
+import '../providers/dpl_plan_pauses_provider.dart';
 import '../providers/machine_plan_provider.dart';
 import '../providers/today_plans_provider.dart';
 import '../widgets/downtime_entry_sheet.dart';
@@ -180,6 +184,13 @@ class _PlanBody extends ConsumerWidget {
                   DplStatusBadge(status: plan.status),
                 ],
               ),
+              if (plan.shiftLabel.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: DplShiftChip(label: plan.shiftLabel),
+                ),
+              ],
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -224,7 +235,8 @@ class _PlanBody extends ConsumerWidget {
             message: 'This plan has no items yet.',
           )
         else
-          for (final item in plan.items)
+          // Order: in-progress → pending (by plan_no) → completed.
+          for (final item in plan.items.sortedForExecution())
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: PlanRowCard(
@@ -238,6 +250,13 @@ class _PlanBody extends ConsumerWidget {
           const SizedBox(height: 16),
           _DowntimeHistoryCard(history: detail.downtimeHistory),
         ],
+        const SizedBox(height: 16),
+        const Text(
+          'Pauses',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        _SupervisorPausesSection(planId: planId),
         const SizedBox(height: 80),
       ],
     );
@@ -477,6 +496,47 @@ class _ActiveDowntimeCardState extends ConsumerState<_ActiveDowntimeCard> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pauses section (supervisor)
+// ---------------------------------------------------------------------------
+
+class _SupervisorPausesSection extends ConsumerWidget {
+  final int planId;
+  const _SupervisorPausesSection({required this.planId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(dplSupervisorPlanPausesProvider(planId));
+    void retry() => ref.invalidate(dplSupervisorPlanPausesProvider(planId));
+
+    return async.when(
+      loading: () => DplPausesPanel(
+        pauses: const [],
+        loading: true,
+        onRetry: retry,
+      ),
+      error: (e, _) => DplPausesPanel(
+        pauses: const [],
+        error: e.toString(),
+        onRetry: retry,
+      ),
+      data: (res) {
+        if (res.isError) {
+          return DplPausesPanel(
+            pauses: const [],
+            error: res.error ?? 'Failed to load pauses.',
+            onRetry: retry,
+          );
+        }
+        return DplPausesPanel(
+          pauses: res.data ?? const [],
+          onRetry: retry,
+        );
+      },
     );
   }
 }

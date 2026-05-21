@@ -30,9 +30,14 @@ class DplPaths {
   static const String plans = '/manager/plans';
   static String planById(int id) => '/manager/plans/$id';
   static String planLock(int id) => '/manager/plans/$id/lock';
+  static String planChangeStatus(int id) =>
+      '/manager/plans/$id/change-status';
   static String planItems(int id) => '/manager/plans/$id/items';
   static String planItemById(int planId, int itemId) =>
       '/manager/plans/$planId/items/$itemId';
+  static String managerPlanPauses(int id) => '/manager/plans/$id/pauses';
+  static String managerPlanItemPauses(int planId, int itemId) =>
+      '/manager/plans/$planId/items/$itemId/pauses';
 
   // Manager — reports
   static const String reportPlanVsActual = '/manager/reports/plan-vs-actual';
@@ -64,6 +69,14 @@ class DplPaths {
       '/supervisor/plans/$planId/items/$itemId/stop';
   static String supervisorItemActual(int planId, int itemId) =>
       '/supervisor/plans/$planId/items/$itemId/actual';
+  static String supervisorItemPause(int planId, int itemId) =>
+      '/supervisor/plans/$planId/items/$itemId/pause';
+  static String supervisorItemResume(int planId, int itemId) =>
+      '/supervisor/plans/$planId/items/$itemId/resume';
+  static String supervisorItemPauses(int planId, int itemId) =>
+      '/supervisor/plans/$planId/items/$itemId/pauses';
+  static String supervisorPlanPauses(int planId) =>
+      '/supervisor/plans/$planId/pauses';
   static String supervisorDowntimeStart(int planId) =>
       '/supervisor/plans/$planId/downtime/start';
   static String supervisorDowntimeResume(int downtimeId) =>
@@ -135,16 +148,18 @@ class DplPlanStatus {
     }
   }
 
-  static bool isEditable(String status) =>
-      status == draft || status == published;
+  /// Per backend update (2026-05-21): manager can edit a plan in ANY
+  /// status except locked. Backend returns INVALID_STATUS for locked.
+  static bool isEditable(String status) => status != locked;
 
   static bool isLockable(String status) =>
       status == published || status == inProgress;
 
   static bool isDeletable(String status) => status == draft;
 
-  static bool isReadOnly(String status) =>
-      status == completed || status == locked;
+  /// Read-only is now equivalent to locked. Use the change-status
+  /// endpoint to move out of locked before editing.
+  static bool isReadOnly(String status) => status == locked;
 }
 
 /// Downtime-reason categories.

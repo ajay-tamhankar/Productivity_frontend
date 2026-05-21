@@ -17,6 +17,7 @@ import '../providers/today_plans_provider.dart';
 import '../widgets/downtime_entry_sheet.dart';
 import '../widgets/dpl_supervisor_footer.dart';
 import '../widgets/live_timer_text.dart';
+import '../widgets/pause_entry_sheet.dart';
 import '../widgets/start_stop_button.dart';
 import '../widgets/stop_confirm_dialog.dart';
 import '../widgets/supervisor_error_helper.dart';
@@ -47,6 +48,8 @@ class _PlanExecutionScreenState extends ConsumerState<PlanExecutionScreen> {
 
   bool _isStarting = false;
   bool _isStopping = false;
+  bool _isPausing = false;
+  bool _isResumingPause = false;
   bool _wakelockOn = false;
 
   @override
@@ -184,6 +187,70 @@ class _PlanExecutionScreenState extends ConsumerState<PlanExecutionScreen> {
     ref.invalidate(todayPlansProvider);
   }
 
+  Future<void> _openPause(DplProductionPlanItem item) async {
+    final label =
+        'Plan #${item.planNo} — ${item.partDescription.isEmpty ? "Item" : item.partDescription}';
+    final result = await showModalBottomSheet<PauseEntryResult>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => PauseEntrySheet(itemLabel: label),
+    );
+    if (result == null || !mounted) return;
+
+    setState(() => _isPausing = true);
+    final res = await ref.read(dplApiServiceProvider).pauseItem(
+          widget.planId,
+          widget.itemId,
+          reasonText: result.reasonText,
+          reasonId: result.reasonId,
+          expectedResumeAt: result.expectedResumeAt,
+        );
+    if (!mounted) return;
+    setState(() => _isPausing = false);
+
+    if (res.isError) {
+      handleSupervisorError(
+        context,
+        res,
+        fallback: 'Failed to pause item.',
+      );
+      return;
+    }
+    HapticFeedback.heavyImpact();
+    DplSnack.success(context, 'Item paused.');
+    ref.invalidate(machinePlanProvider(widget.planId));
+    ref.invalidate(todayPlansProvider);
+  }
+
+  Future<void> _resumeItemPause() async {
+    setState(() => _isResumingPause = true);
+    final res = await ref
+        .read(dplApiServiceProvider)
+        .resumeItem(widget.planId, widget.itemId);
+    if (!mounted) return;
+    setState(() => _isResumingPause = false);
+
+    if (res.isError) {
+      handleSupervisorError(
+        context,
+        res,
+        fallback: 'Failed to resume item.',
+      );
+      return;
+    }
+    HapticFeedback.heavyImpact();
+    final mins = res.data?.durationMinutes ?? 0;
+    DplSnack.success(
+      context,
+      mins > 0 ? 'Resumed after ${mins}m.' : 'Resumed.',
+    );
+    ref.invalidate(machinePlanProvider(widget.planId));
+    ref.invalidate(todayPlansProvider);
+  }
+
   Future<void> _openDowntime(
     DplSupervisorPlanDetail detail,
     DplProductionPlanItem item,
@@ -271,12 +338,16 @@ class _PlanExecutionScreenState extends ConsumerState<PlanExecutionScreen> {
             localActualQty: _localActualQty ?? item.actualQty,
             isStarting: _isStarting,
             isStopping: _isStopping,
+            isPausing: _isPausing,
+            isResumingPause: _isResumingPause,
             onStart: () => _start(item),
             onStop: () => _stop(item),
             onLocalQtyChange: _onLocalQtyChange,
             onOpenDowntime: () => _openDowntime(detail, item),
             onResume: () =>
                 _resume(activeDowntime?.id ?? detail.activeDowntime!.id),
+            onPause: () => _openPause(item),
+            onResumeItemPause: _resumeItemPause,
           );
         },
       ),
@@ -346,11 +417,15 @@ class _ExecutionBody extends StatelessWidget {
   final int localActualQty;
   final bool isStarting;
   final bool isStopping;
+  final bool isPausing;
+  final bool isResumingPause;
   final VoidCallback onStart;
   final VoidCallback onStop;
   final ValueChanged<int> onLocalQtyChange;
   final VoidCallback onOpenDowntime;
   final VoidCallback onResume;
+  final VoidCallback onPause;
+  final VoidCallback onResumeItemPause;
 
   const _ExecutionBody({
     required this.detail,
@@ -360,11 +435,15 @@ class _ExecutionBody extends StatelessWidget {
     required this.localActualQty,
     required this.isStarting,
     required this.isStopping,
+    required this.isPausing,
+    required this.isResumingPause,
     required this.onStart,
     required this.onStop,
     required this.onLocalQtyChange,
     required this.onOpenDowntime,
     required this.onResume,
+    required this.onPause,
+    required this.onResumeItemPause,
   });
 
   @override
@@ -382,11 +461,15 @@ class _ExecutionBody extends StatelessWidget {
           localActualQty: localActualQty,
           isStarting: isStarting,
           isStopping: isStopping,
+          isPausing: isPausing,
+          isResumingPause: isResumingPause,
           onStart: onStart,
           onStop: onStop,
           onLocalQtyChange: onLocalQtyChange,
           onOpenDowntime: onOpenDowntime,
           onResume: onResume,
+          onPause: onPause,
+          onResumeItemPause: onResumeItemPause,
         ),
         const SizedBox(height: 24),
       ],
@@ -475,11 +558,15 @@ class _StateBody extends StatelessWidget {
   final int localActualQty;
   final bool isStarting;
   final bool isStopping;
+  final bool isPausing;
+  final bool isResumingPause;
   final VoidCallback onStart;
   final VoidCallback onStop;
   final ValueChanged<int> onLocalQtyChange;
   final VoidCallback onOpenDowntime;
   final VoidCallback onResume;
+  final VoidCallback onPause;
+  final VoidCallback onResumeItemPause;
 
   const _StateBody({
     required this.detail,
@@ -489,11 +576,15 @@ class _StateBody extends StatelessWidget {
     required this.localActualQty,
     required this.isStarting,
     required this.isStopping,
+    required this.isPausing,
+    required this.isResumingPause,
     required this.onStart,
     required this.onStop,
     required this.onLocalQtyChange,
     required this.onOpenDowntime,
     required this.onResume,
+    required this.onPause,
+    required this.onResumeItemPause,
   });
 
   @override
@@ -508,7 +599,7 @@ class _StateBody extends StatelessWidget {
       return _PendingView(isStarting: isStarting, onStart: onStart);
     }
 
-    // State C — In Progress + active downtime on this item
+    // State C — In Progress + active machine downtime on THIS item
     if (activeDowntime != null) {
       return _DowntimeView(
         item: item,
@@ -518,13 +609,28 @@ class _StateBody extends StatelessWidget {
       );
     }
 
+    // State C' — Item-level pause (parallel to downtime, supervisor can
+    // jump to another item on the plan while this one is paused).
+    if (item.pausedAt != null) {
+      return _ItemPausedView(
+        item: item,
+        localActualQty: localActualQty,
+        isResuming: isResumingPause,
+        isStopping: isStopping,
+        onResume: onResumeItemPause,
+        onStop: onStop,
+      );
+    }
+
     // State B — In Progress
     return _InProgressView(
       item: item,
       qtyCtrl: qtyCtrl,
       localActualQty: localActualQty,
       isStopping: isStopping,
+      isPausing: isPausing,
       onStop: onStop,
+      onPause: onPause,
       onLocalQtyChange: onLocalQtyChange,
       onOpenDowntime: onOpenDowntime,
     );
@@ -567,7 +673,9 @@ class _InProgressView extends StatelessWidget {
   final TextEditingController qtyCtrl;
   final int localActualQty;
   final bool isStopping;
+  final bool isPausing;
   final VoidCallback onStop;
+  final VoidCallback onPause;
   final ValueChanged<int> onLocalQtyChange;
   final VoidCallback onOpenDowntime;
 
@@ -576,7 +684,9 @@ class _InProgressView extends StatelessWidget {
     required this.qtyCtrl,
     required this.localActualQty,
     required this.isStopping,
+    required this.isPausing,
     required this.onStop,
+    required this.onPause,
     required this.onLocalQtyChange,
     required this.onOpenDowntime,
   });
@@ -646,6 +756,143 @@ class _InProgressView extends StatelessWidget {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 48,
+          child: OutlinedButton.icon(
+            onPressed: isPausing ? null : onPause,
+            icon: isPausing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.pause_circle_outline),
+            label: Text(isPausing ? 'Pausing…' : 'Pause Item'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFB45309),
+              side: const BorderSide(
+                color: Color(0xFFB45309),
+                width: 1.4,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ItemPausedView extends StatelessWidget {
+  final DplProductionPlanItem item;
+  final int localActualQty;
+  final bool isResuming;
+  final bool isStopping;
+  final VoidCallback onResume;
+  final VoidCallback onStop;
+
+  const _ItemPausedView({
+    required this.item,
+    required this.localActualQty,
+    required this.isResuming,
+    required this.isStopping,
+    required this.onResume,
+    required this.onStop,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pausedAt = DateFormat('hh:mm a').format(item.pausedAt!.toLocal());
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFB45309),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: [
+              const Text(
+                'ITEM PAUSED',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 8),
+              LiveTimerText(
+                startTime: item.pausedAt!,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 44,
+                  fontWeight: FontWeight.w900,
+                  fontFamily: 'monospace',
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Paused at $pausedAt',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            border: Border.all(color: const Color(0xFFD9E2EF)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.pause_circle_outline,
+                  color: Color(0xFF5D6A7A)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'You can start a different item on this plan while '
+                  'this one is paused — actual: $localActualQty / '
+                  '${item.planQty}',
+                  style: const TextStyle(
+                    color: Color(0xFF5D6A7A),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        StartStopButton(
+          label: 'RESUME PRODUCTION',
+          icon: Icons.play_arrow_rounded,
+          color: const Color(0xFF047857),
+          onPressed: onResume,
+          isBusy: isResuming,
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 48,
+          child: OutlinedButton.icon(
+            onPressed: isStopping ? null : onStop,
+            icon: const Icon(Icons.stop_rounded),
+            label: const Text('Complete & Stop'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFB3261E),
+              side: const BorderSide(color: Color(0xFFB3261E), width: 1.4),
+            ),
+          ),
         ),
       ],
     );

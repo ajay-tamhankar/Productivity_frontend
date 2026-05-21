@@ -6,6 +6,9 @@ import 'package:intl/intl.dart';
 import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/dpl_api_service.dart';
 import '../../core/dpl_constants.dart';
+import '../../core/widgets/dpl_pauses_panel.dart';
+import '../../core/widgets/shift_chip.dart';
+import '../providers/dpl_plan_pauses_provider.dart';
 import '../../models/dpl_part.dart';
 import '../../models/dpl_production_plan.dart';
 import '../../models/dpl_production_plan_item.dart';
@@ -18,7 +21,7 @@ import '../widgets/part_search_field.dart';
 import '../widgets/plan_item_tile.dart';
 import '../widgets/status_badge.dart';
 
-enum _PlanMenu { edit, delete }
+enum _PlanMenu { edit, changeStatus, delete }
 
 class DplPlanDetailScreen extends ConsumerWidget {
   final int planId;
@@ -51,6 +54,14 @@ class DplPlanDetailScreen extends ConsumerWidget {
                         title: Text('Edit header'),
                       ),
                     ),
+                  const PopupMenuItem(
+                    value: _PlanMenu.changeStatus,
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(Icons.swap_horiz_outlined),
+                      title: Text('Change status'),
+                    ),
+                  ),
                   if (DplPlanStatus.isDeletable(res.data!.status))
                     const PopupMenuItem(
                       value: _PlanMenu.delete,
@@ -103,34 +114,7 @@ class DplPlanDetailScreen extends ConsumerWidget {
           },
         ),
       ),
-      bottomNavigationBar: DplManagerFooter(
-        aboveNav: detail.maybeWhen(
-          data: (res) {
-            if (res.isError || res.data == null) {
-              return const SizedBox.shrink();
-            }
-            final plan = res.data!;
-            if (!DplPlanStatus.isLockable(plan.status)) {
-              return const SizedBox.shrink();
-            }
-            return SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    icon: const Icon(Icons.lock_outline),
-                    label: const Text('Lock Plan'),
-                    onPressed: () => _confirmLock(context, ref, plan),
-                  ),
-                ),
-              ),
-            );
-          },
-          orElse: () => const SizedBox.shrink(),
-        ),
-      ),
+      bottomNavigationBar: const DplManagerFooter(),
     );
   }
 
@@ -144,49 +128,48 @@ class DplPlanDetailScreen extends ConsumerWidget {
       case _PlanMenu.edit:
         await _showEditHeader(context, ref, plan);
         break;
+      case _PlanMenu.changeStatus:
+        await _showChangeStatus(context, ref, plan);
+        break;
       case _PlanMenu.delete:
         await _confirmDelete(context, ref, plan);
         break;
     }
   }
 
-  Future<void> _confirmLock(
+  Future<void> _showChangeStatus(
     BuildContext context,
     WidgetRef ref,
     DplProductionPlan plan,
   ) async {
-    final confirmed = await showDialog<bool>(
+    final result = await showModalBottomSheet<_ChangeStatusResult>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Lock Plan?'),
-        content: const Text(
-          'Locking prevents any further edits to this plan. Continue?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Lock'),
-          ),
-        ],
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder: (_) => _ChangeStatusSheet(currentStatus: plan.status),
     );
+    if (result == null) return;
 
-    if (confirmed != true) return;
-    final res = await ref.read(dplApiServiceProvider).lockPlan(plan.id);
+    final res = await ref.read(dplApiServiceProvider).changePlanStatus(
+          plan.id,
+          status: result.status,
+          reason: result.reason,
+        );
     if (!context.mounted) return;
-
     if (res.isError) {
-      DplSnack.error(context, res.error ?? 'Failed to lock plan.');
+      DplSnack.error(context, res.error ?? 'Failed to change status.');
       return;
     }
-    DplSnack.success(context, 'Plan locked.');
+    DplSnack.success(
+      context,
+      'Plan moved to ${DplPlanStatus.label(result.status)}.',
+    );
     ref.invalidate(dplPlanDetailProvider(planId));
     ref.invalidate(dplPlanListProvider);
   }
+
 
   Future<void> _confirmDelete(
     BuildContext context,
@@ -349,6 +332,13 @@ class _PlanBody extends ConsumerWidget {
                 dateFmt.format(plan.planDate),
                 style: const TextStyle(color: Color(0xFF5D6A7A)),
               ),
+              if (plan.shiftLabel.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: DplShiftChip(label: plan.shiftLabel),
+                ),
+              ],
               const SizedBox(height: 12),
               _kvRow('Supervisor', plan.supervisorName),
               _kvRow('Released by', plan.planReleasedBy),
@@ -401,7 +391,8 @@ class _PlanBody extends ConsumerWidget {
             message: 'Add items to this plan to track production.',
           )
         else
-          ...plan.items.map(
+          // In-progress first, pending sorted by plan_no, completed last.
+          ...plan.items.sortedForExecution().map(
             (i) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: DplPlanItemTile(
@@ -412,6 +403,13 @@ class _PlanBody extends ConsumerWidget {
               ),
             ),
           ),
+        const SizedBox(height: 22),
+        const Text(
+          'Pauses',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        _ManagerPausesSection(planId: plan.id),
         const SizedBox(height: 32),
       ],
     );
@@ -765,6 +763,211 @@ class _PlanItemDialogState extends State<_PlanItemDialog> {
           child: Text(widget.existing == null ? 'Add' : 'Save'),
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pauses section (manager-side, read-only)
+// ---------------------------------------------------------------------------
+
+class _ManagerPausesSection extends ConsumerWidget {
+  final int planId;
+  const _ManagerPausesSection({required this.planId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(dplManagerPlanPausesProvider(planId));
+    void retry() => ref.invalidate(dplManagerPlanPausesProvider(planId));
+
+    return async.when(
+      loading: () => const DplPausesPanel(
+        pauses: [],
+        loading: true,
+        onRetry: _noop,
+      ),
+      error: (e, _) => DplPausesPanel(
+        pauses: const [],
+        error: e.toString(),
+        onRetry: retry,
+      ),
+      data: (res) {
+        if (res.isError) {
+          return DplPausesPanel(
+            pauses: const [],
+            error: res.error ?? 'Failed to load pauses.',
+            onRetry: retry,
+          );
+        }
+        return DplPausesPanel(
+          pauses: res.data ?? const [],
+          onRetry: retry,
+        );
+      },
+    );
+  }
+}
+
+void _noop() {}
+
+// ---------------------------------------------------------------------------
+// Change Status sheet
+// ---------------------------------------------------------------------------
+
+class _ChangeStatusResult {
+  final String status;
+  final String reason;
+  const _ChangeStatusResult(this.status, this.reason);
+}
+
+class _ChangeStatusSheet extends StatefulWidget {
+  final String currentStatus;
+  const _ChangeStatusSheet({required this.currentStatus});
+
+  @override
+  State<_ChangeStatusSheet> createState() => _ChangeStatusSheetState();
+}
+
+class _ChangeStatusSheetState extends State<_ChangeStatusSheet> {
+  late String _status;
+  final _reasonCtrl = TextEditingController();
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _status = widget.currentStatus;
+  }
+
+  @override
+  void dispose() {
+    _reasonCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final reason = _reasonCtrl.text.trim();
+    if (reason.isEmpty) {
+      setState(() => _error = 'Reason is required.');
+      return;
+    }
+    if (_status == widget.currentStatus) {
+      setState(() => _error =
+          'Pick a different status, or this is a no-op.');
+      return;
+    }
+    Navigator.of(context).pop(_ChangeStatusResult(_status, reason));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 12,
+        bottom: 16 + media.viewInsets.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD9E2EF),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const Text(
+            'Change Plan Status',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Currently ${DplPlanStatus.label(widget.currentStatus)}. '
+            'Any status transition is allowed; both fields are required.',
+            style: const TextStyle(color: Color(0xFF5D6A7A), fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          if (_error != null) ...[
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFECEA),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFFB4AA)),
+              ),
+              child: Text(
+                _error!,
+                style: const TextStyle(
+                  color: Color(0xFF8F1D18),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          DropdownButtonFormField<String>(
+            initialValue: _status,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'New Status',
+              prefixIcon: Icon(Icons.swap_horiz_outlined),
+            ),
+            items: [
+              for (final s in DplPlanStatus.all)
+                DropdownMenuItem(
+                  value: s,
+                  child: Text(DplPlanStatus.label(s)),
+                ),
+            ],
+            onChanged: (v) => setState(() => _status = v ?? _status),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _reasonCtrl,
+            maxLines: 3,
+            maxLength: 500,
+            decoration: const InputDecoration(
+              labelText: 'Reason (required)',
+              hintText: 'Why is the status changing? Logged to audit.',
+              prefixIcon: Icon(Icons.notes_outlined),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text('Apply'),
+                    onPressed: _submit,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
