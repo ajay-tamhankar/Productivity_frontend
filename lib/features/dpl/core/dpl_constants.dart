@@ -32,6 +32,10 @@ class DplPaths {
   static String planLock(int id) => '/manager/plans/$id/lock';
   static String planChangeStatus(int id) =>
       '/manager/plans/$id/change-status';
+  static String planItemChangeStatus(int planId, int itemId) =>
+      '/manager/plans/$planId/items/$itemId/change-status';
+  static String planItemCarryForward(int planId, int itemId) =>
+      '/manager/plans/$planId/items/$itemId/carry-forward';
   static String planItems(int id) => '/manager/plans/$id/items';
   static String planItemById(int planId, int itemId) =>
       '/manager/plans/$planId/items/$itemId';

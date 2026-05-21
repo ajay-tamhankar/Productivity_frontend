@@ -5,10 +5,25 @@ import '../../core/widgets/shift_chip.dart';
 import '../../models/dpl_production_plan_item.dart';
 import 'status_badge.dart';
 
+enum _ItemMenuAction { changeStatus, carryForward, delete }
+
 class DplPlanItemTile extends StatelessWidget {
   final DplProductionPlanItem item;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
+  /// Manager-only callback: opens the per-item status override sheet.
+  /// When null, the overflow menu doesn't show a "Change status" row.
+  final VoidCallback? onChangeStatus;
+
+  /// Manager-only callback: opens the carry-forward-to-next-shift sheet.
+  /// When null, the overflow menu doesn't show the row.
+  final VoidCallback? onCarryForward;
+
+  /// Manager-only callback for the overflow menu. When null, the menu
+  /// hides the "Delete" row (the long-press path stays untouched).
+  final VoidCallback? onDelete;
+
   final bool showActual;
 
   const DplPlanItemTile({
@@ -16,6 +31,9 @@ class DplPlanItemTile extends StatelessWidget {
     required this.item,
     this.onTap,
     this.onLongPress,
+    this.onChangeStatus,
+    this.onCarryForward,
+    this.onDelete,
     this.showActual = true,
   });
 
@@ -100,6 +118,71 @@ class DplPlanItemTile extends StatelessWidget {
                       ],
                     ],
                   ),
+                  if (onChangeStatus != null ||
+                      onCarryForward != null ||
+                      onDelete != null)
+                    PopupMenuButton<_ItemMenuAction>(
+                      tooltip: 'More',
+                      icon: const Icon(
+                        Icons.more_vert,
+                        color: Color(0xFF5D6A7A),
+                      ),
+                      onSelected: (a) {
+                        switch (a) {
+                          case _ItemMenuAction.changeStatus:
+                            onChangeStatus?.call();
+                            break;
+                          case _ItemMenuAction.carryForward:
+                            onCarryForward?.call();
+                            break;
+                          case _ItemMenuAction.delete:
+                            onDelete?.call();
+                            break;
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        if (onChangeStatus != null)
+                          const PopupMenuItem(
+                            value: _ItemMenuAction.changeStatus,
+                            child: ListTile(
+                              dense: true,
+                              leading: Icon(Icons.swap_horiz_outlined),
+                              title: Text('Change status'),
+                            ),
+                          ),
+                        // "Carry to next shift" only makes sense when
+                        // there's leftover qty to push forward.
+                        if (onCarryForward != null &&
+                            item.planQty - item.actualQty > 0)
+                          PopupMenuItem(
+                            value: _ItemMenuAction.carryForward,
+                            child: ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.skip_next_outlined),
+                              title: const Text('Carry to next shift'),
+                              subtitle: Text(
+                                'Leftover: ${item.planQty - item.actualQty}',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                            ),
+                          ),
+                        if (onDelete != null)
+                          const PopupMenuItem(
+                            value: _ItemMenuAction.delete,
+                            child: ListTile(
+                              dense: true,
+                              leading: Icon(
+                                Icons.delete_outline,
+                                color: Color(0xFFB3261E),
+                              ),
+                              title: Text(
+                                'Delete',
+                                style: TextStyle(color: Color(0xFFB3261E)),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                 ],
               ),
               const SizedBox(height: 10),

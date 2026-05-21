@@ -556,6 +556,56 @@ class DplApiService {
     );
   }
 
+  /// `POST /manager/plans/:planId/items/:itemId/change-status` — manager
+  /// overrides an item's status (pending / in_progress / completed).
+  /// Both [status] and [reason] are mandatory; mirrors the plan-level
+  /// change-status contract.
+  Future<DplApiResponse<DplProductionPlanItem>> changePlanItemStatus(
+    int planId,
+    int itemId, {
+    required String status,
+    required String reason,
+  }) {
+    return _send<DplProductionPlanItem>(
+      () => _dio.post(
+        DplPaths.planItemChangeStatus(planId, itemId),
+        data: {'status': status, 'reason': reason},
+      ),
+      fallback: 'Failed to change item status.',
+      fromJson:
+          _oneFrom<DplProductionPlanItem>(DplProductionPlanItem.fromJson),
+    );
+  }
+
+  /// `POST /manager/plans/:planId/items/:itemId/carry-forward` — move
+  /// the leftover quantity of a partially-complete item into a NEW
+  /// item assigned to [shiftId]. The source item is closed (status =
+  /// completed) unless [completeSource] is false.
+  ///
+  /// [planQty] defaults to `(item.planQty - item.actualQty)` on the
+  /// server when omitted from the body.
+  Future<DplApiResponse<DplProductionPlanItem>> carryForwardItem(
+    int planId,
+    int itemId, {
+    required int shiftId,
+    int? planQty,
+    bool completeSource = true,
+  }) {
+    return _send<DplProductionPlanItem>(
+      () => _dio.post(
+        DplPaths.planItemCarryForward(planId, itemId),
+        data: {
+          'shift_id': shiftId,
+          'plan_qty': ?planQty,
+          'complete_source': completeSource,
+        },
+      ),
+      fallback: 'Failed to carry item forward.',
+      fromJson:
+          _oneFrom<DplProductionPlanItem>(DplProductionPlanItem.fromJson),
+    );
+  }
+
   /// `GET /manager/plans/:id/pauses` — manager-side audit of every
   /// item pause on a plan.
   Future<DplApiResponse<List<DplItemPause>>> getManagerPlanPauses(

@@ -129,11 +129,14 @@ class DplProductionPlanItem {
   }
 
   /// Payload for `POST /plans/:id/items` or used as a row in `createPlans`.
+  /// `shift_id` is sent only when set; null is intentionally omitted so
+  /// the backend keeps its auto-derive-on-first-start behaviour.
   Map<String, dynamic> toCreateJson() => {
         'plan_no': planNo,
         'part_id': partId,
         'plan_qty': planQty,
         'sequence': sequence,
+        if (shiftId != null) 'shift_id': shiftId,
         if (remarks != null && remarks!.isNotEmpty) 'remarks': remarks,
       };
 
@@ -143,6 +146,7 @@ class DplProductionPlanItem {
         'part_id': partId,
         'plan_qty': planQty,
         'sequence': sequence,
+        if (shiftId != null) 'shift_id': shiftId,
         if (remarks != null) 'remarks': remarks,
       };
 

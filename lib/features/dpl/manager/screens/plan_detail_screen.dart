@@ -8,7 +8,9 @@ import '../../core/dpl_api_service.dart';
 import '../../core/dpl_constants.dart';
 import '../../core/widgets/dpl_pauses_panel.dart';
 import '../../core/widgets/shift_chip.dart';
+import '../../models/dpl_shift.dart';
 import '../providers/dpl_plan_pauses_provider.dart';
+import '../providers/dpl_shifts_provider.dart';
 import '../../models/dpl_part.dart';
 import '../../models/dpl_production_plan.dart';
 import '../../models/dpl_production_plan_item.dart';
@@ -400,6 +402,15 @@ class _PlanBody extends ConsumerWidget {
                 onTap: readOnly ? null : () => _editItem(context, ref, plan, i),
                 onLongPress:
                     readOnly ? null : () => _confirmDeleteItem(context, ref, plan, i),
+                onChangeStatus: readOnly
+                    ? null
+                    : () => _showChangeItemStatus(context, ref, plan, i),
+                onCarryForward: readOnly
+                    ? null
+                    : () => _showCarryForward(context, ref, plan, i),
+                onDelete: readOnly
+                    ? null
+                    : () => _confirmDeleteItem(context, ref, plan, i),
               ),
             ),
           ),
@@ -545,6 +556,80 @@ class _PlanBody extends ConsumerWidget {
     ref.invalidate(dplPlanDetailProvider(plan.id));
   }
 
+  Future<void> _showCarryForward(
+    BuildContext context,
+    WidgetRef ref,
+    DplProductionPlan plan,
+    DplProductionPlanItem item,
+  ) async {
+    final result = await showModalBottomSheet<_CarryForwardResult>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _CarryForwardSheet(item: item),
+    );
+    if (result == null) return;
+
+    final res = await ref.read(dplApiServiceProvider).carryForwardItem(
+          plan.id,
+          item.id,
+          shiftId: result.shiftId,
+          planQty: result.planQty,
+          completeSource: result.completeSource,
+        );
+    if (!context.mounted) return;
+    if (res.isError) {
+      DplSnack.error(
+        context,
+        res.error ?? 'Failed to carry item forward.',
+      );
+      return;
+    }
+    DplSnack.success(
+      context,
+      'Carried ${result.planQty} to the next shift.',
+    );
+    ref.invalidate(dplPlanDetailProvider(plan.id));
+  }
+
+  Future<void> _showChangeItemStatus(
+    BuildContext context,
+    WidgetRef ref,
+    DplProductionPlan plan,
+    DplProductionPlanItem item,
+  ) async {
+    final result = await showModalBottomSheet<_ChangeStatusResult>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _ChangeItemStatusSheet(item: item),
+    );
+    if (result == null) return;
+
+    final res = await ref
+        .read(dplApiServiceProvider)
+        .changePlanItemStatus(
+          plan.id,
+          item.id,
+          status: result.status,
+          reason: result.reason,
+        );
+    if (!context.mounted) return;
+    if (res.isError) {
+      DplSnack.error(context, res.error ?? 'Failed to change item status.');
+      return;
+    }
+    DplSnack.success(
+      context,
+      'Item moved to ${_humanItemStatus(result.status)}.',
+    );
+    ref.invalidate(dplPlanDetailProvider(plan.id));
+  }
+
   Future<void> _confirmDeleteItem(
     BuildContext context,
     WidgetRef ref,
@@ -586,7 +671,7 @@ class _PlanBody extends ConsumerWidget {
   }
 }
 
-class _PlanItemDialog extends StatefulWidget {
+class _PlanItemDialog extends ConsumerStatefulWidget {
   final String title;
   final DplProductionPlanItem? existing;
   final int defaultPlanNo;
@@ -604,15 +689,16 @@ class _PlanItemDialog extends StatefulWidget {
   });
 
   @override
-  State<_PlanItemDialog> createState() => _PlanItemDialogState();
+  ConsumerState<_PlanItemDialog> createState() => _PlanItemDialogState();
 }
 
-class _PlanItemDialogState extends State<_PlanItemDialog> {
+class _PlanItemDialogState extends ConsumerState<_PlanItemDialog> {
   late final TextEditingController _planNoCtrl;
   late final TextEditingController _qtyCtrl;
   late final TextEditingController _seqCtrl;
   late final TextEditingController _remarksCtrl;
   DplPart? _selectedPart;
+  int? _shiftId;
   String? _error;
 
   @override
@@ -626,6 +712,7 @@ class _PlanItemDialogState extends State<_PlanItemDialog> {
     _seqCtrl = TextEditingController(
         text: (e?.sequence ?? widget.defaultSequence).toString());
     _remarksCtrl = TextEditingController(text: e?.remarks ?? '');
+    _shiftId = e?.shiftId;
     if (e != null && e.partId > 0) {
       _selectedPart = DplPart(
         id: e.partId,
@@ -674,6 +761,7 @@ class _PlanItemDialogState extends State<_PlanItemDialog> {
         partName: _selectedPart?.name ?? '',
         planQty: qty,
         sequence: seq,
+        shiftId: _shiftId,
         remarks: _remarksCtrl.text.trim().isEmpty
             ? null
             : _remarksCtrl.text.trim(),
@@ -741,6 +829,11 @@ class _PlanItemDialogState extends State<_PlanItemDialog> {
                 controller: _qtyCtrl,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Plan Qty'),
+              ),
+              const SizedBox(height: 10),
+              _ShiftDropdown(
+                value: _shiftId,
+                onChanged: (v) => setState(() => _shiftId = v),
               ),
               const SizedBox(height: 10),
               TextField(
@@ -960,6 +1053,481 @@ class _ChangeStatusSheetState extends State<_ChangeStatusSheet> {
                   child: FilledButton.icon(
                     icon: const Icon(Icons.check_circle_outline),
                     label: const Text('Apply'),
+                    onPressed: _submit,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shift dropdown for the Add/Edit Item dialog
+// ---------------------------------------------------------------------------
+
+class _ShiftDropdown extends ConsumerWidget {
+  final int? value;
+  final ValueChanged<int?> onChanged;
+
+  const _ShiftDropdown({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(dplShiftsProvider);
+    final loading = async.isLoading;
+    final shifts = async.asData?.value.data ?? const <DplShift>[];
+
+    // Keep the previously-stored shift visible even if it's been
+    // deactivated in masters, so editing a started item doesn't
+    // silently drop its shift assignment.
+    final ids = <int>{
+      for (final s in shifts) s.id,
+      ?value,
+    };
+
+    return DropdownButtonFormField<int?>(
+      initialValue: ids.contains(value) ? value : null,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: 'Shift',
+        prefixIcon: const Icon(Icons.access_time),
+        helperText: loading
+            ? 'Loading shifts…'
+            : 'Optional. If left blank, the supervisor\'s first START '
+                'auto-tags the shift.',
+      ),
+      items: [
+        const DropdownMenuItem<int?>(
+          value: null,
+          child: Text('Auto (set on first START)'),
+        ),
+        for (final s in shifts)
+          DropdownMenuItem<int?>(
+            value: s.id,
+            child: Text(
+              '${s.name}'
+              '${s.windowLabel.isEmpty ? '' : '  •  ${s.windowLabel}'}',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        // Stale fallback so the current selection is never lost.
+        if (value != null &&
+            !shifts.any((s) => s.id == value))
+          DropdownMenuItem<int?>(
+            value: value,
+            child: Text('Shift #$value (inactive)'),
+          ),
+      ],
+      onChanged: loading ? null : onChanged,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Change Item Status sheet
+// ---------------------------------------------------------------------------
+
+/// Maps a raw item status enum to a human label. Mirrors
+/// `DplPlanStatus.label` but for item-level statuses (only three are
+/// valid for items).
+String _humanItemStatus(String status) {
+  switch (status) {
+    case 'pending':
+      return 'Pending';
+    case 'in_progress':
+      return 'In Progress';
+    case 'completed':
+      return 'Completed';
+    default:
+      if (status.isEmpty) return '-';
+      return status[0].toUpperCase() + status.substring(1);
+  }
+}
+
+class _ChangeItemStatusSheet extends StatefulWidget {
+  final DplProductionPlanItem item;
+  const _ChangeItemStatusSheet({required this.item});
+
+  @override
+  State<_ChangeItemStatusSheet> createState() =>
+      _ChangeItemStatusSheetState();
+}
+
+class _ChangeItemStatusSheetState extends State<_ChangeItemStatusSheet> {
+  static const _statuses = ['pending', 'in_progress', 'completed'];
+
+  late String _status;
+  final _reasonCtrl = TextEditingController();
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _status = widget.item.status;
+  }
+
+  @override
+  void dispose() {
+    _reasonCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final reason = _reasonCtrl.text.trim();
+    if (reason.isEmpty) {
+      setState(() => _error = 'Reason is required.');
+      return;
+    }
+    if (_status == widget.item.status) {
+      setState(() => _error =
+          'Pick a different status, or this is a no-op.');
+      return;
+    }
+    Navigator.of(context).pop(_ChangeStatusResult(_status, reason));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final item = widget.item;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 12,
+        bottom: 16 + media.viewInsets.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD9E2EF),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const Text(
+            'Change Item Status',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Plan #${item.planNo} '
+            '${item.partDescription.isEmpty ? '' : '— ${item.partDescription}'}',
+            style: const TextStyle(color: Color(0xFF5D6A7A)),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Currently ${_humanItemStatus(item.status)}. '
+            'Both fields are required.',
+            style: const TextStyle(color: Color(0xFF5D6A7A), fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          if (_error != null) ...[
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFECEA),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFFB4AA)),
+              ),
+              child: Text(
+                _error!,
+                style: const TextStyle(
+                  color: Color(0xFF8F1D18),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          DropdownButtonFormField<String>(
+            initialValue: _status,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'New Status',
+              prefixIcon: Icon(Icons.swap_horiz_outlined),
+            ),
+            items: [
+              for (final s in _statuses)
+                DropdownMenuItem(
+                  value: s,
+                  child: Text(_humanItemStatus(s)),
+                ),
+            ],
+            onChanged: (v) => setState(() => _status = v ?? _status),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _reasonCtrl,
+            maxLines: 3,
+            maxLength: 500,
+            decoration: const InputDecoration(
+              labelText: 'Reason (required)',
+              hintText: 'Why is this item being overridden? Logged to audit.',
+              prefixIcon: Icon(Icons.notes_outlined),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text('Apply'),
+                    onPressed: _submit,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Carry-forward-to-next-shift sheet
+// ---------------------------------------------------------------------------
+
+class _CarryForwardResult {
+  final int shiftId;
+  final int planQty;
+  final bool completeSource;
+  const _CarryForwardResult({
+    required this.shiftId,
+    required this.planQty,
+    required this.completeSource,
+  });
+}
+
+class _CarryForwardSheet extends ConsumerStatefulWidget {
+  final DplProductionPlanItem item;
+  const _CarryForwardSheet({required this.item});
+
+  @override
+  ConsumerState<_CarryForwardSheet> createState() =>
+      _CarryForwardSheetState();
+}
+
+class _CarryForwardSheetState extends ConsumerState<_CarryForwardSheet> {
+  late final TextEditingController _qtyCtrl;
+  int? _shiftId;
+  bool _completeSource = true;
+  String? _error;
+
+  int get _leftover => widget.item.planQty - widget.item.actualQty;
+
+  @override
+  void initState() {
+    super.initState();
+    _qtyCtrl = TextEditingController(text: _leftover.toString());
+  }
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final qty = int.tryParse(_qtyCtrl.text.trim()) ?? 0;
+    if (qty <= 0) {
+      setState(() => _error = 'Carry qty must be greater than 0.');
+      return;
+    }
+    if (qty > _leftover) {
+      setState(() =>
+          _error = "Carry qty can't exceed the leftover ($_leftover).");
+      return;
+    }
+    if (_shiftId == null) {
+      setState(() => _error = 'Pick the target shift.');
+      return;
+    }
+    if (_shiftId == widget.item.shiftId) {
+      setState(() => _error =
+          'Target shift is the same as the source - pick a different one.');
+      return;
+    }
+    Navigator.of(context).pop(_CarryForwardResult(
+      shiftId: _shiftId!,
+      planQty: qty,
+      completeSource: _completeSource,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final item = widget.item;
+    final shiftsAsync = ref.watch(dplShiftsProvider);
+    final shifts = shiftsAsync.asData?.value.data ?? const <DplShift>[];
+    final loadingShifts = shiftsAsync.isLoading;
+
+    // Suggest the "next" shift in the masters list. Cheap heuristic:
+    // first active shift whose id isnt the source. The manager can
+    // change it. If none exists, dropdown stays empty.
+    if (_shiftId == null && shifts.isNotEmpty) {
+      final candidate = shifts.firstWhere(
+        (s) => s.id != item.shiftId,
+        orElse: () => shifts.first,
+      );
+      _shiftId = candidate.id;
+    }
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 12,
+        bottom: 16 + media.viewInsets.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD9E2EF),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const Text(
+            'Carry to Next Shift',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Plan #${item.planNo}'
+            '${item.partDescription.isEmpty ? "" : " - ${item.partDescription}"}',
+            style: const TextStyle(color: Color(0xFF5D6A7A)),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Source: plan ${item.planQty} actual ${item.actualQty} '
+            'leftover $_leftover',
+            style: const TextStyle(color: Color(0xFF5D6A7A), fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          if (_error != null) ...[
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFECEA),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFFB4AA)),
+              ),
+              child: Text(
+                _error!,
+                style: const TextStyle(
+                  color: Color(0xFF8F1D18),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          TextField(
+            controller: _qtyCtrl,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Carry qty',
+              helperText: 'Defaults to the full leftover ($_leftover).',
+              prefixIcon: const Icon(Icons.swap_vert),
+            ),
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<int?>(
+            initialValue: _shiftId,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: 'Target Shift',
+              prefixIcon: const Icon(Icons.access_time),
+              helperText: loadingShifts ? 'Loading shifts...' : null,
+            ),
+            items: [
+              for (final s in shifts)
+                DropdownMenuItem<int?>(
+                  value: s.id,
+                  child: Text(
+                    '${s.name}'
+                    '${s.windowLabel.isEmpty ? "" : "  -  ${s.windowLabel}"}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            onChanged: loadingShifts
+                ? null
+                : (v) => setState(() => _shiftId = v),
+          ),
+          const SizedBox(height: 6),
+          CheckboxListTile(
+            value: _completeSource,
+            onChanged: (v) =>
+                setState(() => _completeSource = v ?? true),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text(
+              'Mark source item as completed',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+            subtitle: const Text(
+              'Closes the original item at its current actual quantity. '
+              'Uncheck to keep it open.',
+              style: TextStyle(fontSize: 11, color: Color(0xFF5D6A7A)),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.skip_next_outlined),
+                    label: const Text('Carry Forward'),
                     onPressed: _submit,
                   ),
                 ),

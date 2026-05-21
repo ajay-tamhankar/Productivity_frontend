@@ -60,6 +60,13 @@ class _StopConfirmDialogState extends State<StopConfirmDialog> {
     final varianceLabel =
         variance > 0 ? '+$variance' : variance.toString();
 
+    // Block completion when nothing was actually produced — a
+    // zero-actual "completed" item is almost always a misclick that
+    // corrupts the day's report. Supervisor should either enter the
+    // real qty, keep the item running, or carry the leftover forward
+    // via the manager.
+    final blocked = _actualQty <= 0;
+
     return AlertDialog(
       title: const Text('Complete production?'),
       content: SizedBox(
@@ -72,9 +79,13 @@ class _StopConfirmDialogState extends State<StopConfirmDialog> {
               controller: _qtyCtrl,
               keyboardType: TextInputType.number,
               onChanged: _onQtyChanged,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Actual Qty',
-                prefixIcon: Icon(Icons.confirmation_number_outlined),
+                prefixIcon:
+                    const Icon(Icons.confirmation_number_outlined),
+                errorText: blocked
+                    ? 'Actual qty must be at least 1 to complete.'
+                    : null,
               ),
             ),
             const SizedBox(height: 10),
@@ -113,6 +124,41 @@ class _StopConfirmDialogState extends State<StopConfirmDialog> {
                 ],
               ),
             ),
+            if (blocked) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFCD34D)),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: Color(0xFF92400E),
+                      size: 18,
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Cannot complete with 0 produced. Either enter the '
+                        'actual qty you ran, or close the dialog and ask '
+                        'your manager to carry this item forward to the '
+                        'next shift.',
+                        style: TextStyle(
+                          color: Color(0xFF92400E),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             TextField(
               controller: _remarksCtrl,
@@ -131,14 +177,16 @@ class _StopConfirmDialogState extends State<StopConfirmDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.of(context).pop(
-            StopConfirmResult(
-              actualQty: _actualQty,
-              remarks: _remarksCtrl.text.trim().isEmpty
-                  ? null
-                  : _remarksCtrl.text.trim(),
-            ),
-          ),
+          onPressed: blocked
+              ? null
+              : () => Navigator.of(context).pop(
+                    StopConfirmResult(
+                      actualQty: _actualQty,
+                      remarks: _remarksCtrl.text.trim().isEmpty
+                          ? null
+                          : _remarksCtrl.text.trim(),
+                    ),
+                  ),
           style: FilledButton.styleFrom(
             backgroundColor: const Color(0xFFB3261E),
           ),
