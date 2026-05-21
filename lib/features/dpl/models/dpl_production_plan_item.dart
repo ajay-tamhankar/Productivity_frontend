@@ -26,6 +26,13 @@ class DplProductionPlanItem {
   final String? shiftName;
   final String? remarks;
 
+  /// When set on a CREATE payload, links the new item to a leftover
+  /// item from a previous plan (see
+  /// `GET /manager/plans/carry-forward-candidates`). The backend uses
+  /// this to remove the source from future candidate listings and
+  /// stamps the new row's `carried_from_item_id` column.
+  final int? carriedFromItemId;
+
   const DplProductionPlanItem({
     required this.id,
     required this.planNo,
@@ -45,6 +52,7 @@ class DplProductionPlanItem {
     this.shiftCode,
     this.shiftName,
     this.remarks,
+    this.carriedFromItemId,
   });
 
   factory DplProductionPlanItem.fromJson(Map<String, dynamic> json) {
@@ -125,6 +133,9 @@ class DplProductionPlanItem {
           ? null
           : pickStr([json['shift_name'], json['shiftName'], shift['name']]),
       remarks: json['remarks']?.toString(),
+      carriedFromItemId: parseIntOrNull(
+        json['carried_from_item_id'] ?? json['carriedFromItemId'],
+      ),
     );
   }
 
@@ -137,6 +148,8 @@ class DplProductionPlanItem {
         'plan_qty': planQty,
         'sequence': sequence,
         if (shiftId != null) 'shift_id': shiftId,
+        if (carriedFromItemId != null)
+          'carried_from_item_id': carriedFromItemId,
         if (remarks != null && remarks!.isNotEmpty) 'remarks': remarks,
       };
 
@@ -204,6 +217,7 @@ class DplProductionPlanItem {
     String? shiftCode,
     String? shiftName,
     String? remarks,
+    int? carriedFromItemId,
   }) {
     return DplProductionPlanItem(
       id: id ?? this.id,
@@ -224,6 +238,7 @@ class DplProductionPlanItem {
       shiftCode: shiftCode ?? this.shiftCode,
       shiftName: shiftName ?? this.shiftName,
       remarks: remarks ?? this.remarks,
+      carriedFromItemId: carriedFromItemId ?? this.carriedFromItemId,
     );
   }
 }

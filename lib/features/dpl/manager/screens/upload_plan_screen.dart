@@ -6,7 +6,9 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/dpl_api_response.dart';
+import '../../core/dpl_api_service.dart';
 import '../../core/widgets/dpl_refresh_icon_button.dart';
+import '../../models/dpl_carry_candidate.dart';
 import '../../models/dpl_excel_preview.dart';
 import '../../models/dpl_machine.dart';
 import '../../models/dpl_part.dart';
@@ -36,6 +38,11 @@ class _DplUploadPlanScreenState extends ConsumerState<DplUploadPlanScreen> {
   late final TextEditingController _releasedCtrl;
   late final TextEditingController _approvedCtrl;
 
+  /// Machines whose cross-plan carry-forward candidates have already
+  /// been fetched + injected into the manual draft. Prevents the same
+  /// leftover from being added twice if the screen rebuilds.
+  final Set<int> _carriesSeededForMachine = <int>{};
+
   @override
   void initState() {
     super.initState();
@@ -63,8 +70,67 @@ class _DplUploadPlanScreenState extends ConsumerState<DplUploadPlanScreen> {
         ref
             .read(dplUploadPlanControllerProvider.notifier)
             .seedManualDrafts(drafts);
+        // Once drafts exist, also pull any pending leftover work from
+        // previous shifts so the manager starts from work-in-flight
+        // instead of a blank page.
+        _trySeedCarriesForAllMachines();
       }
     });
+  }
+
+  Future<void> _trySeedCarriesForAllMachines() async {
+    final state = ref.read(dplUploadPlanControllerProvider);
+    final ctrl = ref.read(dplUploadPlanControllerProvider.notifier);
+    final svc = ref.read(dplApiServiceProvider);
+    for (final draft in state.manualDrafts) {
+      if (_carriesSeededForMachine.contains(draft.machineId)) continue;
+      _carriesSeededForMachine.add(draft.machineId);
+      final res = await svc.getCarryForwardCandidates(
+        machineId: draft.machineId,
+        forDate: state.planDate,
+      );
+      if (!mounted) return;
+      if (res.isError || res.data == null || res.data!.isEmpty) continue;
+      for (final c in res.data!) {
+        // Each candidate becomes a normal item in the draft, with
+        // `carriedFromItemId` set so the backend links the source and
+        // removes it from future candidate calls. Manager can edit
+        // qty / remove via the existing item row controls.
+        final indexInDraft = ref
+                .read(dplUploadPlanControllerProvider)
+                .manualDrafts
+                .firstWhere((d) => d.machineId == draft.machineId,
+                    orElse: () => draft)
+                .items
+                .length +
+            1;
+        ctrl.addManualItem(
+          draft.machineId,
+          DplProductionPlanItem(
+            id: 0,
+            planNo: indexInDraft,
+            sequence: indexInDraft,
+            partId: c.partId,
+            partNumber: c.partNumber,
+            partDescription: c.partDescription,
+            partName: c.partName,
+            planQty: c.leftoverQty,
+            carriedFromItemId: c.sourceItemId,
+            remarks: _carryRemarks(c),
+          ),
+        );
+      }
+    }
+  }
+
+  static String _carryRemarks(DplCarryCandidate c) {
+    final date = c.sourcePlanDate;
+    final dateStr = date == null
+        ? ''
+        : ' ${date.day}/${date.month.toString().padLeft(2, '0')}';
+    final shift =
+        c.sourceShiftCode.isEmpty ? '' : ' Shift ${c.sourceShiftCode}';
+    return 'Carry-forward from previous plan$dateStr$shift';
   }
 
   @override
@@ -1166,11 +1232,51 @@ class _ManualItemRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      item.partNumber.isEmpty
-                          ? 'Part #${item.partId}'
-                          : item.partNumber,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            item.partNumber.isEmpty
+                                ? 'Part #${item.partId}'
+                                : item.partNumber,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (item.carriedFromItemId != null) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEFFCEB),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: const Color(0xFF15803D),
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.skip_next_outlined,
+                                    size: 11, color: Color(0xFF15803D)),
+                                SizedBox(width: 3),
+                                Text(
+                                  'Carried',
+                                  style: TextStyle(
+                                    color: Color(0xFF15803D),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     if (item.partDescription.isNotEmpty)
                       Text(
@@ -1178,6 +1284,16 @@ class _ManualItemRow extends StatelessWidget {
                         style: const TextStyle(
                           color: Color(0xFF5D6A7A),
                           fontSize: 12,
+                        ),
+                      ),
+                    if ((item.remarks ?? '').isNotEmpty &&
+                        item.carriedFromItemId != null)
+                      Text(
+                        item.remarks!,
+                        style: const TextStyle(
+                          color: Color(0xFF15803D),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                   ],
@@ -1190,7 +1306,9 @@ class _ManualItemRow extends StatelessWidget {
               IconButton(
                 onPressed: onDelete,
                 icon: const Icon(Icons.close, size: 18),
-                tooltip: 'Remove',
+                tooltip: item.carriedFromItemId != null
+                    ? 'Skip carry-forward'
+                    : 'Remove',
               ),
             ],
           ),

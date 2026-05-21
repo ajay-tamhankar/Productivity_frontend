@@ -20,6 +20,7 @@ import '../models/dpl_shift_summary.dart';
 import '../models/dpl_start_stop.dart';
 import '../models/dpl_supervisor.dart';
 import '../models/dpl_supervisor_plan_detail.dart';
+import '../models/dpl_carry_candidate.dart';
 import '../models/dpl_identity.dart';
 import '../models/dpl_item_pause.dart';
 import '../models/dpl_supervisor_today.dart';
@@ -574,6 +575,51 @@ class DplApiService {
       fallback: 'Failed to change item status.',
       fromJson:
           _oneFrom<DplProductionPlanItem>(DplProductionPlanItem.fromJson),
+    );
+  }
+
+  /// `GET /manager/plans/carry-forward-candidates` — items from past
+  /// submitted plans that still have leftover qty and haven't been
+  /// carried forward yet. Drives the Upload Plan screen's auto-fill
+  /// section.
+  ///
+  /// [forDate] is sent as `YYYY-MM-DD`; the server defaults to today
+  /// in the plant timezone when omitted.
+  Future<DplApiResponse<List<DplCarryCandidate>>> getCarryForwardCandidates({
+    required int machineId,
+    DateTime? forDate,
+  }) {
+    return _send<List<DplCarryCandidate>>(
+      () => _dio.get(
+        DplPaths.carryForwardCandidates,
+        queryParameters: _cleanQuery({
+          'machine_id': machineId,
+          if (forDate != null) 'for_date': _ymd(forDate),
+        }),
+      ),
+      fallback: 'Failed to load carry-forward candidates.',
+      fromJson: (data) {
+        if (data is Map) {
+          final raw = data['candidates'];
+          if (raw is List) {
+            return raw
+                .whereType<Map>()
+                .map((e) => DplCarryCandidate.fromJson(
+                      Map<String, dynamic>.from(e),
+                    ))
+                .toList();
+          }
+        }
+        if (data is List) {
+          return data
+              .whereType<Map>()
+              .map((e) => DplCarryCandidate.fromJson(
+                    Map<String, dynamic>.from(e),
+                  ))
+              .toList();
+        }
+        return const <DplCarryCandidate>[];
+      },
     );
   }
 

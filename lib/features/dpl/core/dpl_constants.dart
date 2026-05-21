@@ -36,6 +36,8 @@ class DplPaths {
       '/manager/plans/$planId/items/$itemId/change-status';
   static String planItemCarryForward(int planId, int itemId) =>
       '/manager/plans/$planId/items/$itemId/carry-forward';
+  static const String carryForwardCandidates =
+      '/manager/plans/carry-forward-candidates';
   static String planItems(int id) => '/manager/plans/$id/items';
   static String planItemById(int planId, int itemId) =>
       '/manager/plans/$planId/items/$itemId';
