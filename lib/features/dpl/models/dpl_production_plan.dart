@@ -117,8 +117,36 @@ class DplProductionPlan {
     );
   }
 
-  double get completionPct =>
-      totalPlanQty <= 0 ? 0 : (totalActualQty / totalPlanQty).clamp(0.0, 1.0);
+  /// Sum of every item's plan_qty. Falls back to the API's stored
+  /// header value when [items] hasn't been loaded yet (e.g. list
+  /// endpoints that don't include items).
+  int get effectiveTotalPlanQty {
+    if (items.isEmpty) return totalPlanQty;
+    final sum = items.fold<int>(0, (a, i) => a + i.planQty);
+    // Prefer the items sum whenever it gives a positive number — the
+    // backend's stored header column is known to drift to 0 because
+    // there's no write-side hook on start/stop/updateActual yet.
+    return sum > 0 ? sum : totalPlanQty;
+  }
+
+  /// Sum of every item's actual_qty. Same fallback as
+  /// [effectiveTotalPlanQty].
+  int get effectiveTotalActualQty {
+    if (items.isEmpty) return totalActualQty;
+    final sum = items.fold<int>(0, (a, i) => a + i.actualQty);
+    // Stored value can be 0 even when items have actuals (no
+    // write-side hook on the header column). Trust the items sum
+    // whenever items are present; only fall back to the stored value
+    // for endpoints that don't return items.
+    return items.any((i) => i.actualQty > 0) ? sum : totalActualQty;
+  }
+
+  double get completionPct {
+    final plan = effectiveTotalPlanQty;
+    final actual = effectiveTotalActualQty;
+    if (plan <= 0) return 0;
+    return (actual / plan).clamp(0.0, 1.0);
+  }
 
   /// Distinct shift tokens (code if available, else `#<id>`) derived
   /// from this plan's items, sorted for stable display. Empty when no
@@ -147,6 +175,26 @@ class DplProductionPlan {
     if (codes.length == 1) return 'Shift ${codes.first}';
     return 'Shifts ${codes.join(', ')}';
   }
+
+  /// `true` when nothing on this plan has been touched yet — every
+  /// item is still pending and no actual qty has been booked. Used
+  /// to gate plan-level Delete: once any item is in progress or
+  /// completed, the plan carries data we shouldn't drop silently.
+  bool get isAllItemsPending {
+    if (items.isEmpty) return true;
+    for (final i in items) {
+      if (i.status != 'pending') return false;
+      if (i.actualQty > 0) return false;
+      if (i.startTime != null) return false;
+    }
+    return true;
+  }
+
+  /// Plan-level Delete is allowed when the plan isn't locked AND no
+  /// supervisor activity exists on it yet. Wider than the old
+  /// "draft-only" rule so a Published plan that's never been started
+  /// can still be removed.
+  bool get isDeletable => status != 'locked' && isAllItemsPending;
 
   DplProductionPlan copyWith({
     int? id,

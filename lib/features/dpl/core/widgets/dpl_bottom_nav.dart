@@ -55,7 +55,10 @@ class DplBottomNav extends StatelessWidget {
                     item: items[i],
                     selected: i == currentIndex,
                     onTap: () {
-                      if (i == currentIndex) return;
+                      // Don't early-return on same-tab tap — the
+                      // shell uses every tap as a refresh signal so
+                      // the manager can pull fresh data with a single
+                      // poke on the active tab.
                       HapticFeedback.lightImpact();
                       onTap(i);
                     },

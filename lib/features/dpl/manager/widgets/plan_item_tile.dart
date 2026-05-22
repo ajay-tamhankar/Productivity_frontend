@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/widgets/shift_chip.dart';
 import '../../models/dpl_production_plan_item.dart';
+import '../../supervisor/widgets/live_timer_text.dart';
 import 'status_badge.dart';
 
 enum _ItemMenuAction { changeStatus, carryForward, delete }
@@ -201,6 +202,13 @@ class DplPlanItemTile extends StatelessWidget {
                   ),
                 ],
               ),
+              // Live status strip for non-pending items so the
+              // manager can glance at how an item is doing without
+              // drilling into the plan or pinging the supervisor.
+              if (item.status != 'pending') ...[
+                const SizedBox(height: 8),
+                _LiveStatusStrip(item: item),
+              ],
             ],
           ),
         ),
@@ -228,6 +236,154 @@ class DplPlanItemTile extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Single-line live state shown under the Plan/Actual row on
+/// non-pending items. Branches:
+///   * `in_progress` + `pausedAt != null` → "Paused since 10:30"
+///   * `in_progress` + running             → "Started 09:15 - Running [live timer]"
+///   * `completed`                         → "Completed at 11:42 - Took 2h 27m"
+///   * Anything else (e.g. unknown status) → no strip
+class _LiveStatusStrip extends StatelessWidget {
+  final DplProductionPlanItem item;
+  const _LiveStatusStrip({required this.item});
+
+  static String _hm(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  static String _duration(Duration d) {
+    if (d.isNegative) d = Duration.zero;
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    if (h == 0) return '${m}m';
+    return '${h}h ${m}m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isPaused = item.pausedAt != null;
+    final isCompleted = item.status == 'completed';
+
+    if (isCompleted) {
+      final end = item.endTime?.toLocal();
+      final start = item.startTime?.toLocal();
+      final dur = (start != null && end != null)
+          ? end.difference(start) -
+              Duration(minutes: item.totalPausedMinutes)
+          : null;
+      return _strip(
+        icon: Icons.check_circle_outline,
+        color: const Color(0xFF15803D),
+        bg: const Color(0xFFE6F4EA),
+        text: end == null
+            ? 'Completed'
+            : (dur == null
+                ? 'Completed at ${_hm(end)}'
+                : 'Completed at ${_hm(end)}  -  Took ${_duration(dur)}'),
+      );
+    }
+
+    if (isPaused) {
+      final pausedAt = item.pausedAt!.toLocal();
+      return _strip(
+        icon: Icons.pause_circle_outline,
+        color: const Color(0xFFB45309),
+        bg: const Color(0xFFFEF3C7),
+        text: 'Paused since ${_hm(pausedAt)}',
+      );
+    }
+
+    // In progress, running.
+    final start = item.startTime;
+    if (start == null) {
+      return _strip(
+        icon: Icons.play_circle_outline,
+        color: const Color(0xFF1D4ED8),
+        bg: const Color(0xFFDBEAFE),
+        text: 'In progress',
+      );
+    }
+    return _StripWithLiveTimer(start: start);
+  }
+
+  static Widget _strip({
+    required IconData icon,
+    required Color color,
+    required Color bg,
+    required String text,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StripWithLiveTimer extends StatelessWidget {
+  final DateTime start;
+  const _StripWithLiveTimer({required this.start});
+
+  @override
+  Widget build(BuildContext context) {
+    final localStart = start.toLocal();
+    final hm = '${localStart.hour.toString().padLeft(2, '0')}:'
+        '${localStart.minute.toString().padLeft(2, '0')}';
+    const color = Color(0xFF15803D);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE6F4EA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.play_circle_outline, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            'Started $hm  -  Running ',
+            style: const TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+          LiveTimerText(
+            startTime: start,
+            style: const TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

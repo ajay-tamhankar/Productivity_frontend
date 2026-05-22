@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,11 +16,76 @@ import '../widgets/machine_summary_card.dart';
 
 enum _DplDashboardMenu { refresh, changePassword, logout }
 
-class DplManagerDashboardScreen extends ConsumerWidget {
+/// How often the dashboard re-pulls totals + per-machine state. Picked
+/// to be slow enough to not hammer the API (a manager glancing at the
+/// screen doesn't need sub-second freshness) but fast enough that an
+/// active downtime started by a supervisor shows up within half a
+/// minute. The ticker pauses when the app is backgrounded so it
+/// doesn't burn battery / quota.
+const _kDashboardRefreshInterval = Duration(seconds: 30);
+
+class DplManagerDashboardScreen extends ConsumerStatefulWidget {
   const DplManagerDashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DplManagerDashboardScreen> createState() =>
+      _DplManagerDashboardScreenState();
+}
+
+class _DplManagerDashboardScreenState
+    extends ConsumerState<DplManagerDashboardScreen>
+    with WidgetsBindingObserver {
+  Timer? _ticker;
+  DateTime? _lastTick;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startTicker();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopTicker();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Pause polling when the app drops to the background. Resume +
+    // do an immediate refresh on the way back so the screen catches
+    // up to whatever happened while it was hidden.
+    if (state == AppLifecycleState.resumed) {
+      _refreshOnce();
+      _startTicker();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _stopTicker();
+    }
+  }
+
+  void _startTicker() {
+    _ticker?.cancel();
+    _ticker = Timer.periodic(_kDashboardRefreshInterval, (_) => _refreshOnce());
+  }
+
+  void _stopTicker() {
+    _ticker?.cancel();
+    _ticker = null;
+  }
+
+  void _refreshOnce() {
+    if (!mounted) return;
+    ref.invalidate(dplDashboardSummaryProvider);
+    ref.invalidate(dplDashboardMtdProvider);
+    setState(() => _lastTick = DateTime.now());
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final date = ref.watch(dplDashboardDateProvider);
     final summary = ref.watch(dplDashboardSummaryProvider);
     final user = ref.watch(authControllerProvider).asData?.value;
@@ -43,7 +110,14 @@ class DplManagerDashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Daily Production'),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Daily Production'),
+            _LiveIndicator(lastTick: _lastTick),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Pick date',
@@ -159,6 +233,47 @@ class DplManagerDashboardScreen extends ConsumerWidget {
         icon: const Icon(Icons.upload_file_outlined),
         label: const Text('Upload Plan'),
       ),
+    );
+  }
+}
+
+/// Tiny "Live • updated 12s ago" badge under the app-bar title so the
+/// manager can see the screen is polling and roughly when it last did.
+class _LiveIndicator extends StatelessWidget {
+  final DateTime? lastTick;
+  const _LiveIndicator({required this.lastTick});
+
+  String _label() {
+    if (lastTick == null) return 'Live';
+    final delta = DateTime.now().difference(lastTick!);
+    if (delta.inSeconds < 5) return 'Live • just now';
+    if (delta.inSeconds < 60) return 'Live • ${delta.inSeconds}s ago';
+    return 'Live • ${delta.inMinutes}m ago';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: const BoxDecoration(
+            color: Color(0xFF15803D),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          _label(),
+          style: const TextStyle(
+            fontSize: 11,
+            color: Color(0xFF5D6A7A),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -327,18 +442,20 @@ class _KpiStrip extends ConsumerWidget {
       );
     }
 
-    // Phones — horizontal swiper. Card content is ~113dp tall (icon
-    // row + spacing + ratio text + progress), so the parent SizedBox
-    // height has to accommodate that with a small safety margin or
-    // Flutter renders "BOTTOM OVERFLOWED BY N PIXELS" over the
-    // Downtime card.
-    return SizedBox(
-      height: 128,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: cards.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
-        itemBuilder: (_, i) => SizedBox(width: 180, child: cards[i]),
+    // Phones — fit all three KPIs in one row so nothing scrolls
+    // off-screen. IntrinsicHeight equalises card heights regardless
+    // of which one has the tallest content, Expanded splits the
+    // available width evenly. Card internals are tuned to render
+    // legibly at ~110dp width (see _KpiCard / _KpiCardSimple).
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < cards.length; i++) ...[
+            Expanded(child: cards[i]),
+            if (i < cards.length - 1) const SizedBox(width: 8),
+          ],
+        ],
       ),
     );
   }
@@ -388,7 +505,7 @@ class _KpiCard extends StatelessWidget {
     final pctRounded = (pct * 100).round();
     final achColor = _achColor(pct);
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border.all(color: const Color(0xFFE2EAF6)),
@@ -401,16 +518,16 @@ class _KpiCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 28,
-                height: 28,
+                width: 24,
+                height: 24,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(7),
                 ),
-                child: Icon(icon, color: color, size: 16),
+                child: Icon(icon, color: color, size: 14),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -420,16 +537,20 @@ class _KpiCard extends StatelessWidget {
                       style: TextStyle(
                         color: color,
                         fontWeight: FontWeight.w900,
-                        fontSize: 11,
-                        letterSpacing: 0.6,
+                        fontSize: 10,
+                        letterSpacing: 0.4,
+                        height: 1.1,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     Text(
                       sublabel,
                       style: const TextStyle(
                         color: Color(0xFF5D6A7A),
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.w600,
+                        height: 1.1,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -437,39 +558,46 @@ class _KpiCard extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(width: 4),
               Text(
                 ratioPlan == 0 ? '—' : '$pctRounded%',
                 style: TextStyle(
                   color: achColor,
                   fontWeight: FontWeight.w900,
-                  fontSize: 14,
+                  fontSize: 12,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          RichText(
-            text: TextSpan(
-              style: const TextStyle(color: Colors.black),
-              children: [
-                TextSpan(
-                  text: fmt.format(ratioActual),
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontWeight: FontWeight.w900,
-                    fontSize: 20,
+          const SizedBox(height: 6),
+          // Big number scales to whatever width is available so the
+          // card never overflows on narrow viewports.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(color: Colors.black),
+                children: [
+                  TextSpan(
+                    text: fmt.format(ratioActual),
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                    ),
                   ),
-                ),
-                TextSpan(
-                  text: ' / ${fmt.format(ratioPlan)}',
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: Color(0xFF5D6A7A),
+                  TextSpan(
+                    text: ' / ${fmt.format(ratioPlan)}',
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      color: Color(0xFF5D6A7A),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 6),
@@ -507,7 +635,7 @@ class _KpiCardSimple extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border.all(color: const Color(0xFFE2EAF6)),
@@ -520,16 +648,16 @@ class _KpiCardSimple extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 28,
-                height: 28,
+                width: 24,
+                height: 24,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(7),
                 ),
-                child: Icon(icon, color: color, size: 16),
+                child: Icon(icon, color: color, size: 14),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -539,16 +667,20 @@ class _KpiCardSimple extends StatelessWidget {
                       style: TextStyle(
                         color: color,
                         fontWeight: FontWeight.w900,
-                        fontSize: 11,
-                        letterSpacing: 0.6,
+                        fontSize: 10,
+                        letterSpacing: 0.4,
+                        height: 1.1,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     Text(
                       sublabel,
                       style: const TextStyle(
                         color: Color(0xFF5D6A7A),
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: FontWeight.w600,
+                        height: 1.1,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -558,19 +690,25 @@ class _KpiCardSimple extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w900,
-              fontSize: 22,
-              fontFamily: 'monospace',
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w900,
+                fontSize: 20,
+                fontFamily: 'monospace',
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 14),
+          // Matches the progress-bar row of the ratio card so all
+          // three cards in the row line up to the same height.
+          const SizedBox(height: 10),
         ],
       ),
     );

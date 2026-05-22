@@ -64,13 +64,23 @@ class DplPlanDetailScreen extends ConsumerWidget {
                       title: Text('Change status'),
                     ),
                   ),
-                  if (DplPlanStatus.isDeletable(res.data!.status))
+                  // Plan-level Delete is shown only when nothing on
+                  // the plan has been started yet. Once any item is
+                  // in progress or completed, the manager has to use
+                  // Change status / Carry forward instead.
+                  if (res.data!.isDeletable)
                     const PopupMenuItem(
                       value: _PlanMenu.delete,
                       child: ListTile(
                         dense: true,
-                        leading: Icon(Icons.delete_outline),
-                        title: Text('Delete plan'),
+                        leading: Icon(
+                          Icons.delete_outline,
+                          color: Color(0xFFB3261E),
+                        ),
+                        title: Text(
+                          'Delete plan',
+                          style: TextStyle(color: Color(0xFFB3261E)),
+                        ),
                       ),
                     ),
                 ],
@@ -350,9 +360,9 @@ class _PlanBody extends ConsumerWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  _bigKv('Plan', fmt.format(plan.totalPlanQty)),
+                  _bigKv('Plan', fmt.format(plan.effectiveTotalPlanQty)),
                   const SizedBox(width: 16),
-                  _bigKv('Actual', fmt.format(plan.totalActualQty)),
+                  _bigKv('Actual', fmt.format(plan.effectiveTotalActualQty)),
                   const SizedBox(width: 16),
                   _bigKv('Completion', '$pct%'),
                 ],
@@ -399,16 +409,23 @@ class _PlanBody extends ConsumerWidget {
               padding: const EdgeInsets.only(bottom: 8),
               child: DplPlanItemTile(
                 item: i,
-                onTap: readOnly ? null : () => _editItem(context, ref, plan, i),
-                onLongPress:
-                    readOnly ? null : () => _confirmDeleteItem(context, ref, plan, i),
+                // Only PENDING items are tap-to-edit. Once an item is
+                // in-progress or completed, the manager has to use
+                // the ⋮ menu (Change status / Carry forward / Delete)
+                // — direct edits at that point are usually mistakes.
+                onTap: (readOnly || i.status != 'pending')
+                    ? null
+                    : () => _editItem(context, ref, plan, i),
+                onLongPress: (readOnly || i.status != 'pending')
+                    ? null
+                    : () => _confirmDeleteItem(context, ref, plan, i),
                 onChangeStatus: readOnly
                     ? null
                     : () => _showChangeItemStatus(context, ref, plan, i),
                 onCarryForward: readOnly
                     ? null
                     : () => _showCarryForward(context, ref, plan, i),
-                onDelete: readOnly
+                onDelete: (readOnly || i.status != 'pending')
                     ? null
                     : () => _confirmDeleteItem(context, ref, plan, i),
               ),

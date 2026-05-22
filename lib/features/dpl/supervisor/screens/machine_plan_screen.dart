@@ -194,9 +194,9 @@ class _PlanBody extends ConsumerWidget {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  _kv('Plan', fmt.format(plan.totalPlanQty)),
+                  _kv('Plan', fmt.format(plan.effectiveTotalPlanQty)),
                   const SizedBox(width: 16),
-                  _kv('Actual', fmt.format(plan.totalActualQty)),
+                  _kv('Actual', fmt.format(plan.effectiveTotalActualQty)),
                   const Spacer(),
                   _kv('Completion', '$pct%'),
                 ],

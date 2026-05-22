@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/widgets/dpl_bottom_nav.dart';
+import 'providers/dpl_dashboard_provider.dart';
 import 'providers/dpl_manager_tab_provider.dart';
+import 'providers/dpl_plan_list_provider.dart';
+import 'providers/dpl_reports_provider.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/masters_hub_screen.dart';
 import 'screens/plan_list_screen.dart';
 import 'screens/reports_screen.dart';
-import 'widgets/dpl_manager_footer.dart';
 
 /// Bottom-nav container for the DPL Manager experience.
 /// Dashboard / Plans / Reports / Settings.
@@ -30,7 +33,33 @@ class DplManagerShell extends ConsumerWidget {
 
     return Scaffold(
       body: IndexedStack(index: index, children: pages),
-      bottomNavigationBar: const DplManagerFooter(popToShellOnTap: false),
+      bottomNavigationBar: DplBottomNav(
+        currentIndex: index,
+        items: dplManagerNavItems,
+        onTap: (i) {
+          ref.read(dplManagerTabProvider.notifier).set(i);
+          // Every tab tap (including re-tapping the active tab)
+          // refreshes the destination's primary data so the manager
+          // never sees stale numbers without a manual gesture.
+          switch (i) {
+            case 0:
+              ref.invalidate(dplDashboardSummaryProvider);
+              ref.invalidate(dplDashboardMtdProvider);
+              break;
+            case 1:
+              ref.invalidate(dplPlanListProvider);
+              break;
+            case 2:
+              ref.invalidate(dplPlanVsActualReportProvider);
+              ref.invalidate(dplDowntimeReportProvider);
+              break;
+            case 3:
+              // Settings is mostly navigation tiles — nothing live
+              // to invalidate here.
+              break;
+          }
+        },
+      ),
     );
   }
 }
@@ -46,4 +75,3 @@ class _EmbeddedPlanList extends StatelessWidget {
     );
   }
 }
-
