@@ -1,5 +1,5 @@
 class AppConstants {
-  static const String appName = 'Production Sync';
+  static const String appName = 'Vistar Pulse';
   static const String apiBaseUrl =
       'https://vistar-crm.onrender.com/api/v1/productivity';
 

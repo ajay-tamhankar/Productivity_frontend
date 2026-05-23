@@ -33,7 +33,7 @@ class ProductionMonitoringApp extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(
-      title: 'Productivity Tracker',
+      title: 'Vistar Pulse',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
