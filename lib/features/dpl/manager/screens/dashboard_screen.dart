@@ -286,31 +286,37 @@ class _DashboardBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat.decimalPattern();
-    final dateFmt = DateFormat('EEEE, dd MMM yyyy');
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    final dateFmt = isPhone
+        ? DateFormat('EEE, dd MMM yyyy')
+        : DateFormat('EEEE, dd MMM yyyy');
+    final outerPad = isPhone ? 12.0 : 16.0;
+    final cardGap = isPhone ? 8.0 : 10.0;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(outerPad),
       children: [
         Text(
           dateFmt.format(summary.date),
-          style: const TextStyle(
-            color: Color(0xFF5D6A7A),
+          style: TextStyle(
+            color: const Color(0xFF5D6A7A),
             fontWeight: FontWeight.w600,
+            fontSize: isPhone ? 12 : 14,
           ),
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: isPhone ? 8 : 10),
         _KpiStrip(summary: summary),
-        const SizedBox(height: 14),
+        SizedBox(height: isPhone ? 10 : 14),
         _TotalsCard(summary: summary, fmt: fmt),
-        const SizedBox(height: 16),
-        const Text(
+        SizedBox(height: isPhone ? 12 : 16),
+        Text(
           'Machines',
           style: TextStyle(
-            fontSize: 16,
+            fontSize: isPhone ? 13 : 16,
             fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: isPhone ? 8 : 10),
         if (summary.machines.isEmpty)
           const DplEmptyState(
             icon: Icons.precision_manufacturing_outlined,
@@ -320,7 +326,7 @@ class _DashboardBody extends StatelessWidget {
         else
           ...summary.machines.map(
             (m) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: EdgeInsets.only(bottom: cardGap),
               child: DplMachineSummaryCard(
                 summary: m,
                 onTap: m.planId == null
@@ -800,11 +806,12 @@ class _TotalsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pct = (summary.completionPct * 100).round();
+    final isPhone = MediaQuery.of(context).size.width < 600;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isPhone ? 12 : 16),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(isPhone ? 14 : 18),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
       child: Column(
@@ -834,12 +841,12 @@ class _TotalsCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: isPhone ? 8 : 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: summary.completionPct,
-              minHeight: 8,
+              minHeight: isPhone ? 6 : 8,
               backgroundColor: const Color(0xFFEEF1F5),
             ),
           ),
@@ -862,24 +869,32 @@ class _BigStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isPhone = MediaQuery.of(context).size.width < 600;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: Color(0xFF5D6A7A),
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          value,
           style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w900,
-            fontSize: 22,
+            color: const Color(0xFF5D6A7A),
+            fontSize: isPhone ? 10 : 12,
+            fontWeight: FontWeight.w600,
+            height: 1.1,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        SizedBox(height: isPhone ? 3 : 6),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w900,
+              fontSize: isPhone ? 18 : 22,
+            ),
           ),
         ),
       ],

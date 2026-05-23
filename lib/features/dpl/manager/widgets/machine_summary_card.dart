@@ -18,17 +18,18 @@ class DplMachineSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final fmt = NumberFormat.decimalPattern();
     final pct = (summary.completionPct * 100).round();
+    final isPhone = MediaQuery.of(context).size.width < 600;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         child: Ink(
-          padding: const EdgeInsets.all(14),
+          padding: EdgeInsets.all(isPhone ? 11 : 14),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(isPhone ? 12 : 16),
             border: Border.all(color: const Color(0xFFE2EAF6)),
           ),
           child: Column(
@@ -41,54 +42,59 @@ class DplMachineSummaryCard extends StatelessWidget {
                       summary.machineName.isEmpty
                           ? 'Machine #${summary.machineId}'
                           : summary.machineName,
-                      style:
-                          Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: isPhone ? 14 : 16,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   DplStatusBadge(status: summary.status),
                 ],
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: isPhone ? 6 : 8),
               Row(
                 children: [
                   Expanded(
                     child: _kv(
                       label: 'Plan Qty',
                       value: fmt.format(summary.planQty),
+                      isPhone: isPhone,
                     ),
                   ),
                   Expanded(
                     child: _kv(
                       label: 'Actual',
                       value: fmt.format(summary.actualQty),
+                      isPhone: isPhone,
                     ),
                   ),
                   Expanded(
                     child: _kv(
                       label: 'Completion',
                       value: '$pct%',
+                      isPhone: isPhone,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: isPhone ? 6 : 8),
               ClipRRect(
                 borderRadius: BorderRadius.circular(999),
                 child: LinearProgressIndicator(
                   value: summary.completionPct.clamp(0, 1),
-                  minHeight: 6,
+                  minHeight: isPhone ? 5 : 6,
                   backgroundColor: const Color(0xFFEEF1F5),
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: isPhone ? 6 : 8),
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.person_outline,
-                    size: 16,
-                    color: Color(0xFF5D6A7A),
+                    size: isPhone ? 14 : 16,
+                    color: const Color(0xFF5D6A7A),
                   ),
                   const SizedBox(width: 4),
                   Expanded(
@@ -96,17 +102,18 @@ class DplMachineSummaryCard extends StatelessWidget {
                       summary.supervisorName.isEmpty
                           ? 'No supervisor assigned'
                           : summary.supervisorName,
-                      style: const TextStyle(
-                        color: Color(0xFF5D6A7A),
+                      style: TextStyle(
+                        color: const Color(0xFF5D6A7A),
                         fontWeight: FontWeight.w600,
+                        fontSize: isPhone ? 12 : 14,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const Icon(
+                  Icon(
                     Icons.arrow_forward_ios_rounded,
-                    size: 14,
-                    color: Color(0xFF5D6A7A),
+                    size: isPhone ? 12 : 14,
+                    color: const Color(0xFF5D6A7A),
                   ),
                 ],
               ),
@@ -117,24 +124,35 @@ class DplMachineSummaryCard extends StatelessWidget {
     );
   }
 
-  Widget _kv({required String label, required String value}) {
+  Widget _kv({
+    required String label,
+    required String value,
+    required bool isPhone,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 11,
-            color: Color(0xFF5D6A7A),
+          style: TextStyle(
+            fontSize: isPhone ? 10 : 11,
+            color: const Color(0xFF5D6A7A),
             fontWeight: FontWeight.w600,
+            height: 1.1,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 2),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: isPhone ? 14 : 16,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
       ],
