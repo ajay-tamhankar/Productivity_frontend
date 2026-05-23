@@ -8,6 +8,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/dpl_api_service.dart';
+import '../../core/widgets/dpl_app_bar.dart';
 import '../../manager/widgets/error_retry.dart';
 import '../../models/dpl_production_plan_item.dart';
 import '../../models/dpl_supervisor_plan_detail.dart';
@@ -272,22 +273,22 @@ class _PlanExecutionScreenState extends ConsumerState<PlanExecutionScreen> {
   Widget build(BuildContext context) {
     final async = ref.watch(machinePlanProvider(widget.planId));
 
+    final appBarTitle = async.maybeWhen(
+      data: (res) {
+        if (res.isError || res.data == null) return 'Execution';
+        final item = res.data!.plan.items.firstWhere(
+          (i) => i.id == widget.itemId,
+          orElse: () => _emptyItem(),
+        );
+        return 'Plan #${item.planNo} — '
+            '${item.partDescription.isEmpty ? "Item" : item.partDescription}';
+      },
+      orElse: () => 'Execution',
+    );
+
     return Scaffold(
-      appBar: AppBar(
-        title: async.maybeWhen(
-          data: (res) {
-            if (res.isError || res.data == null) return const Text('Execution');
-            final item = res.data!.plan.items.firstWhere(
-              (i) => i.id == widget.itemId,
-              orElse: () => _emptyItem(),
-            );
-            return Text(
-              'Plan #${item.planNo} — ${item.partDescription.isEmpty ? "Item" : item.partDescription}',
-              overflow: TextOverflow.ellipsis,
-            );
-          },
-          orElse: () => const Text('Execution'),
-        ),
+      appBar: DplAppBar(
+        title: appBarTitle,
         actions: const [_LiveClock()],
       ),
       body: async.when(

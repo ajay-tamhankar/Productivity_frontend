@@ -57,23 +57,29 @@ final dplPlanVsActualReportProvider = FutureProvider.autoDispose<
 final dplDowntimeReportProvider = FutureProvider.autoDispose<
     DplApiResponse<DplDowntimeReport>>((ref) async {
   final r = ref.watch(dplReportRangeProvider);
-  return ref
-      .watch(dplApiServiceProvider)
-      .reportDowntime(from: r.from, to: r.to);
+  return ref.watch(dplApiServiceProvider).reportDowntime(
+        from: r.from,
+        to: r.to,
+        machineId: r.machineId,
+      );
 });
 
 final dplSupervisorPerformanceReportProvider = FutureProvider.autoDispose<
     DplApiResponse<DplSupervisorPerformanceReport>>((ref) async {
   final r = ref.watch(dplReportRangeProvider);
-  return ref
-      .watch(dplApiServiceProvider)
-      .reportSupervisorPerformance(from: r.from, to: r.to);
+  return ref.watch(dplApiServiceProvider).reportSupervisorPerformance(
+        from: r.from,
+        to: r.to,
+        machineId: r.machineId,
+      );
 });
 
 final dplPartWiseReportProvider = FutureProvider.autoDispose<
     DplApiResponse<DplPartWiseReport>>((ref) async {
   final r = ref.watch(dplReportRangeProvider);
-  return ref
-      .watch(dplApiServiceProvider)
-      .reportPartWise(from: r.from, to: r.to);
+  return ref.watch(dplApiServiceProvider).reportPartWise(
+        from: r.from,
+        to: r.to,
+        machineId: r.machineId,
+      );
 });

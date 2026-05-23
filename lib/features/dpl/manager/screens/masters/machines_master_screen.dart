@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../core/widgets/shimmer_skeleton.dart';
 import '../../../core/dpl_api_service.dart';
+import '../../../core/widgets/dpl_app_bar.dart';
 import '../../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../../models/dpl_machine.dart';
 import '../../providers/dpl_masters_provider.dart';
@@ -18,8 +19,8 @@ class DplMachinesMasterScreen extends ConsumerWidget {
     final asyncList = ref.watch(dplMachinesProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Machines'),
+      appBar: DplAppBar(
+        title: 'Machines',
         actions: [
           DplRefreshIconButton(
             onRefresh: () async {

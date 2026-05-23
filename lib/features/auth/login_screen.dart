@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/widgets/shimmer_skeleton.dart';
+import '../dpl/core/widgets/vistar_logo.dart';
 import 'auth_repository.dart';
 import 'auth_provider.dart';
+
+// Vistar brand palette — mirrors DplColors.
+const _kBrandPurple = Color(0xFF6B1F8C);
+const _kBrandPurpleDark = Color(0xFF4A1163);
+const _kBrandOrange = Color(0xFFE54B2A);
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -142,7 +148,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFFF2F8FF), Color(0xFFE8FFF6), Color(0xFFD7E7FF)],
+            colors: [Color(0xFFFBF5FF), Color(0xFFFFF6EC), Color(0xFFF6E6FA)],
           ),
         ),
         child: SafeArea(
@@ -161,7 +167,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       width: 220,
                       height: 220,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF3A86FF).withOpacity(0.12),
+                        color: _kBrandPurple.withOpacity(0.12),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -173,7 +179,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       width: 260,
                       height: 260,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF17A673).withOpacity(0.12),
+                        color: _kBrandOrange.withOpacity(0.12),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -205,19 +211,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.stretch,
                                   children: [
-                                    Container(
-                                      width: 64,
-                                      height: 64,
-                                      decoration: const BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [Color(0xFF185ADB), Color(0xFF17A673)],
-                                        ),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.factory_outlined,
-                                        color: Colors.white,
-                                        size: 32,
+                                    Center(
+                                      child: VistarLogo(
+                                        height: 96,
+                                        showWordmark: true,
                                       ),
                                     ),
                                     const SizedBox(height: 18),
@@ -226,6 +223,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                             fontWeight: FontWeight.w800,
                                             letterSpacing: 0.2,
+                                            color: _kBrandPurpleDark,
                                           ),
                                     ),
                                     const SizedBox(height: 8),
@@ -324,7 +322,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       child: FilledButton(
                                         onPressed: isLoading ? null : _onLogin,
                                         style: FilledButton.styleFrom(
-                                          backgroundColor: const Color(0xFF185ADB),
+                                          backgroundColor: _kBrandPurple,
                                           foregroundColor: Colors.white,
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(14),
@@ -361,10 +359,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                                   ? null
                                                   : _onDplLogin,
                                               style: OutlinedButton.styleFrom(
-                                                foregroundColor:
-                                                    const Color(0xFF17A673),
+                                                foregroundColor: _kBrandPurple,
                                                 side: const BorderSide(
-                                                  color: Color(0xFF17A673),
+                                                  color: _kBrandPurple,
                                                   width: 1.4,
                                                 ),
                                                 shape: RoundedRectangleBorder(
@@ -393,10 +390,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                                   ? null
                                                   : _onDplSupervisorLogin,
                                               style: OutlinedButton.styleFrom(
-                                                foregroundColor:
-                                                    const Color(0xFFB45309),
+                                                foregroundColor: _kBrandOrange,
                                                 side: const BorderSide(
-                                                  color: Color(0xFFB45309),
+                                                  color: _kBrandOrange,
                                                   width: 1.4,
                                                 ),
                                                 shape: RoundedRectangleBorder(

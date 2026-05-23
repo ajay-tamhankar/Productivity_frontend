@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../core/widgets/shimmer_skeleton.dart';
 import '../../../core/dpl_api_service.dart';
+import '../../../core/widgets/dpl_app_bar.dart';
 import '../../../models/dpl_part.dart';
 import '../../providers/dpl_masters_provider.dart';
 import '../../widgets/dpl_manager_footer.dart';
@@ -59,9 +60,7 @@ class _DplPartsMasterScreenState extends ConsumerState<DplPartsMasterScreen> {
     final asyncState = ref.watch(dplPartsControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Description'),
-      ),
+      appBar: const DplAppBar(title: 'Description'),
       body: Column(
         children: [
           Padding(

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../auth/auth_provider.dart';
 import '../../../auth/change_password_dialog.dart';
+import '../../core/widgets/dpl_app_bar.dart';
 import '../providers/dpl_supervisor_tab_provider.dart';
 import '../widgets/downtime_banner.dart';
 import '../widgets/dpl_supervisor_footer.dart';
@@ -49,7 +50,7 @@ class _SupervisorProfileTab extends ConsumerWidget {
     final role = user?.role ?? '';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: const DplAppBar(title: 'Profile'),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

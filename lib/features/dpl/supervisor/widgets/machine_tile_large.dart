@@ -23,23 +23,24 @@ class MachineTileLarge extends StatelessWidget {
     final fmt = NumberFormat.decimalPattern();
     final pct = (plan.completionPct * 100).round();
     final down = plan.activeDowntime;
+    final isPhone = MediaQuery.of(context).size.width < 600;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(isPhone ? 14 : 18),
         child: Ink(
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(isPhone ? 14 : 18),
             border: Border.all(color: const Color(0xFFE2EAF6)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(isPhone ? 11 : 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -50,16 +51,18 @@ class MachineTileLarge extends StatelessWidget {
                             plan.machineName.isEmpty
                                 ? 'Machine #${plan.machineId}'
                                 : plan.machineName,
-                            style: const TextStyle(
-                              fontSize: 20,
+                            style: TextStyle(
+                              fontSize: isPhone ? 16 : 20,
                               fontWeight: FontWeight.w900,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         DplStatusBadge(status: plan.status),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    SizedBox(height: isPhone ? 8 : 14),
                     Row(
                       children: [
                         Expanded(
@@ -67,6 +70,7 @@ class MachineTileLarge extends StatelessWidget {
                             label: 'Plan',
                             value: fmt.format(plan.totalPlanQty),
                             color: const Color(0xFF1D4ED8),
+                            isPhone: isPhone,
                           ),
                         ),
                         Expanded(
@@ -74,6 +78,7 @@ class MachineTileLarge extends StatelessWidget {
                             label: 'Actual',
                             value: fmt.format(plan.totalActualQty),
                             color: const Color(0xFF047857),
+                            isPhone: isPhone,
                           ),
                         ),
                         Expanded(
@@ -81,28 +86,29 @@ class MachineTileLarge extends StatelessWidget {
                             label: 'Completion',
                             value: '$pct%',
                             color: const Color(0xFFB45309),
+                            isPhone: isPhone,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: isPhone ? 6 : 10),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(999),
                       child: LinearProgressIndicator(
                         value: plan.completionPct,
-                        minHeight: 8,
+                        minHeight: isPhone ? 5 : 8,
                         backgroundColor: const Color(0xFFEEF1F5),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: isPhone ? 6 : 10),
                     Text(
                       '${plan.itemsCompleted} done · '
                       '${plan.itemsInProgress} running · '
                       '${plan.itemsPending} pending',
-                      style: const TextStyle(
-                        color: Color(0xFF5D6A7A),
+                      style: TextStyle(
+                        color: const Color(0xFF5D6A7A),
                         fontWeight: FontWeight.w600,
-                        fontSize: 12,
+                        fontSize: isPhone ? 11 : 12,
                       ),
                     ),
                   ],
@@ -160,25 +166,33 @@ class MachineTileLarge extends StatelessWidget {
     required String label,
     required String value,
     required Color color,
+    required bool isPhone,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 11,
-            color: Color(0xFF5D6A7A),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
           style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: color,
+            fontSize: isPhone ? 10 : 11,
+            color: const Color(0xFF5D6A7A),
+            fontWeight: FontWeight.w600,
+            height: 1.1,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        SizedBox(height: isPhone ? 2 : 4),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: isPhone ? 18 : 22,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
           ),
         ),
       ],

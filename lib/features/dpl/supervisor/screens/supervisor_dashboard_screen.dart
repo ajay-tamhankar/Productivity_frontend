@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/shimmer_skeleton.dart';
+import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../manager/widgets/empty_state.dart';
 import '../../manager/widgets/error_retry.dart';
@@ -21,8 +22,8 @@ class SupervisorDashboardScreen extends ConsumerWidget {
     final dateFmt = DateFormat('EEEE, dd MMM yyyy');
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Today — ${dateFmt.format(DateTime.now())}'),
+      appBar: DplAppBar(
+        title: 'Today — ${dateFmt.format(DateTime.now())}',
         actions: [
           DplRefreshIconButton(
             onRefresh: () async {
@@ -95,6 +96,7 @@ class _DashboardBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final fmt = NumberFormat.decimalPattern();
+    final isPhone = MediaQuery.of(context).size.width < 600;
     final totalPlan =
         today.plans.fold<int>(0, (a, p) => a + p.totalPlanQty);
     final totalActual =
@@ -104,13 +106,13 @@ class _DashboardBody extends ConsumerWidget {
         : ((totalActual / totalPlan) * 100).round();
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isPhone ? 12 : 16),
       children: [
         Container(
-          padding: const EdgeInsets.all(14),
+          padding: EdgeInsets.all(isPhone ? 11 : 14),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(isPhone ? 14 : 16),
             border: Border.all(color: const Color(0xFFE2EAF6)),
           ),
           child: Row(
@@ -120,7 +122,7 @@ class _DashboardBody extends ConsumerWidget {
                 value: fmt.format(totalPlan),
                 color: const Color(0xFF1D4ED8),
               ),
-              const SizedBox(width: 16),
+              SizedBox(width: isPhone ? 12 : 16),
               _BigKv(
                 label: 'Actual',
                 value: fmt.format(totalActual),
@@ -135,17 +137,17 @@ class _DashboardBody extends ConsumerWidget {
             ],
           ),
         ),
-        const SizedBox(height: 14),
+        SizedBox(height: isPhone ? 10 : 14),
         for (final plan in today.plans)
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: EdgeInsets.only(bottom: isPhone ? 8 : 12),
             child: MachineTileLarge(
               plan: plan,
               onTap: () =>
                   context.push('/dpl/supervisor/machine/${plan.id}'),
             ),
           ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 24),
       ],
     );
   }
@@ -163,24 +165,29 @@ class _BigKv extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isPhone = MediaQuery.of(context).size.width < 600;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: Color(0xFF5D6A7A),
-            fontSize: 11,
+          style: TextStyle(
+            color: const Color(0xFF5D6A7A),
+            fontSize: isPhone ? 10 : 11,
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w900,
-            fontSize: 22,
+        SizedBox(height: isPhone ? 2 : 4),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w900,
+              fontSize: isPhone ? 18 : 22,
+            ),
           ),
         ),
       ],

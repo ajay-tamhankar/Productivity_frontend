@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../../core/widgets/shimmer_skeleton.dart';
 import '../../../core/dpl_api_service.dart';
+import '../../../core/widgets/dpl_app_bar.dart';
 import '../../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../../models/dpl_manpower_log.dart';
 import '../../../models/dpl_machine.dart';
@@ -49,8 +50,8 @@ class DplManpowerMasterScreen extends ConsumerWidget {
     ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Manpower'),
+      appBar: DplAppBar(
+        title: 'Manpower',
         actions: [
           IconButton(
             tooltip: 'Filter',

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/dpl_api_service.dart';
+import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_pauses_panel.dart';
 import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../core/widgets/shift_chip.dart';
@@ -32,15 +33,17 @@ class MachinePlanScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(machinePlanProvider(planId));
 
+    final appBarTitle = async.maybeWhen(
+      data: (res) {
+        final name = res.data?.plan.machineName ?? '';
+        return name.isEmpty ? 'Machine Plan' : name;
+      },
+      orElse: () => 'Machine Plan',
+    );
+
     return Scaffold(
-      appBar: AppBar(
-        title: async.maybeWhen(
-          data: (res) {
-            final name = res.data?.plan.machineName ?? '';
-            return Text(name.isEmpty ? 'Machine Plan' : name);
-          },
-          orElse: () => const Text('Machine Plan'),
-        ),
+      appBar: DplAppBar(
+        title: appBarTitle,
         actions: [
           DplRefreshIconButton(
             onRefresh: () async {

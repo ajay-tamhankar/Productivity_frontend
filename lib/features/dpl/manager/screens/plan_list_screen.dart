@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/dpl_constants.dart';
+import '../../core/widgets/dpl_app_bar.dart';
 import '../../models/dpl_production_plan.dart';
 import '../providers/dpl_masters_provider.dart';
 import '../providers/dpl_plan_list_provider.dart';
@@ -128,8 +129,8 @@ class DplPlanListScreen extends ConsumerWidget {
     if (embedded) return content;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Production Plans'),
+      appBar: DplAppBar(
+        title: 'Production Plans',
         actions: [
           IconButton(
             tooltip: 'Filter',

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/dpl_api_service.dart';
+import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../manager/widgets/empty_state.dart';
 import '../../manager/widgets/error_retry.dart';
@@ -129,8 +130,8 @@ class _ShiftSummaryScreenState extends ConsumerState<ShiftSummaryScreen> {
     final date = ref.watch(shiftSummaryDateProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('End of Shift — ${dateFmt.format(date)}'),
+      appBar: DplAppBar(
+        title: 'End of Shift — ${dateFmt.format(date)}',
         actions: [
           DplRefreshIconButton(
             onRefresh: () async {

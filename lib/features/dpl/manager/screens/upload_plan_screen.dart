@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/dpl_api_response.dart';
 import '../../core/dpl_api_service.dart';
+import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../models/dpl_carry_candidate.dart';
 import '../../models/dpl_excel_preview.dart';
@@ -182,8 +183,8 @@ class _DplUploadPlanScreenState extends ConsumerState<DplUploadPlanScreen> {
     final canSubmit = !state.isSubmitting && blockers.isEmpty;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Upload Production Plan'),
+      appBar: DplAppBar(
+        title: 'Upload Production Plan',
         actions: [
           DplRefreshIconButton(
             tooltip: 'Refresh masters',

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/dpl_api_service.dart';
 import '../../core/dpl_constants.dart';
+import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_pauses_panel.dart';
 import '../../core/widgets/shift_chip.dart';
 import '../../models/dpl_shift.dart';
@@ -35,8 +36,8 @@ class DplPlanDetailScreen extends ConsumerWidget {
     final detail = ref.watch(dplPlanDetailProvider(planId));
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Plan Detail'),
+      appBar: DplAppBar(
+        title: 'Plan Detail',
         actions: [
           detail.maybeWhen(
             data: (res) {

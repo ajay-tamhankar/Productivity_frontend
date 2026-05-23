@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/dpl_api_service.dart';
+import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../models/dpl_identity.dart';
 import '../../models/dpl_shift.dart';
@@ -27,8 +28,8 @@ class DplIdentityAuditScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: _kSurfaceAlt,
-      appBar: AppBar(
-        title: const Text('Identity Audit'),
+      appBar: DplAppBar(
+        title: 'Identity Audit',
         actions: [
           DplRefreshIconButton(
             onRefresh: () async {

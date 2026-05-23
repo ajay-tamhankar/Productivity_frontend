@@ -11,6 +11,7 @@ import '../../../reports/report_download_stub.dart'
     if (dart.library.io) '../../../reports/report_download_io.dart';
 import '../../core/dpl_api_service.dart';
 import '../../core/dpl_constants.dart';
+import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../models/dpl_machine.dart';
 import '../../models/dpl_monthly_chart.dart';
@@ -231,8 +232,8 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
 
     final scaffold = Scaffold(
       backgroundColor: _kSurfaceAlt,
-      appBar: AppBar(
-        title: const Text('Reports'),
+      appBar: DplAppBar(
+        title: 'Reports',
         actions: [
           IconButton(
             tooltip: 'Download as Excel',
@@ -897,7 +898,6 @@ class _OverviewTab extends ConsumerWidget {
     final pvaAsync = ref.watch(dplPlanVsActualReportProvider);
     final dtAsync = ref.watch(dplDowntimeReportProvider);
     final svAsync = ref.watch(dplSupervisorPerformanceReportProvider);
-    final ptAsync = ref.watch(dplPartWiseReportProvider);
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -954,8 +954,6 @@ class _OverviewTab extends ConsumerWidget {
               dtAsync.asData?.value.data ?? DplDowntimeReport.empty();
           final supervisors = svAsync.asData?.value.data ??
               DplSupervisorPerformanceReport.empty();
-          final parts = ptAsync.asData?.value.data ??
-              DplPartWiseReport.empty();
 
           return ListView(
             padding: const EdgeInsets.all(12),
@@ -982,7 +980,7 @@ class _OverviewTab extends ConsumerWidget {
                 title: 'Top performers',
               ),
               const SizedBox(height: 8),
-              _TopPerformers(supervisors: supervisors, parts: parts),
+              _TopPerformers(supervisors: supervisors, machines: machines),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -1223,17 +1221,17 @@ class _DowntimeReasonRow extends StatelessWidget {
 
 class _TopPerformers extends StatelessWidget {
   final DplSupervisorPerformanceReport supervisors;
-  final DplPartWiseReport parts;
-  const _TopPerformers({required this.supervisors, required this.parts});
+  final List<_MachineRollup> machines;
+  const _TopPerformers({required this.supervisors, required this.machines});
 
   @override
   Widget build(BuildContext context) {
     final svRows = [...supervisors.rows]
       ..sort((a, b) => b.completionPct.compareTo(a.completionPct));
     final topSv = svRows.take(3).toList();
-    final ptRows = [...parts.rows]
-      ..sort((a, b) => b.totalActual.compareTo(a.totalActual));
-    final topPt = ptRows.take(3).toList();
+    final mcRows = [...machines]
+      ..sort((a, b) => b.actualQty.compareTo(a.actualQty));
+    final topMc = mcRows.take(3).toList();
 
     return Container(
       decoration: BoxDecoration(
@@ -1259,15 +1257,15 @@ class _TopPerformers extends StatelessWidget {
           ),
           const Divider(height: 1),
           _PerformerSection(
-            title: 'Parts',
-            icon: Icons.inventory_2_outlined,
-            isEmpty: topPt.isEmpty,
-            isEmptyMessage: 'No part data yet.',
+            title: 'Machines',
+            icon: Icons.precision_manufacturing_outlined,
+            isEmpty: topMc.isEmpty,
+            isEmptyMessage: 'No machine data yet.',
             child: Column(
               children: [
-                for (var i = 0; i < topPt.length; i++) ...[
-                  _PartRow(rank: i + 1, row: topPt[i]),
-                  if (i != topPt.length - 1) const Divider(height: 14),
+                for (var i = 0; i < topMc.length; i++) ...[
+                  _MachinePerformerRow(rank: i + 1, rollup: topMc[i]),
+                  if (i != topMc.length - 1) const Divider(height: 14),
                 ],
               ],
             ),
@@ -1371,16 +1369,16 @@ class _SupervisorRow extends StatelessWidget {
   }
 }
 
-class _PartRow extends StatelessWidget {
+class _MachinePerformerRow extends StatelessWidget {
   final int rank;
-  final DplPartWiseRow row;
-  const _PartRow({required this.rank, required this.row});
+  final _MachineRollup rollup;
+  const _MachinePerformerRow({required this.rank, required this.rollup});
 
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat.decimalPattern();
-    final pct = (row.completionPct * 100).round();
-    final color = _achievementColor(row.completionPct);
+    final pct = (rollup.completionPct * 100).round();
+    final color = _achievementColor(rollup.completionPct);
     return Row(
       children: [
         _RankBadge(rank: rank),
@@ -1390,17 +1388,15 @@ class _PartRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                row.partDescription.isEmpty
-                    ? (row.partNumber.isEmpty
-                        ? 'Part #${row.partId}'
-                        : row.partNumber)
-                    : row.partDescription,
+                rollup.machineName.isEmpty
+                    ? 'Machine #${rollup.machineId}'
+                    : rollup.machineName,
                 style: const TextStyle(fontWeight: FontWeight.w800),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
-                '${fmt.format(row.totalActual)} / ${fmt.format(row.totalPlan)}',
+                '${fmt.format(rollup.actualQty)} / ${fmt.format(rollup.planQty)}',
                 style: const TextStyle(color: _kNeutral, fontSize: 12),
               ),
             ],

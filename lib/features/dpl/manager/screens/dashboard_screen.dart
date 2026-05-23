@@ -6,15 +6,12 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/shimmer_skeleton.dart';
-import '../../../auth/auth_provider.dart';
-import '../../../auth/change_password_dialog.dart';
+import '../../core/widgets/dpl_app_bar.dart';
 import '../../models/dpl_dashboard_summary.dart';
 import '../providers/dpl_dashboard_provider.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
 import '../widgets/machine_summary_card.dart';
-
-enum _DplDashboardMenu { refresh, changePassword, logout }
 
 /// How often the dashboard re-pulls totals + per-machine state. Picked
 /// to be slow enough to not hammer the API (a manager glancing at the
@@ -88,37 +85,43 @@ class _DplManagerDashboardScreenState
   Widget build(BuildContext context) {
     final date = ref.watch(dplDashboardDateProvider);
     final summary = ref.watch(dplDashboardSummaryProvider);
-    final user = ref.watch(authControllerProvider).asData?.value;
 
-    final displayName = (user?.name.trim().isNotEmpty ?? false)
-        ? user!.name
-        : (user?.username ?? 'Manager');
-
-    void handleMenu(_DplDashboardMenu action) {
-      switch (action) {
-        case _DplDashboardMenu.refresh:
-          ref.invalidate(dplDashboardSummaryProvider);
-          break;
-        case _DplDashboardMenu.changePassword:
-          showChangePasswordDialog(context, ref);
-          break;
-        case _DplDashboardMenu.logout:
-          ref.read(authControllerProvider.notifier).logout();
-          break;
-      }
-    }
+    final isPhone = MediaQuery.of(context).size.width < 600;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Daily Production'),
-            _LiveIndicator(lastTick: _lastTick),
-          ],
-        ),
+      appBar: DplAppBar(
+        title: 'Daily Production',
+        subtitle: _LiveIndicator(lastTick: _lastTick),
         actions: [
+          if (isPhone)
+            IconButton(
+              tooltip: 'Upload Plan',
+              icon: const Icon(
+                Icons.upload_file_outlined,
+                color: Color(0xFF6B1F8C),
+              ),
+              onPressed: () => context.push('/dpl/manager/upload-plan'),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+              child: FilledButton.icon(
+                onPressed: () => context.push('/dpl/manager/upload-plan'),
+                icon: const Icon(Icons.upload_file_outlined, size: 18),
+                label: const Text(
+                  'Upload Plan',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF6B1F8C),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
           IconButton(
             tooltip: 'Pick date',
             icon: const Icon(Icons.calendar_today_outlined),
@@ -133,56 +136,6 @@ class _DplManagerDashboardScreenState
                 ref.read(dplDashboardDateProvider.notifier).set(picked);
               }
             },
-          ),
-          PopupMenuButton<_DplDashboardMenu>(
-            tooltip: displayName,
-            onSelected: handleMenu,
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                enabled: false,
-                child: Text(
-                  displayName,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: _DplDashboardMenu.refresh,
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.refresh),
-                  title: Text('Refresh'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: _DplDashboardMenu.changePassword,
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.lock_reset_outlined),
-                  title: Text('Change Password'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: _DplDashboardMenu.logout,
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.logout),
-                  title: Text('Logout'),
-                ),
-              ),
-            ],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: CircleAvatar(
-                radius: 16,
-                backgroundColor:
-                    Theme.of(context).colorScheme.primary.withOpacity(0.14),
-                child: Text(
-                  displayName[0].toUpperCase(),
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
           ),
         ],
       ),
@@ -227,11 +180,6 @@ class _DplManagerDashboardScreenState
             },
           ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/dpl/manager/upload-plan'),
-        icon: const Icon(Icons.upload_file_outlined),
-        label: const Text('Upload Plan'),
       ),
     );
   }
@@ -306,8 +254,18 @@ class _DashboardBody extends StatelessWidget {
         ),
         SizedBox(height: isPhone ? 8 : 10),
         _KpiStrip(summary: summary),
-        SizedBox(height: isPhone ? 10 : 14),
-        _TotalsCard(summary: summary, fmt: fmt),
+        if (summary.shifts.isNotEmpty) ...[
+          SizedBox(height: isPhone ? 12 : 16),
+          Text(
+            'Shifts',
+            style: TextStyle(
+              fontSize: isPhone ? 13 : 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          SizedBox(height: isPhone ? 8 : 10),
+          _ShiftRollupStrip(shifts: summary.shifts, fmt: fmt),
+        ],
         SizedBox(height: isPhone ? 12 : 16),
         Text(
           'Machines',
@@ -342,12 +300,10 @@ class _DashboardBody extends StatelessWidget {
 }
 
 /// Horizontally-scrollable strip of compact KPI cards shown at the top
-/// of the Manager Dashboard. Each card reads from a different provider
-/// so they update independently:
-///
-///   * Today   — `summary` passed in from the dashboard summary provider
-///   * MTD     — `dplDashboardMtdProvider` (reportDplChart cumulative)
-///   * Downtime today — derived from MTD's day cells for `summary.date`
+/// of the Manager Dashboard. All three cards now come from the single
+/// `/manager/dashboard` response — `summary.totals` for Today,
+/// `summary.mtd` for the MTD card, `summary.totalDowntimeMinutes` for
+/// the Downtime card. One round-trip serves the strip.
 class _KpiStrip extends ConsumerWidget {
   final DplDashboardSummary summary;
 
@@ -355,7 +311,6 @@ class _KpiStrip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mtdAsync = ref.watch(dplDashboardMtdProvider);
     final fmt = NumberFormat.decimalPattern();
 
     // ---- Today (selected date) ----
@@ -370,66 +325,35 @@ class _KpiStrip extends ConsumerWidget {
       fmt: fmt,
     );
 
-    // ---- MTD ----
-    final mtd = mtdAsync.asData?.value.data;
-    final mtdLoading = mtdAsync.isLoading;
-    final mtdError = mtdAsync.hasError ||
-        (mtd == null && mtdAsync.asData?.value.isError == true);
+    // ---- MTD (bundled inside the dashboard response) ----
+    final mtd = summary.mtd;
+    final mtdCard = mtd == null
+        ? _KpiCard(
+            label: 'MTD',
+            sublabel: 'Cumulative till date',
+            ratioActual: 0,
+            ratioPlan: 0,
+            pct: 0,
+            color: const Color(0xFF047857),
+            icon: Icons.calendar_month_outlined,
+            fmt: fmt,
+          )
+        : _KpiCard(
+            label: 'MTD',
+            sublabel: 'Cumulative till date',
+            ratioActual: mtd.actualQty,
+            ratioPlan: mtd.planQty,
+            pct: mtd.completionPct,
+            color: const Color(0xFF047857),
+            icon: Icons.calendar_month_outlined,
+            fmt: fmt,
+          );
 
-    Widget mtdCard;
-    if (mtdLoading && mtd == null) {
-      mtdCard = const _KpiCardSkeleton(
-        label: 'MTD',
-        sublabel: 'Cumulative till date',
-        icon: Icons.calendar_month_outlined,
-        color: Color(0xFF047857),
-      );
-    } else if (mtdError || mtd == null) {
-      mtdCard = _KpiCard(
-        label: 'MTD',
-        sublabel: 'Cumulative till date',
-        ratioActual: 0,
-        ratioPlan: 0,
-        pct: 0,
-        color: const Color(0xFF047857),
-        icon: Icons.calendar_month_outlined,
-        fmt: fmt,
-      );
-    } else {
-      mtdCard = _KpiCard(
-        label: 'MTD',
-        sublabel: 'Cumulative till date',
-        ratioActual: mtd.cumulative.actualQty,
-        ratioPlan: mtd.cumulative.planQty,
-        pct: mtd.cumulative.achievementPct,
-        color: const Color(0xFF047857),
-        icon: Icons.calendar_month_outlined,
-        fmt: fmt,
-      );
-    }
-
-    // ---- Downtime today (sum of all machine summary cells) ----
-    // The dashboard summary doesn't carry downtime per machine in the
-    // current shape, so we surface today's downtime from the MTD chart
-    // by picking out today's cells.
-    int downtimeTodayMin = 0;
-    if (mtd != null) {
-      final today = summary.date;
-      for (final row in mtd.rows) {
-        for (final cell in row.daily) {
-          if (cell.date.year == today.year &&
-              cell.date.month == today.month &&
-              cell.date.day == today.day) {
-            downtimeTodayMin += cell.downtimeMinutes;
-          }
-        }
-      }
-    }
-
+    // ---- Downtime today (from the bundled totals block) ----
     final downtimeCard = _KpiCardSimple(
       label: 'DOWNTIME',
       sublabel: 'Today',
-      value: _formatHrsMin(downtimeTodayMin),
+      value: _formatHrsMin(summary.totalDowntimeMinutes),
       icon: Icons.timer_off_outlined,
       color: const Color(0xFFB45309),
     );
@@ -565,12 +489,15 @@ class _KpiCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 4),
-              Text(
-                ratioPlan == 0 ? '—' : '$pctRounded%',
-                style: TextStyle(
-                  color: achColor,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  ratioPlan == 0 ? '—' : '$pctRounded%',
+                  style: TextStyle(
+                    color: achColor,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12,
+                  ),
                 ),
               ),
             ],
@@ -721,23 +648,70 @@ class _KpiCardSimple extends StatelessWidget {
   }
 }
 
-class _KpiCardSkeleton extends StatelessWidget {
-  final String label;
-  final String sublabel;
-  final IconData icon;
-  final Color color;
+/// Horizontal strip of per-shift KPI tiles powered by the `shifts[]`
+/// block on the dashboard response. Each tile shows the shift label,
+/// plan count, actual/plan ratio, and completion %. Falls back to
+/// "Unassigned" for the legacy `shift_id=null` bucket.
+class _ShiftRollupStrip extends StatelessWidget {
+  final List<DplDashboardShiftRollup> shifts;
+  final NumberFormat fmt;
 
-  const _KpiCardSkeleton({
-    required this.label,
-    required this.sublabel,
-    required this.icon,
-    required this.color,
-  });
+  const _ShiftRollupStrip({required this.shifts, required this.fmt});
 
   @override
   Widget build(BuildContext context) {
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    final gap = isPhone ? 8.0 : 10.0;
+
+    final tiles = shifts.map((s) => _ShiftTile(shift: s, fmt: fmt)).toList();
+
+    if (!isPhone) {
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: tiles
+            .map((t) => SizedBox(width: 220, child: t))
+            .toList(),
+      );
+    }
+
+    // Phones — horizontal scroll so the strip never overflows even
+    // when several shifts are active on the selected date.
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < tiles.length; i++) ...[
+            SizedBox(width: 180, child: tiles[i]),
+            if (i < tiles.length - 1) SizedBox(width: gap),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ShiftTile extends StatelessWidget {
+  final DplDashboardShiftRollup shift;
+  final NumberFormat fmt;
+
+  const _ShiftTile({required this.shift, required this.fmt});
+
+  Color _achColor(double p) {
+    if (shift.planQty == 0) return const Color(0xFF5D6A7A);
+    if (p >= 1.0) return const Color(0xFF1D4ED8);
+    if (p >= 0.9) return const Color(0xFF047857);
+    if (p >= 0.7) return const Color(0xFFB45309);
+    return const Color(0xFFB3261E);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (shift.completionPct * 100).round();
+    final achColor = _achColor(shift.completionPct);
+
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border.all(color: const Color(0xFFE2EAF6)),
@@ -745,39 +719,48 @@ class _KpiCardSkeleton extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(
             children: [
               Container(
-                width: 28,
-                height: 28,
+                width: 24,
+                height: 24,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
+                  color: const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(7),
                 ),
-                child: Icon(icon, color: color, size: 16),
+                child: const Icon(
+                  Icons.schedule_outlined,
+                  color: Color(0xFF3730A3),
+                  size: 14,
+                ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      label,
-                      style: TextStyle(
-                        color: color,
+                      shift.displayLabel,
+                      style: const TextStyle(
+                        color: Color(0xFF3730A3),
                         fontWeight: FontWeight.w900,
                         fontSize: 11,
-                        letterSpacing: 0.6,
+                        letterSpacing: 0.3,
+                        height: 1.1,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      sublabel,
+                      '${shift.planCount} plan${shift.planCount == 1 ? '' : 's'}',
                       style: const TextStyle(
                         color: Color(0xFF5D6A7A),
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
+                        height: 1.1,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -785,119 +768,61 @@ class _KpiCardSkeleton extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(width: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  shift.planQty == 0 ? '—' : '$pct%',
+                  style: TextStyle(
+                    color: achColor,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 14),
-          const SkeletonBox(height: 20, width: 120),
           const SizedBox(height: 6),
-          const SkeletonBox(height: 4, width: double.infinity),
-        ],
-      ),
-    );
-  }
-}
-
-class _TotalsCard extends StatelessWidget {
-  final DplDashboardSummary summary;
-  final NumberFormat fmt;
-
-  const _TotalsCard({required this.summary, required this.fmt});
-
-  @override
-  Widget build(BuildContext context) {
-    final pct = (summary.completionPct * 100).round();
-    final isPhone = MediaQuery.of(context).size.width < 600;
-    return Container(
-      padding: EdgeInsets.all(isPhone ? 12 : 16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(isPhone ? 14 : 18),
-        border: Border.all(color: const Color(0xFFE2EAF6)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _BigStat(
-                  label: 'Plan Qty',
-                  value: fmt.format(summary.totalPlanQty),
-                  color: const Color(0xFF1D4ED8),
-                ),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(color: Colors.black),
+                children: [
+                  TextSpan(
+                    text: fmt.format(shift.actualQty),
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                    ),
+                  ),
+                  TextSpan(
+                    text: ' / ${fmt.format(shift.planQty)}',
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      color: Color(0xFF5D6A7A),
+                    ),
+                  ),
+                ],
               ),
-              Expanded(
-                child: _BigStat(
-                  label: 'Actual Qty',
-                  value: fmt.format(summary.totalActualQty),
-                  color: const Color(0xFF047857),
-                ),
-              ),
-              Expanded(
-                child: _BigStat(
-                  label: 'Completion',
-                  value: '$pct%',
-                  color: const Color(0xFFB45309),
-                ),
-              ),
-            ],
+            ),
           ),
-          SizedBox(height: isPhone ? 8 : 12),
+          const SizedBox(height: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
-              value: summary.completionPct,
-              minHeight: isPhone ? 6 : 8,
+              value: shift.completionPct.clamp(0.0, 1.0),
+              minHeight: 4,
               backgroundColor: const Color(0xFFEEF1F5),
+              valueColor: AlwaysStoppedAnimation(achColor),
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _BigStat extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-
-  const _BigStat({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isPhone = MediaQuery.of(context).size.width < 600;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: const Color(0xFF5D6A7A),
-            fontSize: isPhone ? 10 : 12,
-            fontWeight: FontWeight.w600,
-            height: 1.1,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        SizedBox(height: isPhone ? 3 : 6),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w900,
-              fontSize: isPhone ? 18 : 22,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

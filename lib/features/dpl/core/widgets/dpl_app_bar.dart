@@ -1,271 +1,177 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../auth/auth_provider.dart';
-import '../../../auth/change_password_dialog.dart';
-import '../design/dpl_role.dart';
-import '../design/dpl_theme.dart';
-import 'dpl_buttons.dart';
-import 'dpl_refresh_icon_button.dart';
+import 'dpl_user_menu.dart';
 import 'vistar_logo.dart';
 
-/// Unified app bar used by every DPL screen.
+/// Polished, branded AppBar used by every DPL screen.
 ///
 /// Layout (left → right):
 ///   * Leading — back arrow when the route can pop, otherwise the
-///     Vistar mark (28dp).
-///   * Title block — [title] in h2 style, optional [subtitle] in
-///     caption below.
-///   * Actions — optional refresh icon (shows a spinner while
-///     [refreshing]), profile menu (always shown when [showProfile]).
+///     Vistar wordmark logo.
+///   * Title — bold display + optional [subtitle] widget below (e.g. a
+///     "Live • updated 12s ago" indicator).
+///   * Actions — caller-supplied widgets followed by [DplUserMenu]
+///     (when [showProfile] is true).
 ///
-/// Visuals: white background, 1px bottom divider, no Material
-/// elevation. 56dp tall by default, 72dp when [subtitle] is set.
+/// Visual identity:
+///   * White surface, no Material elevation.
+///   * Brand-purple accent strip at the very top (the Vistar swoosh:
+///     magenta → orange → yellow). This is the recognizable "Vistar
+///     bar" across every screen.
+///   * 1px neutral divider at the bottom.
 class DplAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final String title;
-  final String? subtitle;
-
-  /// Async refresh action. The icon morphs to a spinner while the
-  /// future is in flight so the user knows the tap registered.
-  final Future<void> Function()? onRefresh;
-
+  final Widget? subtitle;
+  final List<Widget> actions;
   final bool showProfile;
-  final List<Widget> extraActions;
-
-  /// Force the leading element. When null, automatically picks back
-  /// arrow (if `Navigator.canPop`) or the Vistar mark.
   final Widget? leading;
+  final PreferredSizeWidget? bottom;
 
   const DplAppBar({
     super.key,
     required this.title,
     this.subtitle,
-    this.onRefresh,
+    this.actions = const [],
     this.showProfile = true,
-    this.extraActions = const [],
     this.leading,
+    this.bottom,
   });
 
+  // Brand tokens — kept inline so this widget has no design-system
+  // import beyond VistarLogo / DplUserMenu.
+  static const _accentMagenta = Color(0xFFA4257A);
+  static const _accentOrange = Color(0xFFE54B2A);
+  static const _accentYellow = Color(0xFFF5A623);
+  static const _surface = Color(0xFFFFFFFF);
+  static const _divider = Color(0xFFE5E7EB);
+  static const _textPrimary = Color(0xFF111827);
+  static const _textMuted = Color(0xFF6B7280);
+
+  static const double _baseHeight = 72;
+  static const double _accentStripHeight = 3;
+  static const double _subtitleHeight = 18;
+
+  double get _coreHeight =>
+      _accentStripHeight + _baseHeight + (subtitle != null ? _subtitleHeight : 0);
+
   @override
-  Size get preferredSize =>
-      Size.fromHeight(subtitle == null ? 56 : 72);
+  Size get preferredSize => Size.fromHeight(
+        _coreHeight + (bottom?.preferredSize.height ?? 0),
+      );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final canPop = Navigator.of(context).canPop();
+    final isPhone = MediaQuery.of(context).size.width < 600;
 
-    final leadingWidget = leading ??
-        (canPop
-            ? IconButton(
-                tooltip: 'Back',
-                icon: const Icon(Icons.arrow_back_rounded,
-                    color: DplColors.textPrimary),
-                onPressed: () => Navigator.of(context).maybePop(),
-              )
-            : Padding(
-                padding: const EdgeInsets.only(left: DplSpacing.md),
-                child: Center(
-                  child: VistarLogo(height: 28),
-                ),
-              ));
+    // Leading slot has two flavors:
+    //   * Back arrow — fixed 56dp slot so titles align consistently
+    //     across screens that can/can't pop.
+    //   * Vistar wordmark — sized to its natural aspect ratio with
+    //     tight horizontal padding. No SizedBox reservation, so the
+    //     title sits immediately to the right of the logo and we
+    //     don't leak whitespace when the asset has transparent
+    //     padding.
+    final Widget leadingWidget;
+    if (leading != null) {
+      leadingWidget = leading!;
+    } else if (canPop) {
+      leadingWidget = SizedBox(
+        width: 56,
+        child: Center(
+          child: IconButton(
+            tooltip: 'Back',
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              color: _textPrimary,
+            ),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+        ),
+      );
+    } else {
+      leadingWidget = Padding(
+        padding: EdgeInsets.fromLTRB(isPhone ? 12 : 16, 0, isPhone ? 6 : 10, 0),
+        child: VistarLogo(
+          height: isPhone ? 56 : 64,
+          showWordmark: true,
+        ),
+      );
+    }
 
     return Material(
-      color: DplColors.cardBg,
+      color: _surface,
       elevation: 0,
       child: SafeArea(
         bottom: false,
-        child: Container(
-          decoration: const BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: DplColors.divider, width: 1),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Brand accent strip — instant Vistar recognition.
+            Container(
+              height: _accentStripHeight,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [_accentMagenta, _accentOrange, _accentYellow],
+                ),
+              ),
             ),
-          ),
-          height: preferredSize.height,
-          child: Row(
-            children: [
-              SizedBox(width: 56, child: Center(child: leadingWidget)),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      title,
-                      style: DplText.h2().copyWith(fontSize: 18),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (subtitle != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          subtitle!,
-                          style: DplText.caption(),
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: _divider, width: 1),
+                ),
+              ),
+              height: _baseHeight + (subtitle != null ? _subtitleHeight : 0),
+              child: Row(
+                children: [
+                  leadingWidget,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            color: _textPrimary,
+                            fontWeight: FontWeight.w800,
+                            fontSize: isPhone ? 15 : 17,
+                            height: 1.15,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                  ],
-                ),
+                        if (subtitle != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: DefaultTextStyle(
+                              style: const TextStyle(
+                                color: _textMuted,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                height: 1.1,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              child: subtitle!,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  ...actions,
+                  if (showProfile) const DplUserMenu(),
+                ],
               ),
-              ...extraActions,
-              if (onRefresh != null)
-                DplRefreshIconButton(onRefresh: onRefresh!),
-              if (showProfile)
-                Padding(
-                  padding: const EdgeInsets.only(right: DplSpacing.md),
-                  child: _ProfileMenu(),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileMenu extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authControllerProvider).asData?.value;
-    final name = user?.name ?? 'User';
-    final initial = name.isEmpty ? 'U' : name[0].toUpperCase();
-    final roleLabel = DplRole.labelFor(user?.role);
-
-    return PopupMenuButton<_MenuAction>(
-      tooltip: 'Account',
-      offset: const Offset(0, 36),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(DplRadius.md),
-      ),
-      onSelected: (action) async {
-        switch (action) {
-          case _MenuAction.profile:
-            // Navigate to supervisor profile tab if available. Manager
-            // doesn't have a dedicated screen yet — silently no-op.
-            if (DplRole.isSupervisor(user?.role)) {
-              context.go('/dpl/supervisor');
-            }
-            break;
-          case _MenuAction.changePassword:
-            if (context.mounted) {
-              showChangePasswordDialog(context, ref);
-            }
-            break;
-          case _MenuAction.logout:
-            if (!context.mounted) return;
-            final confirm = await _confirmLogout(context);
-            if (confirm != true) return;
-            await ref.read(authControllerProvider.notifier).logout();
-            break;
-          case _MenuAction.header:
-            break;
-        }
-      },
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          enabled: false,
-          value: _MenuAction.header,
-          height: 56,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                name,
-                style: DplText.body()
-                    .copyWith(color: DplColors.textPrimary, fontWeight: FontWeight.w800),
-              ),
-              Text(roleLabel, style: DplText.caption()),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(),
-        PopupMenuItem(
-          value: _MenuAction.profile,
-          child: Row(
-            children: const [
-              Icon(Icons.person_outline, color: DplColors.textPrimary),
-              SizedBox(width: 10),
-              Text('Profile'),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: _MenuAction.changePassword,
-          child: Row(
-            children: const [
-              Icon(Icons.lock_reset, color: DplColors.textPrimary),
-              SizedBox(width: 10),
-              Text('Change Password'),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(),
-        PopupMenuItem(
-          value: _MenuAction.logout,
-          child: Row(
-            children: const [
-              Icon(Icons.logout, color: DplColors.error),
-              SizedBox(width: 10),
-              Text('Logout',
-                  style: TextStyle(
-                    color: DplColors.error,
-                    fontWeight: FontWeight.w700,
-                  )),
-            ],
-          ),
-        ),
-      ],
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: const BoxDecoration(
-          color: DplColors.primaryTint,
-          shape: BoxShape.circle,
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          initial,
-          style: DplText.bodyLg().copyWith(
-            color: DplColors.primary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<bool?> _confirmLogout(BuildContext context) {
-    return showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(DplRadius.lg),
-        ),
-        title: const Text('Log out?'),
-        content: const Text(
-          'You will need to sign in again to continue.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          SizedBox(
-            width: 120,
-            child: DplDangerButton(
-              label: 'Log out',
-              height: 44,
-              fullWidth: true,
-              onPressed: () => Navigator.pop(dialogContext, true),
             ),
-          ),
-        ],
+            ?bottom,
+          ],
+        ),
       ),
     );
   }
 }
-
-enum _MenuAction { header, profile, changePassword, logout }

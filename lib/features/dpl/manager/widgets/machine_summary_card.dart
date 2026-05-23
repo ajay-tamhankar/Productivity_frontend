@@ -50,6 +50,10 @@ class DplMachineSummaryCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (summary.shiftLabel.isNotEmpty) ...[
+                    _ShiftChip(label: summary.shiftLabel, isPhone: isPhone),
+                    SizedBox(width: isPhone ? 6 : 8),
+                  ],
                   DplStatusBadge(status: summary.status),
                 ],
               ),
@@ -156,6 +160,40 @@ class DplMachineSummaryCard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Compact "Shift A" pill rendered on the machine card title row.
+class _ShiftChip extends StatelessWidget {
+  final String label;
+  final bool isPhone;
+
+  const _ShiftChip({required this.label, required this.isPhone});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isPhone ? 6 : 8,
+        vertical: isPhone ? 2 : 3,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF2FF),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFC7D2FE)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: const Color(0xFF3730A3),
+          fontWeight: FontWeight.w700,
+          fontSize: isPhone ? 10 : 11,
+          height: 1.0,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
     );
   }
 }

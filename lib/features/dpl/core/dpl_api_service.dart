@@ -755,6 +755,7 @@ class DplApiService {
   Future<DplApiResponse<DplDowntimeReport>> reportDowntime({
     DateTime? from,
     DateTime? to,
+    int? machineId,
     int? shiftId,
     List<String>? groupBy,
   }) {
@@ -764,6 +765,7 @@ class DplApiService {
         queryParameters: _cleanQuery({
           if (from != null) 'from': _ymd(from),
           if (to != null) 'to': _ymd(to),
+          'machine_id': ?machineId,
           'shift_id': ?shiftId,
           if (groupBy != null && groupBy.isNotEmpty)
             'group_by': groupBy.join(','),
@@ -783,13 +785,18 @@ class DplApiService {
   }
 
   Future<DplApiResponse<DplSupervisorPerformanceReport>>
-      reportSupervisorPerformance({DateTime? from, DateTime? to}) {
+      reportSupervisorPerformance({
+    DateTime? from,
+    DateTime? to,
+    int? machineId,
+  }) {
     return _send<DplSupervisorPerformanceReport>(
       () => _dio.get(
         DplPaths.reportSupervisorPerformance,
         queryParameters: _cleanQuery({
           if (from != null) 'from': _ymd(from),
           if (to != null) 'to': _ymd(to),
+          'machine_id': ?machineId,
         }),
       ),
       fallback: 'Failed to load supervisor performance.',
@@ -810,6 +817,7 @@ class DplApiService {
   Future<DplApiResponse<DplPartWiseReport>> reportPartWise({
     DateTime? from,
     DateTime? to,
+    int? machineId,
   }) {
     return _send<DplPartWiseReport>(
       () => _dio.get(
@@ -817,6 +825,7 @@ class DplApiService {
         queryParameters: _cleanQuery({
           if (from != null) 'from': _ymd(from),
           if (to != null) 'to': _ymd(to),
+          'machine_id': ?machineId,
         }),
       ),
       fallback: 'Failed to load part-wise report.',

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/widgets/shimmer_skeleton.dart';
 import '../../../core/dpl_api_service.dart';
 import '../../../core/dpl_constants.dart';
+import '../../../core/widgets/dpl_app_bar.dart';
 import '../../../models/dpl_downtime_reason.dart';
 import '../../providers/dpl_masters_provider.dart';
 import '../../widgets/dpl_manager_footer.dart';
@@ -18,7 +19,7 @@ class DplDowntimeReasonsMasterScreen extends ConsumerWidget {
     final asyncList = ref.watch(dplDowntimeReasonsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Downtime Reasons')),
+      appBar: const DplAppBar(title: 'Downtime Reasons'),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(dplDowntimeReasonsProvider);

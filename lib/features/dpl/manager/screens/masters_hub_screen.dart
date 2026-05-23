@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/widgets/dpl_app_bar.dart';
+
 class DplMastersHubScreen extends StatelessWidget {
   final bool embedded;
 
@@ -19,14 +21,6 @@ class DplMastersHubScreen extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (embedded)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 6),
-              child: Text(
-                'Settings',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-              ),
-            ),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -96,9 +90,8 @@ class DplMastersHubScreen extends StatelessWidget {
       ),
     );
 
-    if (embedded) return body;
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: const DplAppBar(title: 'Settings'),
       body: body,
     );
   }

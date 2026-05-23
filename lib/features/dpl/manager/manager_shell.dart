@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/widgets/dpl_app_bar.dart';
 import '../core/widgets/dpl_bottom_nav.dart';
+import '../core/widgets/dpl_refresh_icon_button.dart';
 import 'providers/dpl_dashboard_provider.dart';
 import 'providers/dpl_manager_tab_provider.dart';
 import 'providers/dpl_plan_list_provider.dart';
@@ -64,13 +66,25 @@ class DplManagerShell extends ConsumerWidget {
   }
 }
 
-class _EmbeddedPlanList extends StatelessWidget {
+class _EmbeddedPlanList extends ConsumerWidget {
   const _EmbeddedPlanList();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Production Plans')),
+      appBar: DplAppBar(
+        title: 'Production Plans',
+        actions: [
+          DplRefreshIconButton(
+            onRefresh: () async {
+              ref.invalidate(dplPlanListProvider);
+              try {
+                await ref.read(dplPlanListProvider.future);
+              } catch (_) {}
+            },
+          ),
+        ],
+      ),
       body: const DplPlanListScreen(embedded: true),
     );
   }

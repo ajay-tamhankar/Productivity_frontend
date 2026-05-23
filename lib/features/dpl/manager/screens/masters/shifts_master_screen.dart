@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../core/widgets/shimmer_skeleton.dart';
 import '../../../core/dpl_api_service.dart';
+import '../../../core/widgets/dpl_app_bar.dart';
 import '../../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../../models/dpl_shift.dart';
 import '../../providers/dpl_shifts_provider.dart';
@@ -18,8 +19,8 @@ class DplShiftsMasterScreen extends ConsumerWidget {
     final async = ref.watch(dplShiftsIncludeInactiveProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Shifts'),
+      appBar: DplAppBar(
+        title: 'Shifts',
         actions: [
           DplRefreshIconButton(
             onRefresh: () async {
