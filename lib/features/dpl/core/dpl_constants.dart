@@ -109,6 +109,17 @@ class DplPaths {
       '/manager/identity-verifications/$id/photo';
   static String managerIdentityFlag(int id) =>
       '/manager/identity-verifications/$id/flag';
+
+  // Supervisor — trolley photo capture (gate before STOP)
+  static String supervisorItemTrolleyPhoto(int planId, int itemId) =>
+      '/supervisor/plans/$planId/items/$itemId/trolley-photo';
+  static String supervisorTrolleyPhotoImage(int id) =>
+      '/supervisor/trolley-photos/$id/image';
+
+  // Manager — trolley photo audit log
+  static const String managerTrolleyPhotos = '/manager/trolley-photos';
+  static String managerTrolleyPhotoImage(int id) =>
+      '/manager/trolley-photos/$id/image';
 }
 
 /// Allowed `context` values for the identity-verify endpoint.

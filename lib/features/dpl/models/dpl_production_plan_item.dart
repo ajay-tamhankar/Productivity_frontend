@@ -26,6 +26,10 @@ class DplProductionPlanItem {
   final String? shiftName;
   final String? remarks;
 
+  /// Server-relative URL of the trolley photo captured at STOP time.
+  /// `null` until the item is stopped; only present on stopped items.
+  final String? stopTrolleyPhotoUrl;
+
   /// When set on a CREATE payload, links the new item to a leftover
   /// item from a previous plan (see
   /// `GET /manager/plans/carry-forward-candidates`). The backend uses
@@ -52,6 +56,7 @@ class DplProductionPlanItem {
     this.shiftCode,
     this.shiftName,
     this.remarks,
+    this.stopTrolleyPhotoUrl,
     this.carriedFromItemId,
   });
 
@@ -133,6 +138,13 @@ class DplProductionPlanItem {
           ? null
           : pickStr([json['shift_name'], json['shiftName'], shift['name']]),
       remarks: json['remarks']?.toString(),
+      stopTrolleyPhotoUrl: () {
+        final raw = json['stop_trolley_photo_url'] ??
+            json['stopTrolleyPhotoUrl'];
+        if (raw == null) return null;
+        final text = raw.toString().trim();
+        return text.isEmpty ? null : text;
+      }(),
       carriedFromItemId: parseIntOrNull(
         json['carried_from_item_id'] ?? json['carriedFromItemId'],
       ),
@@ -217,6 +229,7 @@ class DplProductionPlanItem {
     String? shiftCode,
     String? shiftName,
     String? remarks,
+    String? stopTrolleyPhotoUrl,
     int? carriedFromItemId,
   }) {
     return DplProductionPlanItem(
@@ -238,6 +251,7 @@ class DplProductionPlanItem {
       shiftCode: shiftCode ?? this.shiftCode,
       shiftName: shiftName ?? this.shiftName,
       remarks: remarks ?? this.remarks,
+      stopTrolleyPhotoUrl: stopTrolleyPhotoUrl ?? this.stopTrolleyPhotoUrl,
       carriedFromItemId: carriedFromItemId ?? this.carriedFromItemId,
     );
   }

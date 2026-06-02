@@ -24,6 +24,7 @@ import '../models/dpl_carry_candidate.dart';
 import '../models/dpl_identity.dart';
 import '../models/dpl_item_pause.dart';
 import '../models/dpl_supervisor_today.dart';
+import '../models/dpl_trolley_photo.dart';
 import 'dpl_api_client.dart';
 import 'dpl_api_response.dart';
 import 'dpl_constants.dart';
@@ -1298,11 +1299,16 @@ class DplApiService {
   }
 
   /// `POST /supervisor/plans/:planId/items/:itemId/stop` — finish production.
+  ///
+  /// [trolleyPhotoId] is required by the backend when the trolley-photo
+  /// gate is enabled (`DPL_TROLLEY_PHOTO_REQUIRED=true`). Upload the
+  /// photo via [uploadTrolleyPhoto] first, then pass the returned `id`.
   Future<DplApiResponse<StopItemResponse>> stopItem(
     int planId,
     int itemId, {
     required int actualQty,
     String? remarks,
+    int? trolleyPhotoId,
   }) {
     return _send<StopItemResponse>(
       () => _dio.post(
@@ -1311,6 +1317,7 @@ class DplApiService {
           'actual_qty': actualQty,
           if (remarks != null && remarks.trim().isNotEmpty)
             'remarks': remarks.trim(),
+          'trolley_photo_id': ?trolleyPhotoId,
         },
       ),
       fallback: 'Failed to stop item.',
@@ -1522,6 +1529,193 @@ class DplApiService {
       fallback: 'Failed to load downtime reasons.',
       fromJson: _listFrom<DplDowntimeReason>(DplDowntimeReason.fromJson),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 14) Trolley photo (gate before STOP)
+  // ---------------------------------------------------------------------------
+
+  /// `POST /supervisor/plans/:planId/items/:itemId/trolley-photo` —
+  /// multipart upload of the photo a supervisor must capture before
+  /// stopping a running item. Returns the persisted photo row; pass
+  /// its `id` to [stopItem] within the server's freshness window
+  /// (default 15 minutes).
+  Future<DplApiResponse<DplTrolleyPhoto>> uploadTrolleyPhoto({
+    required int planId,
+    required int itemId,
+    required Uint8List bytes,
+    required String filename,
+    String? remarks,
+  }) async {
+    try {
+      final form = FormData.fromMap({
+        'photo': MultipartFile.fromBytes(bytes, filename: filename),
+        if (remarks != null && remarks.trim().isNotEmpty)
+          'remarks': remarks.trim(),
+      });
+      return _send<DplTrolleyPhoto>(
+        () => _dio.post(
+          DplPaths.supervisorItemTrolleyPhoto(planId, itemId),
+          data: form,
+        ),
+        fallback: 'Failed to upload trolley photo.',
+        fromJson: (data) {
+          if (data is Map) {
+            return DplTrolleyPhoto.fromJson(Map<String, dynamic>.from(data));
+          }
+          throw const FormatException(
+            'Expected object response for trolley photo.',
+          );
+        },
+      );
+    } catch (e) {
+      return DplErrorMapper.fromObject<DplTrolleyPhoto>(
+        e,
+        fallback: 'Failed to upload trolley photo.',
+      );
+    }
+  }
+
+  /// `GET /supervisor/trolley-photos/:id/image` — raw image bytes. The
+  /// supervisor who uploaded the photo (and managers) can read it.
+  Future<DplApiResponse<Uint8List>> getSupervisorTrolleyPhotoBytes(
+    int id,
+  ) async {
+    try {
+      final response = await _dio.get<List<int>>(
+        DplPaths.supervisorTrolleyPhotoImage(id),
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final data = response.data;
+      if (data == null) {
+        return DplApiResponse.error('Empty trolley photo response.');
+      }
+      return DplApiResponse.ok(Uint8List.fromList(data));
+    } on DioException catch (e) {
+      return DplErrorMapper.fromDio<Uint8List>(
+        e,
+        fallback: 'Failed to load trolley photo.',
+      );
+    } catch (e) {
+      return DplErrorMapper.fromObject<Uint8List>(
+        e,
+        fallback: 'Failed to load trolley photo.',
+      );
+    }
+  }
+
+  /// `GET /manager/trolley-photos` — paginated manager-side audit
+  /// log of every trolley photo captured at STOP time.
+  Future<DplApiResponse<DplPagedResult<DplTrolleyPhoto>>>
+      listManagerTrolleyPhotos({
+    int? planId,
+    int? planItemId,
+    int? supervisorId,
+    int? machineId,
+    DateTime? from,
+    DateTime? to,
+    int page = 1,
+    int limit = 20,
+  }) {
+    return _send<DplPagedResult<DplTrolleyPhoto>>(
+      () => _dio.get(
+        DplPaths.managerTrolleyPhotos,
+        queryParameters: _cleanQuery({
+          'plan_id': ?planId,
+          'plan_item_id': ?planItemId,
+          'supervisor_id': ?supervisorId,
+          'machine_id': ?machineId,
+          if (from != null) 'from': _ymd(from),
+          if (to != null) 'to': _ymd(to),
+          'page': page,
+          'limit': limit,
+        }),
+      ),
+      fallback: 'Failed to load trolley photo audit.',
+      fromJson: (data) {
+        int parseInt(dynamic v, int fb) {
+          if (v is int) return v;
+          if (v is double) return v.toInt();
+          return int.tryParse(v?.toString() ?? '') ?? fb;
+        }
+
+        List<DplTrolleyPhoto> parseList(List raw) => raw
+            .whereType<Map>()
+            .map((e) =>
+                DplTrolleyPhoto.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+
+        if (data is List) {
+          final items = parseList(data);
+          return DplPagedResult<DplTrolleyPhoto>(
+            items: items,
+            page: page,
+            limit: limit,
+            total: items.length,
+          );
+        }
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          List<dynamic>? raw;
+          for (final key in const [
+            'photos',
+            'trolley_photos',
+            'trolleyPhotos',
+            'items',
+            'data',
+            'rows',
+            'results',
+          ]) {
+            final v = map[key];
+            if (v is List) {
+              raw = v;
+              break;
+            }
+          }
+          if (raw != null) {
+            final items = parseList(raw);
+            final nested = map['pagination'];
+            final p =
+                nested is Map ? Map<String, dynamic>.from(nested) : map;
+            return DplPagedResult<DplTrolleyPhoto>(
+              items: items,
+              page: parseInt(p['page'], page),
+              limit: parseInt(p['limit'], limit),
+              total: parseInt(p['total'], items.length),
+            );
+          }
+        }
+        return DplPagedResult<DplTrolleyPhoto>.empty();
+      },
+    );
+  }
+
+  /// `GET /manager/trolley-photos/:id/image` — manager view of the
+  /// raw image bytes.
+  Future<DplApiResponse<Uint8List>> getManagerTrolleyPhotoBytes(
+    int id,
+  ) async {
+    try {
+      final response = await _dio.get<List<int>>(
+        DplPaths.managerTrolleyPhotoImage(id),
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final data = response.data;
+      if (data == null) {
+        return DplApiResponse.error('Empty trolley photo response.');
+      }
+      return DplApiResponse.ok(Uint8List.fromList(data));
+    } on DioException catch (e) {
+      return DplErrorMapper.fromDio<Uint8List>(
+        e,
+        fallback: 'Failed to load trolley photo.',
+      );
+    } catch (e) {
+      return DplErrorMapper.fromObject<Uint8List>(
+        e,
+        fallback: 'Failed to load trolley photo.',
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------

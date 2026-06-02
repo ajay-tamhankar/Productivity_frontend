@@ -126,6 +126,8 @@ class DplDowntimeRow {
   final int totalMinutes;
   final int occurrences;
   final double avgMinutes;
+  /// Present only when the report was requested with `?group_by=day`.
+  final DateTime? bucketDate;
 
   const DplDowntimeRow({
     required this.reasonId,
@@ -134,6 +136,7 @@ class DplDowntimeRow {
     required this.totalMinutes,
     required this.occurrences,
     this.avgMinutes = 0,
+    this.bucketDate,
   });
 
   factory DplDowntimeRow.fromJson(Map<String, dynamic> json) {
@@ -153,6 +156,14 @@ class DplDowntimeRow {
       ),
       avgMinutes: parseDoubleOr(
         json['avg_minutes'] ?? json['avgMinutes'],
+      ),
+      bucketDate: parseDateTimeOrNull(
+        json['day'] ??
+            json['date'] ??
+            json['bucket_date'] ??
+            json['bucketDate'] ??
+            json['plan_date'] ??
+            json['planDate'],
       ),
     );
   }

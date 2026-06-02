@@ -16,9 +16,12 @@ import '../../core/widgets/dpl_refresh_icon_button.dart';
 import '../../models/dpl_machine.dart';
 import '../../models/dpl_monthly_chart.dart';
 import '../../models/dpl_reports.dart';
+import '../providers/dpl_daily_log_report_provider.dart';
 import '../providers/dpl_masters_provider.dart';
 import '../providers/dpl_monthly_chart_provider.dart';
 import '../services/dpl_chart_excel_exporter.dart';
+import '../services/dpl_daily_log_exporter.dart';
+import '../services/dpl_downtime_exporter.dart';
 import '../providers/dpl_reports_provider.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
@@ -77,7 +80,7 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 6, vsync: this);
+    _tabCtrl = TabController(length: 7, vsync: this);
     // Track active tab so the AppBar download icon dispatches correctly.
     _tabCtrl.addListener(() {
       if (!_tabCtrl.indexIsChanging) return;
@@ -93,14 +96,16 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
     super.dispose();
   }
 
-  /// Tab-aware export. Tab 1 (Monthly Chart) builds the company-format
-  /// spreadsheet client-side; every other tab hits the server-side
-  /// `/reports/export` endpoint with the appropriate `type=` slug.
-  Future<void> _downloadActiveTab() async {
+  /// Tab-aware export. Tab 1 (Monthly Chart) and tab 6 (Daily Log)
+  /// are built entirely client-side from live provider data; every
+  /// other tab hits the server-side `/reports/export` endpoint with
+  /// the appropriate `type=` slug.
+  Future<void> _downloadActiveTab({String format = DplReportFormat.xlsx}) async {
     setState(() => _isDownloading = true);
     try {
       if (_currentTab == 1) {
         // Monthly Chart — client-side, reads live provider data.
+        // Only Excel is supported for the custom company format.
         final async = ref.read(dplMonthlyChartProvider);
         final chartRes = async.asData?.value;
         final chart = chartRes?.data;
@@ -129,16 +134,108 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
         return;
       }
 
-      // Server-side export for the other tabs.
+      if (_currentTab == 3) {
+        // Downtime — client-side, date-wise with reasons under each
+        // day. Reads the same provider the screen does so the file
+        // matches what the user sees.
+        final async = ref.read(dplDowntimeByDateReportProvider);
+        final res = async.asData?.value;
+        final report = res?.data;
+        if (report == null || report.isEmpty) {
+          if (!mounted) return;
+          DplSnack.error(
+            context,
+            'No downtime data to export for this range.',
+          );
+          return;
+        }
+        final range = ref.read(dplReportRangeProvider);
+        final isPdf = format == DplReportFormat.pdf;
+        final bytes = isPdf
+            ? await DplDowntimeExporter.buildPdf(
+                report,
+                from: range.from,
+                to: range.to,
+              )
+            : DplDowntimeExporter.buildExcel(
+                report,
+                from: range.from,
+                to: range.to,
+              );
+        final ext = isPdf ? 'pdf' : 'xlsx';
+        final mime = isPdf
+            ? 'application/pdf'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        final fileName =
+            'dpl_downtime_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.$ext';
+        final path = await saveReportBytes(
+          bytes: bytes,
+          fileName: fileName,
+          mimeType: mime,
+        );
+        if (!mounted) return;
+        DplSnack.success(
+          context,
+          path == null ? 'Downloaded.' : 'Saved: $path',
+        );
+        return;
+      }
+
+      if (_currentTab == 6) {
+        // Daily Log — client-side, walks the in-memory plan/item rows.
+        final async = ref.read(dplDailyLogReportProvider);
+        final res = async.asData?.value;
+        final report = res?.data;
+        if (report == null || report.isEmpty) {
+          if (!mounted) return;
+          DplSnack.error(
+            context,
+            'No daily log data to export for this range.',
+          );
+          return;
+        }
+        final range = ref.read(dplReportRangeProvider);
+        final isPdf = format == DplReportFormat.pdf;
+        final bytes = isPdf
+            ? await DplDailyLogExporter.buildPdf(
+                report,
+                from: range.from,
+                to: range.to,
+              )
+            : DplDailyLogExporter.buildExcel(
+                report,
+                from: range.from,
+                to: range.to,
+              );
+        final ext = isPdf ? 'pdf' : 'xlsx';
+        final mime = isPdf
+            ? 'application/pdf'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        final fileName =
+            'dpl_daily_log_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.$ext';
+        final path = await saveReportBytes(
+          bytes: bytes,
+          fileName: fileName,
+          mimeType: mime,
+        );
+        if (!mounted) return;
+        DplSnack.success(
+          context,
+          path == null ? 'Downloaded.' : 'Saved: $path',
+        );
+        return;
+      }
+
+      // Server-side export for the remaining tabs. (Tabs 1, 3, and 6
+      // are handled above with client-side exporters.)
       final type = switch (_currentTab) {
         0 => 'plan-vs-actual', // Overview
         2 => 'plan-vs-actual', // Machines
-        3 => 'downtime',
         4 => 'supervisor-performance',
         5 => 'part-wise',
         _ => 'plan-vs-actual',
       };
-      await _exportReport(context, ref, type: type);
+      await _exportReport(context, ref, type: type, format: format);
     } finally {
       if (mounted) setState(() => _isDownloading = false);
     }
@@ -191,6 +288,9 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
                         Tab(
                             icon: Icon(Icons.inventory_2_outlined),
                             text: 'Parts'),
+                        Tab(
+                            icon: Icon(Icons.event_note_outlined),
+                            text: 'Log'),
                       ]
                     : const [
                         Tab(
@@ -211,6 +311,9 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
                         Tab(
                             icon: Icon(Icons.inventory_2_outlined),
                             text: 'Parts'),
+                        Tab(
+                            icon: Icon(Icons.event_note_outlined),
+                            text: 'Daily Log'),
                       ],
               ),
             ),
@@ -226,6 +329,7 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
           _DowntimeTab(),
           _SupervisorsTab(),
           _PartsTab(),
+          _DailyLogTab(),
         ],
       ),
     );
@@ -235,8 +339,9 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
       appBar: DplAppBar(
         title: 'Reports',
         actions: [
-          IconButton(
-            tooltip: 'Download as Excel',
+          PopupMenuButton<String>(
+            tooltip: 'Download',
+            enabled: !_isDownloading,
             icon: _isDownloading
                 ? const SizedBox(
                     width: 18,
@@ -247,7 +352,26 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
                     ),
                   )
                 : const Icon(Icons.download_outlined),
-            onPressed: _isDownloading ? null : _downloadActiveTab,
+            onSelected: (value) => _downloadActiveTab(format: value),
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: DplReportFormat.xlsx,
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.table_view_outlined),
+                  title: Text('Download Excel'),
+                ),
+              ),
+              if (_currentTab != 1)
+                const PopupMenuItem(
+                  value: DplReportFormat.pdf,
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.picture_as_pdf_outlined),
+                    title: Text('Download PDF'),
+                  ),
+                ),
+            ],
           ),
           DplRefreshIconButton(
             tooltip: 'Refresh all',
@@ -854,11 +978,12 @@ Future<void> _exportReport(
   BuildContext context,
   WidgetRef ref, {
   required String type,
+  String format = DplReportFormat.xlsx,
 }) async {
   final range = ref.read(dplReportRangeProvider);
   final res = await ref.read(dplApiServiceProvider).exportReportBytes(
         type: type,
-        format: DplReportFormat.xlsx,
+        format: format,
         from: range.from,
         to: range.to,
         machineId: range.machineId,
@@ -870,13 +995,22 @@ Future<void> _exportReport(
     return;
   }
   try {
+    final ext = format == DplReportFormat.pdf
+        ? 'pdf'
+        : format == DplReportFormat.csv
+            ? 'csv'
+            : 'xlsx';
+    final mime = format == DplReportFormat.pdf
+        ? 'application/pdf'
+        : format == DplReportFormat.csv
+            ? 'text/csv'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     final fileName =
-        'dpl_${type.replaceAll('-', '_')}_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.xlsx';
+        'dpl_${type.replaceAll('-', '_')}_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.$ext';
     final path = await saveReportBytes(
       bytes: res.data!,
       fileName: fileName,
-      mimeType:
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      mimeType: mime,
     );
     if (!context.mounted) return;
     DplSnack.success(context, path == null ? 'Exported.' : 'Saved: $path');
@@ -2406,45 +2540,50 @@ class _DowntimeTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(dplDowntimeReportProvider);
-    final mobile = _isMobile(context);
     final fmt = NumberFormat.decimalPattern();
+    final async = ref.watch(dplDowntimeByDateReportProvider);
 
     return RefreshIndicator(
       onRefresh: () async {
-        ref.invalidate(dplDowntimeReportProvider);
-        await ref.read(dplDowntimeReportProvider.future);
+        ref.invalidate(dplDowntimeByDateReportProvider);
+        await ref.read(dplDowntimeByDateReportProvider.future);
       },
       child: async.when(
         loading: () => const Padding(
           padding: EdgeInsets.all(16),
           child: SkeletonList(count: 4),
         ),
-        error: (e, _) => DplErrorRetry(message: e.toString()),
+        error: (e, _) => DplErrorRetry(
+          message: e.toString(),
+          onRetry: () => ref.invalidate(dplDowntimeByDateReportProvider),
+        ),
         data: (res) {
           if (res.isError) {
             return DplErrorRetry(
               message: res.error ?? 'Failed to load downtime report.',
-              onRetry: () => ref.invalidate(dplDowntimeReportProvider),
+              onRetry: () =>
+                  ref.invalidate(dplDowntimeByDateReportProvider),
             );
           }
           final report = res.data ?? DplDowntimeReport.empty();
-          if (report.isEmpty) {
+          final buckets = DplDowntimeAggregator.bucketByDate(report);
+          if (buckets.isEmpty) {
             return const _EmptyScroll(
               icon: Icons.timer_off_outlined,
               title: 'No downtime',
               message:
-                  "Either no downtime has been logged, or supervisors haven't started yet.",
+                  "Either no downtime has been logged, or the server didn't return per-day buckets for this range.",
             );
           }
 
-          final plannedMin = report.rows
-              .where((r) => r.category == DplDowntimeCategory.planned)
-              .fold<int>(0, (a, r) => a + r.totalMinutes);
-          final unplannedMin = report.rows
-              .where((r) => r.category != DplDowntimeCategory.planned)
-              .fold<int>(0, (a, r) => a + r.totalMinutes);
-          final totalMin = plannedMin + unplannedMin;
+          final grandTotal =
+              buckets.fold<int>(0, (a, b) => a + b.totalMinutes);
+          final grandEvents =
+              buckets.fold<int>(0, (a, b) => a + b.totalEvents);
+          final peak = buckets.reduce(
+            (a, b) => a.totalMinutes >= b.totalMinutes ? a : b,
+          );
+          final dateLabel = DateFormat('dd MMM');
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
@@ -2456,107 +2595,47 @@ class _DowntimeTab extends ConsumerWidget {
                   border: Border.all(color: _kBorder),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: mobile
-                        ? Column(
-                            children: [
-                              SizedBox(
-                                height: 140,
-                                child: _CategoryPie(
-                                  plannedMin: plannedMin,
-                                  unplannedMin: unplannedMin,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              _LegendChip(
-                                color: _kPrimary,
-                                label: 'Planned',
-                                value: _formatHrsMin(plannedMin),
-                                pct: totalMin == 0 ? 0 : plannedMin / totalMin,
-                              ),
-                              const SizedBox(height: 6),
-                              _LegendChip(
-                                color: _kWarn,
-                                label: 'Unplanned',
-                                value: _formatHrsMin(unplannedMin),
-                                pct: totalMin == 0
-                                    ? 0
-                                    : unplannedMin / totalMin,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Total: ${_formatHrsMin(totalMin)}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  color: _kNeutral,
-                                ),
-                              ),
-                            ],
-                          )
-                        : Row(
-                            children: [
-                              SizedBox(
-                                width: 160,
-                                height: 160,
-                                child: _CategoryPie(
-                                  plannedMin: plannedMin,
-                                  unplannedMin: unplannedMin,
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    _LegendChip(
-                                      color: _kPrimary,
-                                      label: 'Planned',
-                                      value: _formatHrsMin(plannedMin),
-                                      pct: totalMin == 0
-                                          ? 0
-                                          : plannedMin / totalMin,
-                                    ),
-                                    const SizedBox(height: 6),
-                                    _LegendChip(
-                                      color: _kWarn,
-                                      label: 'Unplanned',
-                                      value: _formatHrsMin(unplannedMin),
-                                      pct: totalMin == 0
-                                          ? 0
-                                          : unplannedMin / totalMin,
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Text(
-                                      'Total: ${_formatHrsMin(totalMin)}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w900,
-                                        color: _kNeutral,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
-                  const SizedBox(height: 14),
-                  _SectionHeader(
-                    icon: Icons.bar_chart_outlined,
-                    title: 'Pareto',
-                  ),
-                  const SizedBox(height: 8),
-                  _TopDowntimeReasons(report: report),
-                  const SizedBox(height: 14),
-                  _SectionHeader(
-                    icon: Icons.list_alt_outlined,
-                    title: 'Detail',
-                  ),
-                  const SizedBox(height: 8),
-                  // Card list instead of DataTable
-                  for (final r in report.rows) ...[
-                    _DowntimeDetailCard(row: r, fmt: fmt),
-                    const SizedBox(height: 8),
+                child: Wrap(
+                  spacing: 18,
+                  runSpacing: 10,
+                  children: [
+                    _MiniKv(
+                      label: 'Days',
+                      value: fmt.format(buckets.length),
+                    ),
+                    _MiniKv(
+                      label: 'Events',
+                      value: fmt.format(grandEvents),
+                    ),
+                    _MiniKv(
+                      label: 'Total Downtime',
+                      value: _formatHrsMin(grandTotal),
+                      color: _kBad,
+                    ),
+                    _MiniKv(
+                      label: 'Peak Day',
+                      value:
+                          '${dateLabel.format(peak.date)} • ${_formatHrsMin(peak.totalMinutes)}',
+                      color: _kWarn,
+                    ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              const _SectionHeader(
+                icon: Icons.calendar_today_outlined,
+                title: 'Daily breakdown with reasons',
+              ),
+              const SizedBox(height: 8),
+              for (final bucket in buckets) ...[
+                _DowntimeDayCard(
+                  bucket: bucket,
+                  grandTotal: grandTotal,
+                  peakMinutes: peak.totalMinutes,
+                  fmt: fmt,
+                ),
+                const SizedBox(height: 8),
+              ],
             ],
           );
         },
@@ -2565,96 +2644,25 @@ class _DowntimeTab extends ConsumerWidget {
   }
 }
 
-class _CategoryPie extends StatelessWidget {
-  final int plannedMin;
-  final int unplannedMin;
-
-  const _CategoryPie({
-    required this.plannedMin,
-    required this.unplannedMin,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return PieChart(
-      PieChartData(
-        sectionsSpace: 2,
-        centerSpaceRadius: 30,
-        sections: [
-          if (plannedMin > 0)
-            PieChartSectionData(
-              color: _kPrimary,
-              value: plannedMin.toDouble(),
-              title: '',
-              radius: 30,
-            ),
-          if (unplannedMin > 0)
-            PieChartSectionData(
-              color: _kWarn,
-              value: unplannedMin.toDouble(),
-              title: '',
-              radius: 30,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LegendChip extends StatelessWidget {
-  final Color color;
-  final String label;
-  final String value;
-  final double pct;
-
-  const _LegendChip({
-    required this.color,
-    required this.label,
-    required this.value,
-    required this.pct,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final p = (pct * 100).round();
-    return Row(
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(3),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            '$label  •  $p%',
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              color: _kNeutral,
-            ),
-          ),
-        ),
-        Text(
-          value,
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
-      ],
-    );
-  }
-}
-
-class _DowntimeDetailCard extends StatelessWidget {
-  final DplDowntimeRow row;
+class _DowntimeDayCard extends StatelessWidget {
+  final DplDowntimeDateBucket bucket;
+  final int grandTotal;
+  final int peakMinutes;
   final NumberFormat fmt;
-  const _DowntimeDetailCard({required this.row, required this.fmt});
+
+  const _DowntimeDayCard({
+    required this.bucket,
+    required this.grandTotal,
+    required this.peakMinutes,
+    required this.fmt,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isPlanned = row.category == DplDowntimeCategory.planned;
-    final color = isPlanned ? _kPrimary : _kWarn;
+    final totalMin = bucket.totalMinutes;
+    final share = grandTotal <= 0 ? 0.0 : totalMin / grandTotal;
+    final fraction = peakMinutes <= 0 ? 0.0 : totalMin / peakMinutes;
+    final dateLabel = DateFormat('EEE, dd MMM yyyy').format(bucket.date);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -2662,12 +2670,124 @@ class _DowntimeDetailCard extends StatelessWidget {
         border: Border.all(color: _kBorder),
         borderRadius: BorderRadius.circular(14),
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  dateLabel,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              Text(
+                _formatHrsMin(totalMin),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: _kBad,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: fraction.clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: const Color(0xFFFCE3E3),
+              valueColor: const AlwaysStoppedAnimation(_kBad),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 14,
+            runSpacing: 4,
+            children: [
+              Text(
+                '${fmt.format(bucket.totalEvents)} event${bucket.totalEvents == 1 ? "" : "s"}',
+                style: const TextStyle(color: _kNeutral, fontSize: 12),
+              ),
+              if (bucket.plannedMinutes > 0)
+                Text(
+                  'Planned: ${_formatHrsMin(bucket.plannedMinutes)}',
+                  style: const TextStyle(
+                    color: _kPrimary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              if (bucket.unplannedMinutes > 0)
+                Text(
+                  'Unplanned: ${_formatHrsMin(bucket.unplannedMinutes)}',
+                  style: const TextStyle(
+                    color: _kWarn,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              Text(
+                '${(share * 100).toStringAsFixed(1)}% of total',
+                style: const TextStyle(color: _kNeutral, fontSize: 12),
+              ),
+            ],
+          ),
+          if (bucket.reasons.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Divider(height: 1, color: _kBorder),
+            const SizedBox(height: 8),
+            for (final r in bucket.reasons) ...[
+              _DowntimeReasonChip(
+                row: r,
+                dayMinutes: totalMin,
+                fmt: fmt,
+              ),
+              const SizedBox(height: 6),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DowntimeReasonChip extends StatelessWidget {
+  final DplDowntimeDateReasonRow row;
+  final int dayMinutes;
+  final NumberFormat fmt;
+
+  const _DowntimeReasonChip({
+    required this.row,
+    required this.dayMinutes,
+    required this.fmt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isPlanned = row.isPlanned;
+    final color = isPlanned ? _kPrimary : _kWarn;
+    final share = dayMinutes <= 0 ? 0.0 : row.totalMinutes / dayMinutes;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: _kSurfaceAlt,
+        border: Border.all(color: _kBorder),
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Row(
         children: [
           Container(
             width: 4,
-            height: 44,
-            color: color,
+            height: 28,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(2),
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -2675,11 +2795,13 @@ class _DowntimeDetailCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  row.reasonName.isEmpty ? 'Reason' : row.reasonName,
+                  row.reason,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Wrap(
@@ -2695,31 +2817,30 @@ class _DowntimeDetailCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '${row.occurrences} event${row.occurrences == 1 ? "" : "s"}',
+                      '${fmt.format(row.events)} event${row.events == 1 ? "" : "s"}',
                       style: const TextStyle(
                         color: _kNeutral,
                         fontSize: 11,
                       ),
                     ),
-                    if (row.avgMinutes > 0)
-                      Text(
-                        'avg ${row.avgMinutes.toStringAsFixed(1)} min',
-                        style: const TextStyle(
-                          color: _kNeutral,
-                          fontSize: 11,
-                        ),
+                    Text(
+                      '${(share * 100).toStringAsFixed(1)}% of day',
+                      style: const TextStyle(
+                        color: _kNeutral,
+                        fontSize: 11,
                       ),
+                    ),
                   ],
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Text(
             _formatHrsMin(row.totalMinutes),
             style: const TextStyle(
               fontWeight: FontWeight.w900,
-              fontSize: 16,
+              fontSize: 14,
             ),
           ),
         ],
@@ -3064,5 +3185,426 @@ class _PartsTabState extends ConsumerState<_PartsTab> {
         },
       ),
     );
+  }
+}
+
+// =============================================================================
+// Tab 7 — Daily Log (plans + items + start/end + downtime + reason)
+// =============================================================================
+
+class _DailyLogTab extends ConsumerWidget {
+  const _DailyLogTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(dplDailyLogReportProvider);
+    final intFmt = NumberFormat.decimalPattern();
+    final dateFmt = DateFormat('EEE, dd MMM yyyy');
+    final timeFmt = DateFormat('HH:mm');
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(dplDailyLogReportProvider);
+        await ref.read(dplDailyLogReportProvider.future);
+      },
+      child: async.when(
+        loading: () => const Padding(
+          padding: EdgeInsets.all(16),
+          child: SkeletonList(count: 4),
+        ),
+        error: (e, _) => DplErrorRetry(
+          message: e.toString(),
+          onRetry: () => ref.invalidate(dplDailyLogReportProvider),
+        ),
+        data: (res) {
+          if (res.isError) {
+            return DplErrorRetry(
+              message: res.error ?? 'Failed to load daily log.',
+              onRetry: () => ref.invalidate(dplDailyLogReportProvider),
+            );
+          }
+          final report = res.data;
+          if (report == null || report.isEmpty) {
+            return const _EmptyScroll(
+              icon: Icons.event_note_outlined,
+              title: 'No plans in this range',
+              message:
+                  'Pick a date range with at least one production plan to see the daily log.',
+            );
+          }
+
+          final groups = _groupDailyLogByDate(report.rows);
+          final totals = _DailyLogTotals.fromRows(report.rows);
+
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+            children: [
+              _DailyLogSummaryCard(totals: totals, intFmt: intFmt),
+              const SizedBox(height: 14),
+              for (final group in groups) ...[
+                _DailyLogDateSection(
+                  group: group,
+                  intFmt: intFmt,
+                  dateFmt: dateFmt,
+                  timeFmt: timeFmt,
+                ),
+                const SizedBox(height: 12),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DailyLogTotals {
+  final int planQty;
+  final int actualQty;
+  final int runMinutes;
+  final int downtimeMinutes;
+  final int rows;
+
+  const _DailyLogTotals({
+    required this.planQty,
+    required this.actualQty,
+    required this.runMinutes,
+    required this.downtimeMinutes,
+    required this.rows,
+  });
+
+  factory _DailyLogTotals.fromRows(List<DplDailyLogRow> rows) {
+    var plan = 0;
+    var actual = 0;
+    var run = 0;
+    var down = 0;
+    for (final r in rows) {
+      plan += r.planQty;
+      actual += r.actualQty;
+      run += r.runMinutes ?? 0;
+      down += r.downtimeMinutes;
+    }
+    return _DailyLogTotals(
+      planQty: plan,
+      actualQty: actual,
+      runMinutes: run,
+      downtimeMinutes: down,
+      rows: rows.length,
+    );
+  }
+
+  double get achievementPct =>
+      planQty <= 0 ? 0 : (actualQty / planQty).clamp(0.0, 1.0);
+}
+
+class _DailyLogGroup {
+  final DateTime date;
+  final List<DplDailyLogRow> rows = [];
+  _DailyLogGroup({required this.date});
+
+  _DailyLogTotals get totals => _DailyLogTotals.fromRows(rows);
+}
+
+List<_DailyLogGroup> _groupDailyLogByDate(List<DplDailyLogRow> rows) {
+  final byKey = <String, _DailyLogGroup>{};
+  for (final r in rows) {
+    final d = r.planDate;
+    final date = DateTime(d.year, d.month, d.day);
+    final key = DateFormat('yyyy-MM-dd').format(date);
+    final group = byKey.putIfAbsent(key, () => _DailyLogGroup(date: date));
+    group.rows.add(r);
+  }
+  final list = byKey.values.toList()
+    ..sort((a, b) => a.date.compareTo(b.date));
+  return list;
+}
+
+class _DailyLogSummaryCard extends StatelessWidget {
+  final _DailyLogTotals totals;
+  final NumberFormat intFmt;
+  const _DailyLogSummaryCard({required this.totals, required this.intFmt});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: _kBorder),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Wrap(
+        spacing: 18,
+        runSpacing: 10,
+        children: [
+          _MiniKv(label: 'Rows', value: intFmt.format(totals.rows)),
+          _MiniKv(label: 'Plan Qty', value: intFmt.format(totals.planQty)),
+          _MiniKv(
+            label: 'Actual Qty',
+            value: intFmt.format(totals.actualQty),
+            color: _kGood,
+          ),
+          _MiniKv(
+            label: 'Achievement',
+            value: '${(totals.achievementPct * 100).toStringAsFixed(1)}%',
+            color: _achievementColor(totals.achievementPct),
+          ),
+          _MiniKv(
+            label: 'Run Time',
+            value: _formatHrsMin(totals.runMinutes),
+            color: _kPrimary,
+          ),
+          _MiniKv(
+            label: 'Downtime',
+            value: _formatHrsMin(totals.downtimeMinutes),
+            color: _kBad,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DailyLogDateSection extends StatelessWidget {
+  final _DailyLogGroup group;
+  final NumberFormat intFmt;
+  final DateFormat dateFmt;
+  final DateFormat timeFmt;
+
+  const _DailyLogDateSection({
+    required this.group,
+    required this.intFmt,
+    required this.dateFmt,
+    required this.timeFmt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final totals = group.totals;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: _kBorder),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: _kPrimary,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    dateFmt.format(group.date),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${intFmt.format(totals.actualQty)} / ${intFmt.format(totals.planQty)}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: _kNeutral,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _achievementColor(totals.achievementPct)
+                        .withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${(totals.achievementPct * 100).toStringAsFixed(1)}%',
+                    style: TextStyle(
+                      color: _achievementColor(totals.achievementPct),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: _kBorder),
+          for (var i = 0; i < group.rows.length; i++) ...[
+            _DailyLogRowTile(
+              row: group.rows[i],
+              intFmt: intFmt,
+              timeFmt: timeFmt,
+            ),
+            if (i != group.rows.length - 1)
+              const Divider(
+                height: 1,
+                color: _kBorder,
+                indent: 12,
+                endIndent: 12,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DailyLogRowTile extends StatelessWidget {
+  final DplDailyLogRow row;
+  final NumberFormat intFmt;
+  final DateFormat timeFmt;
+
+  const _DailyLogRowTile({
+    required this.row,
+    required this.intFmt,
+    required this.timeFmt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = row.completionPct;
+    final achievementColor = _achievementColor(pct);
+    final runMin = row.runMinutes;
+    final downMin = row.downtimeMinutes;
+    final startLabel =
+        row.startTime == null ? '-' : timeFmt.format(row.startTime!);
+    final endLabel =
+        row.endTime == null ? '-' : timeFmt.format(row.endTime!);
+    final planLabel =
+        row.planNo == null ? '#${row.planId}' : '#${row.planNo}';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  row.machineName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _kPrimary.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'Plan $planLabel',
+                  style: const TextStyle(
+                    color: _kPrimary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            row.partLabel,
+            style: const TextStyle(color: _kNeutral, fontSize: 12),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 14,
+            runSpacing: 6,
+            children: [
+              _MiniKv(label: 'Plan Qty', value: intFmt.format(row.planQty)),
+              _MiniKv(
+                label: 'Actual Qty',
+                value: intFmt.format(row.actualQty),
+                color: _kGood,
+              ),
+              _MiniKv(
+                label: 'Achievement',
+                value: '${(pct * 100).toStringAsFixed(1)}%',
+                color: achievementColor,
+              ),
+              _MiniKv(label: 'Start', value: startLabel),
+              _MiniKv(label: 'End', value: endLabel),
+              _MiniKv(
+                label: 'Total Time',
+                value: runMin == null ? '-' : _formatHrsMin(runMin),
+                color: _kPrimary,
+              ),
+              if (downMin > 0)
+                _MiniKv(
+                  label: 'Downtime',
+                  value: _formatHrsMin(downMin),
+                  color: _kBad,
+                ),
+              _MiniKv(label: 'Shift', value: row.shiftLabel),
+              _MiniKv(label: 'Status', value: _statusLabel(row.status)),
+            ],
+          ),
+          if (row.reasonOrRemarks != '-') ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _kSurfaceAlt,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.notes_outlined, size: 16, color: _kNeutral),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      row.reasonOrRemarks,
+                      style: const TextStyle(
+                        color: _kNeutral,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'in_progress':
+        return 'In Progress';
+      case 'completed':
+        return 'Completed';
+      case 'pending':
+        return 'Pending';
+      default:
+        return status.isEmpty ? '-' : status;
+    }
   }
 }

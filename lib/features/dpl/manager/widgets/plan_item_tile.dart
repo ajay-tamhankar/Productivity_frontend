@@ -5,6 +5,7 @@ import '../../core/widgets/shift_chip.dart';
 import '../../models/dpl_production_plan_item.dart';
 import '../../supervisor/widgets/live_timer_text.dart';
 import 'status_badge.dart';
+import 'trolley_photo_thumbnail.dart';
 
 enum _ItemMenuAction { changeStatus, carryForward, delete }
 
@@ -208,6 +209,33 @@ class DplPlanItemTile extends StatelessWidget {
               if (item.status != 'pending') ...[
                 const SizedBox(height: 8),
                 _LiveStatusStrip(item: item),
+              ],
+              // Trolley photo captured at STOP time — supervisors
+              // are required to snap it before completing an item,
+              // so for completed items there should always be one.
+              // Tap to open full-screen.
+              if (item.status == 'completed' &&
+                  (item.stopTrolleyPhotoUrl ?? '').isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    TrolleyPhotoThumbnail(
+                      photoUrl: item.stopTrolleyPhotoUrl,
+                      heroTag: 'trolley-${item.id}',
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Trolley photo captured at stop. Tap to view.',
+                        style: TextStyle(
+                          color: Color(0xFF5D6A7A),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ],
           ),

@@ -22,6 +22,7 @@ import '../widgets/pause_entry_sheet.dart';
 import '../widgets/start_stop_button.dart';
 import '../widgets/stop_confirm_dialog.dart';
 import '../widgets/supervisor_error_helper.dart';
+import '../widgets/trolley_photo_modal.dart';
 
 /// The core of Phase 2 — drives the lifecycle of a single plan item
 /// through 4 states: Pending → In Progress (± Downtime) → Completed.
@@ -142,6 +143,19 @@ class _PlanExecutionScreenState extends ConsumerState<PlanExecutionScreen> {
     if (result == null) return;
     if (!mounted) return;
 
+    // Trolley photo gate — backend requires a fresh photo before
+    // accepting the stop call (DPL_TROLLEY_PHOTO_REQUIRED=true). Open
+    // the camera; the modal handles upload and returns the persisted
+    // photo. Cancelling here aborts the whole stop flow.
+    final trolleyPhoto = await showTrolleyPhotoModal(
+      context: context,
+      planId: widget.planId,
+      itemId: widget.itemId,
+      remarks: result.remarks,
+    );
+    if (trolleyPhoto == null) return;
+    if (!mounted) return;
+
     // Flush any pending qty PATCH first, then stop.
     _qtyDebounce?.cancel();
 
@@ -151,12 +165,13 @@ class _PlanExecutionScreenState extends ConsumerState<PlanExecutionScreen> {
           widget.itemId,
           actualQty: result.actualQty,
           remarks: result.remarks,
+          trolleyPhotoId: trolleyPhoto.id,
         );
     if (!mounted) return;
     setState(() => _isStopping = false);
 
     if (res.isError) {
-      handleSupervisorError(
+      handleStopWithTrolleyError(
         context,
         res,
         fallback: 'Failed to stop item.',
