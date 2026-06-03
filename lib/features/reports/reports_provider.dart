@@ -78,6 +78,11 @@ class ReportsController extends _$ReportsController {
         queryParameters: queryParams,
       );
 
+      // The provider can be disposed while the request is in flight
+      // (e.g. the user switches tabs). Skip any further work in that case
+      // so we don't poke a disposed Ref.
+      if (!ref.mounted) return;
+
       List<dynamic> dataList = [];
       int totalCount = 0;
 
@@ -101,6 +106,7 @@ class ReportsController extends _$ReportsController {
         pageSize: apiLimit,
       );
     } catch (e) {
+      if (!ref.mounted) return;
       state = state.copyWith(isLoading: false);
       throw Exception('Failed to load reports: $e');
     }

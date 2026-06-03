@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/theme_mode_provider.dart';
@@ -14,6 +15,7 @@ import '../reports/reports_list_screen.dart';
 import '../reports/reports_provider.dart';
 import '../reports/review_actions_screen.dart';
 import 'admin_dashboard_provider.dart';
+import 'shift_details_screen.dart';
 
 enum _AdminMenuAction { refresh, toggleTheme, changePassword, logout }
 
@@ -28,6 +30,8 @@ class AdminDashboardScreen extends ConsumerStatefulWidget {
 class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
     with WidgetsBindingObserver {
   int _currentIndex = 0;
+  final GlobalKey<ShiftDetailsScreenState> _shiftDetailsKey =
+      GlobalKey<ShiftDetailsScreenState>();
 
   @override
   void initState() {
@@ -61,6 +65,11 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
 
     if (_currentIndex == 1 || (_currentIndex == 2 && hasReviewActions)) {
       ref.read(reportsControllerProvider.notifier).fetchPage(0, 10);
+      return;
+    }
+
+    if (_currentIndex == 3) {
+      _shiftDetailsKey.currentState?.refresh();
     }
   }
 
@@ -72,6 +81,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
         return 'Reports';
       case 2:
         return isSupervisor ? 'Review Actions' : 'Management';
+      case 3:
+        return 'Shift Details';
       default:
         return 'Dashboard';
     }
@@ -131,6 +142,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
       isSupervisor
           ? const ReviewActionsScreen(embedded: true)
           : const _ManagementHubScreen(embedded: true),
+      ShiftDetailsScreen(key: _shiftDetailsKey, embedded: true),
     ];
     final destinations = <NavigationDestination>[
       const NavigationDestination(
@@ -149,12 +161,29 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
         ),
         label: isSupervisor ? 'Review Actions' : 'Manage',
       ),
+      const NavigationDestination(
+        icon: Icon(Icons.event_note_outlined),
+        label: 'Shift Details',
+      ),
     ];
     final selectedIndex = _currentIndex >= pages.length
         ? pages.length - 1
         : _currentIndex;
 
+    final showLogShiftFab = isSupervisor && selectedIndex == 0;
+
     return Scaffold(
+      floatingActionButton: showLogShiftFab
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                await context.push('/new-entry');
+                if (!mounted) return;
+                _refreshCurrentTabData();
+              },
+              label: const Text('Log Shift'),
+              icon: const Icon(Icons.add_task),
+            )
+          : null,
       appBar: AppBar(
         centerTitle: false,
         title: Text(_pageTitle(isSupervisor: isSupervisor)),

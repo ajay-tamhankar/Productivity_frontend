@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -23,17 +25,38 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   String _statusFilter = 'PENDING';
   bool _isExporting = false;
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => _loadPage(0));
+    Future.microtask(() => _applyFiltersAndLoad(0));
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  Map<String, dynamic> _buildApiFilters() {
+    final filters = <String, dynamic>{};
+    if (_statusFilter != 'ALL') {
+      filters['status'] = _statusFilter;
+    }
+    final search = _searchCtrl.text.trim();
+    if (search.isNotEmpty) {
+      filters['search'] = search;
+    }
+    return filters;
+  }
+
+  Future<void> _applyFiltersAndLoad(int pageIndex) async {
+    ref
+        .read(reportsControllerProvider.notifier)
+        .updateFilters(_buildApiFilters());
+    await _loadPage(pageIndex);
   }
 
   Future<void> _loadPage(int pageIndex) async {
@@ -43,28 +66,25 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
         );
   }
 
+  void _onStatusChanged(String status) {
+    if (_statusFilter == status) return;
+    setState(() => _statusFilter = status);
+    _applyFiltersAndLoad(0);
+  }
+
+  void _onSearchChanged(String _) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      _applyFiltersAndLoad(0);
+    });
+  }
+
   String _formatError(Object error) {
     final raw = error.toString();
     const prefix = 'Exception:';
     if (raw.startsWith(prefix)) return raw.substring(prefix.length).trim();
     return raw;
-  }
-
-  List<ProductionEntryModel> _filteredEntries(List<ProductionEntryModel> source) {
-    final query = _searchCtrl.text.trim().toLowerCase();
-
-    return source.where((entry) {
-      final status = (entry.approvalStatus ?? 'PENDING').trim().toUpperCase();
-      if (_statusFilter != 'ALL' && status != _statusFilter) return false;
-      if (query.isEmpty) return true;
-
-      final machine = (entry.machineName ?? entry.machineId).toLowerCase();
-      final item = (entry.itemDescription ?? entry.itemId).toLowerCase();
-      return machine.contains(query) ||
-          item.contains(query) ||
-          entry.shift.toLowerCase().contains(query) ||
-          status.toLowerCase().contains(query);
-    }).toList();
   }
 
   String _safeText(String? value) {
@@ -218,7 +238,7 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(reportsControllerProvider);
-    final entries = _filteredEntries(state.entries);
+    final entries = state.entries;
     final isCompactScreen = MediaQuery.of(context).size.width < 920;
 
     final totalPages =
@@ -330,7 +350,7 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
                 children: [
                   TextField(
                     controller: _searchCtrl,
-                    onChanged: (_) => setState(() {}),
+                    onChanged: _onSearchChanged,
                     decoration: const InputDecoration(
                       prefixIcon: Icon(Icons.search),
                       hintText: 'Search machine, item, shift, status',
@@ -353,8 +373,7 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
                             child: ChoiceChip(
                               label: Text(status),
                               selected: _statusFilter == status,
-                              onSelected: (_) =>
-                                  setState(() => _statusFilter = status),
+                              onSelected: (_) => _onStatusChanged(status),
                             ),
                           ),
                       ],

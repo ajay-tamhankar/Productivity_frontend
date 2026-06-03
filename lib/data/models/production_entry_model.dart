@@ -13,6 +13,7 @@ class ProductionEntryModel {
   final String shift;
   final String operatorId;
   final String? operatorName;
+  final List<String> operatorNames;
   final String machineId;
   final String itemId;
   final String? itemCode;
@@ -45,6 +46,7 @@ class ProductionEntryModel {
     required this.shift,
     required this.operatorId,
     this.operatorName,
+    this.operatorNames = const [],
     required this.machineId,
     required this.itemId,
     this.itemCode,
@@ -111,6 +113,15 @@ class ProductionEntryModel {
         ? readString(json['operatorName'])
         : readNestedString(operatorObj, ['name', 'username', 'operatorName']);
 
+    final operatorNames = <String>[];
+    final rawOperatorNames = json['operatorNames'];
+    if (rawOperatorNames is List) {
+      for (final raw in rawOperatorNames) {
+        final text = raw?.toString().trim() ?? '';
+        if (text.isNotEmpty) operatorNames.add(text);
+      }
+    }
+
     final customerName = readString(json['customerName']).trim().isNotEmpty
         ? readString(json['customerName'])
         : readNestedString(customerObj, ['name', 'customerName']);
@@ -158,6 +169,7 @@ class ProductionEntryModel {
       shift: json['shift'] ?? '',
       operatorId: json['operatorId'] ?? '',
       operatorName: operatorName.isNotEmpty ? operatorName : null,
+      operatorNames: operatorNames,
       machineId: machineId.isNotEmpty ? machineId : machineName,
       itemId: itemId.isNotEmpty ? itemId : itemDescription,
       itemCode: itemCode.isNotEmpty ? itemCode : null,
@@ -188,6 +200,9 @@ class ProductionEntryModel {
       'entryDate': entryDate,
       'shift': shift,
       'operatorId': operatorId,
+      if (operatorName != null && operatorName!.trim().isNotEmpty)
+        'operatorName': operatorName,
+      if (operatorNames.isNotEmpty) 'operatorNames': operatorNames,
       'machineId': machineId,
       'itemId': itemId,
       'ccd1Quantity': ccd1Quantity,
@@ -214,6 +229,7 @@ class ProductionEntryModel {
     String? shift,
     String? operatorId,
     String? operatorName,
+    List<String>? operatorNames,
     String? machineId,
     String? itemId,
     String? itemCode,
@@ -244,6 +260,7 @@ class ProductionEntryModel {
       shift: shift ?? this.shift,
       operatorId: operatorId ?? this.operatorId,
       operatorName: operatorName ?? this.operatorName,
+      operatorNames: operatorNames ?? this.operatorNames,
       machineId: machineId ?? this.machineId,
       itemId: itemId ?? this.itemId,
       itemCode: itemCode ?? this.itemCode,

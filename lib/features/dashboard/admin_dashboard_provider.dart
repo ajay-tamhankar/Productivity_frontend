@@ -225,9 +225,14 @@ class AdminDashboardController extends _$AdminDashboardController {
 
   Future<void> refresh() async {
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(
+    final next = await AsyncValue.guard(
       () => _fetchData(startDate: _startDate, endDate: _endDate),
     );
+    // The provider can be disposed while the parallel /dashboard/* requests
+    // are in flight (e.g. the user switches tabs). Drop the result in that
+    // case so we don't poke a disposed Ref.
+    if (!ref.mounted) return;
+    state = next;
   }
 
   Future<void> setDateRange({

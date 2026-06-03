@@ -1,11 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/widgets/shimmer_skeleton.dart';
 import '../../data/models/production_entry_model.dart';
@@ -29,7 +26,6 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
   String _shift = 'A';
   String? _machineId;
   String? _itemId;
-  String? _customerId;
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
   bool _addMachineDowntime = false;
@@ -40,6 +36,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
   final _rcNumberCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final Map<String, int> _rejectionReasons = {};
+  final List<TextEditingController> _operatorNameCtrls = [];
 
   bool _submittedOnce = false;
   String? _formError;
@@ -47,10 +44,6 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
   double _runningHours = 0;
   double _partsPerHour = 0;
   double _weightKg = 0;
-
-  bool _isStarted = false;
-  bool _isLoadingPrefs = true;
-  Timer? _autoTimeTimer;
 
   static const _fallbackRejectionReasons = [
     'Forging Defects',
@@ -63,7 +56,6 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
   void initState() {
     super.initState();
     _actualCtrl.addListener(_recompute);
-    _loadOngoingShift();
   }
 
   @override
@@ -73,16 +65,32 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     _rejectCtrl.dispose();
     _rcNumberCtrl.dispose();
     _notesCtrl.dispose();
+    for (final ctrl in _operatorNameCtrls) {
+      ctrl.dispose();
+    }
     super.dispose();
   }
 
-  TimeOfDay _currentTimeOfDay() {
-    final now = DateTime.now();
-    return TimeOfDay(hour: now.hour, minute: now.minute);
+  void _addOperatorField() {
+    setState(() {
+      _operatorNameCtrls.add(TextEditingController());
+    });
   }
 
-  void _syncAutoTimes() {
-    // Auto-fetch disabled - use manual time selection only
+  void _removeOperatorField(int index) {
+    if (index < 0 || index >= _operatorNameCtrls.length) return;
+    final removed = _operatorNameCtrls.removeAt(index);
+    removed.dispose();
+    setState(() {});
+  }
+
+  List<String> _collectOperatorNames() {
+    final names = <String>[];
+    for (final ctrl in _operatorNameCtrls) {
+      final text = ctrl.text.trim();
+      if (text.isNotEmpty) names.add(text);
+    }
+    return names;
   }
 
   Future<void> _pickStartTime() async {
@@ -111,102 +119,15 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     _recompute();
   }
 
-  Future<void> _loadOngoingShift() async {
-    final prefs = await SharedPreferences.getInstance();
-    final started = prefs.getBool('production_started') ?? false;
-    if (started) {
-      if (mounted) {
-        setState(() {
-          _shift = prefs.getString('prod_shift') ?? 'A';
-          _machineId = prefs.getString('prod_machineId');
-          _itemId = prefs.getString('prod_itemId');
-          _customerId = prefs.getString('prod_customerId');
-          _rcNumberCtrl.text = prefs.getString('prod_rcNumber') ?? '';
-
-          final stHour = prefs.getInt('prod_st_hour');
-          final stMin = prefs.getInt('prod_st_min');
-          if (stHour != null && stMin != null) {
-            _startTime = TimeOfDay(hour: stHour, minute: stMin);
-          }
-
-          _itemWeightG = prefs.getDouble('prod_itemWeightG') ?? 0;
-          _endTime = _currentTimeOfDay();
-          _isStarted = true;
-        });
-      }
-    } else if (mounted) {
-      setState(() {
-        _startTime = null;
-      });
+  void _resetForm() {
+    for (final ctrl in _operatorNameCtrls) {
+      ctrl.dispose();
     }
-    if (mounted) {
-      setState(() => _isLoadingPrefs = false);
-    }
-  }
-
-  Future<void> _startShift() async {
-    FocusScope.of(context).unfocus();
+    _operatorNameCtrls.clear();
     setState(() {
-      _submittedOnce = true;
-      _formError = null;
-    });
-
-    if (!(_formKey.currentState?.validate() ?? false)) {
-      setState(() => _formError = 'Mandatory fields must not be empty.');
-      return;
-    }
-    if (_startTime == null) {
-      setState(() => _formError = 'Start Time is required.');
-      return;
-    }
-    final startTime = _startTime!;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('production_started', true);
-    await prefs.setString('prod_shift', _shift);
-    if (_machineId != null) {
-      await prefs.setString('prod_machineId', _machineId!);
-    }
-    if (_itemId != null) await prefs.setString('prod_itemId', _itemId!);
-    if (_customerId != null) {
-      await prefs.setString('prod_customerId', _customerId!);
-    }
-    final rcNumber = _rcNumberCtrl.text.trim();
-    if (rcNumber.isNotEmpty) await prefs.setString('prod_rcNumber', rcNumber);
-    await prefs.setInt('prod_st_hour', startTime.hour);
-    await prefs.setInt('prod_st_min', startTime.minute);
-    await prefs.setDouble('prod_itemWeightG', _itemWeightG);
-
-    if (!mounted) return;
-    setState(() {
-      _startTime = startTime;
-      _endTime = null;
-      _isStarted = true;
-      _submittedOnce = false; // Reset validations for phase 2
-      _formError = null;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Shift started successfully.')),
-    );
-  }
-
-  Future<void> _cancelShift() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('production_started');
-    await prefs.remove('prod_shift');
-    await prefs.remove('prod_machineId');
-    await prefs.remove('prod_itemId');
-    await prefs.remove('prod_customerId');
-    await prefs.remove('prod_rcNumber');
-    await prefs.remove('prod_st_hour');
-    await prefs.remove('prod_st_min');
-    await prefs.remove('prod_itemWeightG');
-
-    setState(() {
-      _isStarted = false;
-      _submittedOnce = false;
-      _formError = null;
+      _shift = 'A';
+      _machineId = null;
+      _itemId = null;
       _startTime = null;
       _endTime = null;
       _addMachineDowntime = false;
@@ -221,6 +142,8 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
       _runningHours = 0;
       _partsPerHour = 0;
       _weightKg = 0;
+      _submittedOnce = false;
+      _formError = null;
     });
   }
 
@@ -266,7 +189,6 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
   }
 
   String? _timeError() {
-    if (!_isStarted) return null; // Time validation not full in phase 1
     if (_startTime == null || _endTime == null) {
       return 'Start Time and End Time are required.';
     }
@@ -314,11 +236,17 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
 
   String? _reqDrop(String? v, String name) =>
       (v == null || v.trim().isEmpty) ? '$name is required.' : null;
+
   String? _qty(String? v, String name) {
-    if (!_isStarted) return null; // Prevent validation in phase 1
     final t = (v ?? '').trim();
     if (t.isEmpty) return '$name is required.';
     if (!RegExp(r'^\d+$').hasMatch(t)) return 'Enter a valid number.';
+    return null;
+  }
+
+  String? _operatorNameValidator(String? v) {
+    final t = (v ?? '').trim();
+    if (t.isEmpty) return 'Operator name cannot be empty.';
     return null;
   }
 
@@ -506,11 +434,17 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     final e = _toDate(_endTime)!;
     final auth = ref.read(authControllerProvider).asData?.value;
     final rcNumber = _rcNumberCtrl.text.trim();
+    final operatorNames = _collectOperatorNames();
+    final operatorNameJoined = operatorNames.isNotEmpty
+        ? operatorNames.join(', ')
+        : null;
 
     final entry = ProductionEntryModel(
       entryDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
       shift: _shift,
       operatorId: auth?.id ?? 'unknown',
+      operatorName: operatorNameJoined,
+      operatorNames: operatorNames,
       machineId: _machineId!,
       itemId: _itemId!,
       ccd1Quantity: 0,
@@ -540,23 +474,6 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingPrefs) {
-      if (widget.embedded) {
-        return const ShimmerCenteredPlaceholder(
-          verticalPadding: 0,
-          titleWidth: 220,
-          subtitleWidth: 140,
-        );
-      }
-      return const Scaffold(
-        body: ShimmerCenteredPlaceholder(
-          verticalPadding: 0,
-          titleWidth: 220,
-          subtitleWidth: 140,
-        ),
-      );
-    }
-
     ref.listen(productionEntryControllerProvider, (prev, next) async {
       if (!mounted) return;
       if (prev?.isLoading == true && next.hasError) {
@@ -566,18 +483,6 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
         ).showSnackBar(SnackBar(content: Text(_err(next.error!))));
       }
       if (prev?.isLoading == true && next.hasValue) {
-        // Clear shared preferences
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('production_started');
-        await prefs.remove('prod_shift');
-        await prefs.remove('prod_machineId');
-        await prefs.remove('prod_itemId');
-        await prefs.remove('prod_customerId');
-        await prefs.remove('prod_rcNumber');
-        await prefs.remove('prod_st_hour');
-        await prefs.remove('prod_st_min');
-        await prefs.remove('prod_itemWeightG');
-
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -585,7 +490,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
             ),
           );
           if (widget.embedded) {
-            await _cancelShift();
+            _resetForm();
           } else {
             context.pop();
           }
@@ -692,10 +597,8 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                                       child: Text('Shift C'),
                                     ),
                                   ],
-                                  onChanged: _isStarted
-                                      ? null
-                                      : (v) =>
-                                            setState(() => _shift = v ?? 'A'),
+                                  onChanged: (v) =>
+                                      setState(() => _shift = v ?? 'A'),
                                 ),
                                 const SizedBox(height: 10),
                                 _SearchableDropdownFormField(
@@ -714,7 +617,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                                         ),
                                       )
                                       .toList(),
-                                  enabled: !_isStarted,
+                                  enabled: true,
                                   onChanged: (v) =>
                                       setState(() => _machineId = v),
                                   validator: (v) => _reqDrop(v, 'Machine'),
@@ -735,7 +638,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                                         ),
                                       )
                                       .toList(),
-                                  enabled: !_isStarted,
+                                  enabled: true,
                                   onChanged: (v) {
                                     var weight = 0.0;
                                     for (final i in d.items) {
@@ -755,7 +658,6 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                                 const SizedBox(height: 10),
                                 TextFormField(
                                   controller: _rcNumberCtrl,
-                                  enabled: !_isStarted,
                                   decoration: const InputDecoration(
                                     labelText: 'RC Number',
                                     prefixIcon: Icon(
@@ -768,67 +670,178 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                             ),
                           ),
                           const SizedBox(height: 12),
-
-                          // START SHIFT BUTTON IF NOT STARTED
-                          if (!_isStarted) ...[
-                            _Section(
-                              title: 'Start Time *',
-                              child: OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  minimumSize: const Size.fromHeight(52),
-                                  alignment: Alignment.centerLeft,
-                                ),
-                                onPressed: _pickStartTime,
-                                icon: const Icon(Icons.schedule_outlined),
-                                label: Text(
-                                  _startTime == null
-                                      ? 'Start Time'
-                                      : _startTime!.format(context),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            SizedBox(
-                              height: 52,
-                              child: FilledButton.icon(
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1B9C7A),
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
+                          _Section(
+                            title: 'Operators (Optional)',
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Padding(
+                                  padding: EdgeInsets.only(bottom: 8),
+                                  child: Text(
+                                    'Add one or more operators working this shift.',
+                                    style: TextStyle(color: Color(0xFF5D6A7A)),
                                   ),
                                 ),
-                                onPressed: _startShift,
-                                icon: const Icon(Icons.play_arrow_rounded),
-                                label: const Text('Start Shift'),
-                              ),
+                                if (_operatorNameCtrls.isEmpty)
+                                  const Padding(
+                                    padding: EdgeInsets.only(bottom: 8),
+                                    child: Text(
+                                      'No operators added yet.',
+                                      style: TextStyle(
+                                        color: Color(0xFF8794A6),
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ),
+                                for (
+                                  int i = 0;
+                                  i < _operatorNameCtrls.length;
+                                  i++
+                                )
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextFormField(
+                                            controller: _operatorNameCtrls[i],
+                                            textCapitalization:
+                                                TextCapitalization.words,
+                                            decoration: InputDecoration(
+                                              labelText:
+                                                  'Operator ${i + 1} *',
+                                              prefixIcon: const Icon(
+                                                Icons.person_outline,
+                                              ),
+                                            ),
+                                            validator: _operatorNameValidator,
+                                          ),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Remove operator',
+                                          onPressed: () =>
+                                              _removeOperatorField(i),
+                                          icon: const Icon(
+                                            Icons.remove_circle_outline,
+                                            color: Color(0xFFB3261E),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: OutlinedButton.icon(
+                                    onPressed: _addOperatorField,
+                                    icon: const Icon(Icons.person_add_alt_1),
+                                    label: const Text('Add Operator'),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-
-                          // END SHIFT FIELDS IF STARTED
-                          if (_isStarted) ...[
-                            _Section(
-                              title: 'Time & Quantity',
-                              child: Column(
-                                children: [
+                          ),
+                          const SizedBox(height: 12),
+                          _Section(
+                            title: 'Time & Quantity',
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          minimumSize: const Size.fromHeight(
+                                            52,
+                                          ),
+                                          alignment: Alignment.centerLeft,
+                                        ),
+                                        onPressed: _pickStartTime,
+                                        icon: const Icon(
+                                          Icons.login_outlined,
+                                        ),
+                                        label: Text(
+                                          _startTime == null
+                                              ? 'Start Time *'
+                                              : _startTime!.format(context),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          minimumSize: const Size.fromHeight(
+                                            52,
+                                          ),
+                                          alignment: Alignment.centerLeft,
+                                        ),
+                                        onPressed: _pickEndTime,
+                                        icon: const Icon(
+                                          Icons.logout_outlined,
+                                        ),
+                                        label: Text(
+                                          _endTime == null
+                                              ? 'End Time *'
+                                              : _endTime!.format(context),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (_submittedOnce && _timeError() != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        _timeError()!,
+                                        style: const TextStyle(
+                                          color: Colors.red,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                SwitchListTile(
+                                  title: const Text(
+                                    'Add Machine Downtime',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  value: _addMachineDowntime,
+                                  onChanged: (v) {
+                                    setState(() {
+                                      _addMachineDowntime = v;
+                                      if (!v) {
+                                        _downtimeStartTime = null;
+                                        _downtimeEndTime = null;
+                                      }
+                                    });
+                                    _recompute();
+                                  },
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                                if (_addMachineDowntime) ...[
                                   Row(
                                     children: [
                                       Expanded(
                                         child: OutlinedButton.icon(
                                           style: OutlinedButton.styleFrom(
-                                            minimumSize: const Size.fromHeight(
-                                              52,
-                                            ),
+                                            minimumSize:
+                                                const Size.fromHeight(52),
                                             alignment: Alignment.centerLeft,
                                           ),
-                                          onPressed: _pickStartTime,
+                                          onPressed: () =>
+                                              _pickDowntime(true),
                                           icon: const Icon(
-                                            Icons.login_outlined,
+                                            Icons.timer_off_outlined,
                                           ),
                                           label: Text(
-                                            _startTime == null
-                                                ? 'Start Time *'
-                                                : _startTime!.format(context),
+                                            _downtimeStartTime == null
+                                                ? 'Downtime Start *'
+                                                : _downtimeStartTime!.format(
+                                                    context,
+                                                  ),
                                           ),
                                         ),
                                       ),
@@ -836,270 +849,190 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                                       Expanded(
                                         child: OutlinedButton.icon(
                                           style: OutlinedButton.styleFrom(
-                                            minimumSize: const Size.fromHeight(
-                                              52,
-                                            ),
+                                            minimumSize:
+                                                const Size.fromHeight(52),
                                             alignment: Alignment.centerLeft,
                                           ),
-                                          onPressed: _pickEndTime,
+                                          onPressed: () =>
+                                              _pickDowntime(false),
                                           icon: const Icon(
-                                            Icons.logout_outlined,
+                                            Icons.timer_off_outlined,
                                           ),
                                           label: Text(
-                                            _endTime == null
-                                                ? 'End Time *'
-                                                : _endTime!.format(context),
+                                            _downtimeEndTime == null
+                                                ? 'Downtime End *'
+                                                : _downtimeEndTime!.format(
+                                                    context,
+                                                  ),
                                           ),
                                         ),
                                       ),
                                     ],
                                   ),
-                                  if (_submittedOnce && _timeError() != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 8),
-                                      child: Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: Text(
-                                          _timeError()!,
-                                          style: const TextStyle(
-                                            color: Colors.red,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  SwitchListTile(
-                                    title: const Text(
-                                      'Add Machine Downtime',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    value: _addMachineDowntime,
-                                    onChanged: (v) {
-                                      setState(() {
-                                        _addMachineDowntime = v;
-                                        if (!v) {
-                                          _downtimeStartTime = null;
-                                          _downtimeEndTime = null;
-                                        }
-                                      });
-                                      _recompute();
-                                    },
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                  if (_addMachineDowntime) ...[
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: OutlinedButton.icon(
-                                            style: OutlinedButton.styleFrom(
-                                              minimumSize:
-                                                  const Size.fromHeight(52),
-                                              alignment: Alignment.centerLeft,
-                                            ),
-                                            onPressed: () =>
-                                                _pickDowntime(true),
-                                            icon: const Icon(
-                                              Icons.timer_off_outlined,
-                                            ),
-                                            label: Text(
-                                              _downtimeStartTime == null
-                                                  ? 'Downtime Start *'
-                                                  : _downtimeStartTime!.format(
-                                                      context,
-                                                    ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: OutlinedButton.icon(
-                                            style: OutlinedButton.styleFrom(
-                                              minimumSize:
-                                                  const Size.fromHeight(52),
-                                              alignment: Alignment.centerLeft,
-                                            ),
-                                            onPressed: () =>
-                                                _pickDowntime(false),
-                                            icon: const Icon(
-                                              Icons.timer_off_outlined,
-                                            ),
-                                            label: Text(
-                                              _downtimeEndTime == null
-                                                  ? 'Downtime End *'
-                                                  : _downtimeEndTime!.format(
-                                                      context,
-                                                    ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 10),
+                                  const SizedBox(height: 10),
+                                ],
+                                const SizedBox(height: 10),
+                                TextFormField(
+                                  controller: _actualCtrl,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
                                   ],
-                                  const SizedBox(height: 10),
-                                  TextFormField(
-                                    controller: _actualCtrl,
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                    ],
-                                    decoration: const InputDecoration(
-                                      labelText: 'Actual Quantity *',
-                                      hintText: 'Enter produced units',
-                                      prefixIcon: Icon(Icons.pin_outlined),
-                                    ),
-                                    validator: (v) =>
-                                        _qty(v, 'Actual Quantity'),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Actual Quantity *',
+                                    hintText: 'Enter produced units',
+                                    prefixIcon: Icon(Icons.pin_outlined),
                                   ),
-                                  const SizedBox(height: 10),
-                                  TextFormField(
-                                    controller: _rejectCtrl,
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                    ],
-                                    decoration: const InputDecoration(
-                                      labelText: 'Rejection Quantity *',
-                                      hintText: 'Enter rejected units',
-                                      prefixIcon: Icon(
-                                        Icons.warning_amber_outlined,
-                                      ),
-                                    ),
-                                    validator: (v) =>
-                                        _qty(v, 'Rejection Quantity') ??
-                                        (() {
-                                          final r = _safeInt(v ?? '');
-                                          final a = _safeInt(_actualCtrl.text);
-                                          return r > a
-                                              ? 'Rejection Quantity cannot exceed Actual Quantity.'
-                                              : null;
-                                        })(),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Align(
-                                    alignment: Alignment.centerRight,
-                                    child: OutlinedButton.icon(
-                                      onPressed: () => _showReasonDialog(
-                                        reasons: d.rejectionReasons,
-                                      ),
-                                      icon: const Icon(Icons.playlist_add),
-                                      label: const Text('Rejection Details'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _Section(
-                              title: 'Auto Calculations',
-                              child: Wrap(
-                                spacing: 10,
-                                runSpacing: 10,
-                                children: [
-                                  _Chip(
-                                    label: 'Running Hours',
-                                    value: _runningHours.toStringAsFixed(2),
-                                  ),
-                                  _Chip(
-                                    label: 'Parts / Hour',
-                                    value: _partsPerHour.toStringAsFixed(2),
-                                  ),
-                                  _Chip(
-                                    label: 'Weight (KG)',
-                                    value: _weightKg.toStringAsFixed(3),
-                                  ),
-                                  _Chip(
-                                    label: 'Item Weight (g)',
-                                    value: _itemWeightG.toStringAsFixed(2),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _Section(
-                              title: 'Notes (Optional)',
-                              child: TextFormField(
-                                controller: _notesCtrl,
-                                maxLines: 3,
-                                decoration: const InputDecoration(
-                                  labelText: 'Notes',
-                                  hintText: 'Any special observations',
-                                  prefixIcon: Icon(Icons.notes_outlined),
+                                  validator: (v) =>
+                                      _qty(v, 'Actual Quantity'),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            Row(
-                              children: [
-                                Expanded(
-                                  flex: 1,
-                                  child: SizedBox(
-                                    height: 52,
-                                    child: OutlinedButton(
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.red.shade700,
-                                        side: BorderSide(
-                                          color: Colors.red.shade200,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
-                                        ),
-                                      ),
-                                      onPressed: submitState.isLoading
-                                          ? null
-                                          : _cancelShift,
-                                      child: const Text('Cancel Run'),
+                                const SizedBox(height: 10),
+                                TextFormField(
+                                  controller: _rejectCtrl,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  decoration: const InputDecoration(
+                                    labelText: 'Rejection Quantity *',
+                                    hintText: 'Enter rejected units',
+                                    prefixIcon: Icon(
+                                      Icons.warning_amber_outlined,
                                     ),
                                   ),
+                                  validator: (v) =>
+                                      _qty(v, 'Rejection Quantity') ??
+                                      (() {
+                                        final r = _safeInt(v ?? '');
+                                        final a = _safeInt(_actualCtrl.text);
+                                        return r > a
+                                            ? 'Rejection Quantity cannot exceed Actual Quantity.'
+                                            : null;
+                                      })(),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  flex: 2,
-                                  child: SizedBox(
-                                    height: 52,
-                                    child: FilledButton.icon(
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: const Color(
-                                          0xFF185ADB,
-                                        ),
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
-                                        ),
-                                      ),
-                                      onPressed: submitState.isLoading
-                                          ? null
-                                          : _submit,
-                                      icon: submitState.isLoading
-                                          ? const SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: Center(
-                                                child: ShimmerButtonDots(
-                                                  size: 6.5,
-                                                  spacing: 3.5,
-                                                ),
-                                              ),
-                                            )
-                                          : const Icon(
-                                              Icons.check_circle_outline,
-                                            ),
-                                      label: Text(
-                                        submitState.isLoading
-                                            ? 'Submitting...'
-                                            : 'End Shift & Submit',
-                                      ),
+                                const SizedBox(height: 10),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _showReasonDialog(
+                                      reasons: d.rejectionReasons,
                                     ),
+                                    icon: const Icon(Icons.playlist_add),
+                                    label: const Text('Rejection Details'),
                                   ),
                                 ),
                               ],
                             ),
-                          ],
+                          ),
+                          const SizedBox(height: 12),
+                          _Section(
+                            title: 'Auto Calculations',
+                            child: Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [
+                                _Chip(
+                                  label: 'Running Hours',
+                                  value: _runningHours.toStringAsFixed(2),
+                                ),
+                                _Chip(
+                                  label: 'Parts / Hour',
+                                  value: _partsPerHour.toStringAsFixed(2),
+                                ),
+                                _Chip(
+                                  label: 'Weight (KG)',
+                                  value: _weightKg.toStringAsFixed(3),
+                                ),
+                                _Chip(
+                                  label: 'Item Weight (g)',
+                                  value: _itemWeightG.toStringAsFixed(2),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _Section(
+                            title: 'Notes (Optional)',
+                            child: TextFormField(
+                              controller: _notesCtrl,
+                              maxLines: 3,
+                              decoration: const InputDecoration(
+                                labelText: 'Notes',
+                                hintText: 'Any special observations',
+                                prefixIcon: Icon(Icons.notes_outlined),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 1,
+                                child: SizedBox(
+                                  height: 52,
+                                  child: OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red.shade700,
+                                      side: BorderSide(
+                                        color: Colors.red.shade200,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(
+                                          14,
+                                        ),
+                                      ),
+                                    ),
+                                    onPressed: submitState.isLoading
+                                        ? null
+                                        : _resetForm,
+                                    child: const Text('Reset'),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                flex: 2,
+                                child: SizedBox(
+                                  height: 52,
+                                  child: FilledButton.icon(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: const Color(
+                                        0xFF185ADB,
+                                      ),
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(
+                                          14,
+                                        ),
+                                      ),
+                                    ),
+                                    onPressed: submitState.isLoading
+                                        ? null
+                                        : _submit,
+                                    icon: submitState.isLoading
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: Center(
+                                              child: ShimmerButtonDots(
+                                                size: 6.5,
+                                                spacing: 3.5,
+                                              ),
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.check_circle_outline,
+                                          ),
+                                    label: Text(
+                                      submitState.isLoading
+                                          ? 'Submitting...'
+                                          : 'Log Shift & Submit',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -1118,9 +1051,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _isStarted ? 'End Production Shift' : 'New Production Entry',
-        ),
+        title: const Text('Log Production Shift'),
       ),
       body: content,
     );
@@ -1395,7 +1326,7 @@ class _HeadCard extends StatelessWidget {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Start your shift by filling in the details. Then end the shift and report the final quantities once actual production is finished.',
+                  'Fill in the shift details, start and end times, operators, and final quantities, then submit in a single step.',
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
