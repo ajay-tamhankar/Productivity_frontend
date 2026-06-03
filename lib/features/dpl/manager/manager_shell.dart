@@ -8,6 +8,7 @@ import 'providers/dpl_dashboard_provider.dart';
 import 'providers/dpl_manager_tab_provider.dart';
 import 'providers/dpl_plan_list_provider.dart';
 import 'providers/dpl_reports_provider.dart';
+import 'providers/dpl_viewer_only_provider.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/masters_hub_screen.dart';
 import 'screens/plan_list_screen.dart';
@@ -19,25 +20,54 @@ import 'screens/reports_screen.dart';
 /// The active tab is held in `dplManagerTabProvider` so the persistent
 /// footer mounted on nested detail screens can switch tabs without
 /// losing state.
+///
+/// DPL Customer (read-only viewer) sees only Dashboard + Plans — the
+/// Reports and Settings tabs are stripped so they can't reach anything
+/// outside the scope the user signed off on for that role.
 class DplManagerShell extends ConsumerWidget {
   const DplManagerShell({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final index = ref.watch(dplManagerTabProvider);
+    final viewerOnly = ref.watch(dplViewerOnlyProvider);
+    final rawIndex = ref.watch(dplManagerTabProvider);
 
-    const pages = [
-      DplManagerDashboardScreen(),
-      _EmbeddedPlanList(),
-      DplReportsScreen(),
-      DplMastersHubScreen(embedded: true),
-    ];
+    final pages = viewerOnly
+        ? const <Widget>[
+            DplManagerDashboardScreen(),
+            _EmbeddedPlanList(),
+          ]
+        : const <Widget>[
+            DplManagerDashboardScreen(),
+            _EmbeddedPlanList(),
+            DplReportsScreen(),
+            DplMastersHubScreen(embedded: true),
+          ];
+
+    final navItems = viewerOnly
+        ? const <DplNavItem>[
+            DplNavItem(
+              icon: Icons.dashboard_outlined,
+              selectedIcon: Icons.dashboard,
+              label: 'Dashboard',
+            ),
+            DplNavItem(
+              icon: Icons.assignment_outlined,
+              selectedIcon: Icons.assignment,
+              label: 'Plans',
+            ),
+          ]
+        : dplManagerNavItems;
+
+    // Clamp the selected tab so an old index from a previous role/session
+    // can never overflow the (possibly shorter) viewer-only nav.
+    final index = rawIndex.clamp(0, pages.length - 1);
 
     return Scaffold(
       body: IndexedStack(index: index, children: pages),
       bottomNavigationBar: DplBottomNav(
         currentIndex: index,
-        items: dplManagerNavItems,
+        items: navItems,
         onTap: (i) {
           ref.read(dplManagerTabProvider.notifier).set(i);
           // Every tab tap (including re-tapping the active tab)
@@ -52,8 +82,10 @@ class DplManagerShell extends ConsumerWidget {
               ref.invalidate(dplPlanListProvider);
               break;
             case 2:
-              ref.invalidate(dplPlanVsActualReportProvider);
-              ref.invalidate(dplDowntimeReportProvider);
+              if (!viewerOnly) {
+                ref.invalidate(dplPlanVsActualReportProvider);
+                ref.invalidate(dplDowntimeReportProvider);
+              }
               break;
             case 3:
               // Settings is mostly navigation tiles — nothing live

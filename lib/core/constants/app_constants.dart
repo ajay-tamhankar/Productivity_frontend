@@ -24,6 +24,9 @@ class AppConstants {
   static const String roleOperator = 'OPERATOR';
   static const String roleDplManager = 'DPL_MANAGER';
   static const String roleDplSupervisor = 'DPL_SUPERVISOR';
+  /// Read-only DPL viewer — sees the Manager Dashboard + Plans tab but
+  /// cannot create / edit / delete anything.
+  static const String roleDplCustomer = 'DPL_CUSTOMER';
 
   static const List<String> assignableRoles = <String>[
     roleAdmin,
@@ -48,6 +51,8 @@ class AppConstants {
         return 'DPL Manager';
       case roleDplSupervisor:
         return 'DPL Supervisor';
+      case roleDplCustomer:
+        return 'DPL Customer';
       default:
         return normalizeRole(role);
     }
@@ -69,6 +74,11 @@ class AppConstants {
   static bool isDplSupervisorRole(String role) =>
       normalizeRole(role) == roleDplSupervisor;
 
+  static bool isDplCustomerRole(String role) =>
+      normalizeRole(role) == roleDplCustomer;
+
   static bool isDplRole(String role) =>
-      isDplManagerRole(role) || isDplSupervisorRole(role);
+      isDplManagerRole(role) ||
+      isDplSupervisorRole(role) ||
+      isDplCustomerRole(role);
 }

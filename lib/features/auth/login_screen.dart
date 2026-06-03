@@ -10,6 +10,11 @@ const _kBrandPurple = Color(0xFF6B1F8C);
 const _kBrandPurpleDark = Color(0xFF4A1163);
 const _kBrandOrange = Color(0xFFE54B2A);
 
+/// Which login backend the form should authenticate against.
+/// - [productivity]: classic Productivity flow (`/auth/login`, username + password)
+/// - [vistarPulse]:  DPL flow (`/dpl/auth/login`, email + password)
+enum _LoginFlow { productivity, vistarPulse }
+
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -26,6 +31,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscurePassword = true;
   bool _submittedOnce = false;
   String? _inlineError;
+
+  /// Active login flow — drives field labels, validator, and which
+  /// backend method gets called on Sign In.
+  _LoginFlow _flow = _LoginFlow.productivity;
 
   @override
   void dispose() {
@@ -45,42 +54,48 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
 
     setState(() => _inlineError = null);
-    ref.read(authControllerProvider.notifier).login(
-          _usernameController.text.trim(),
-          _passwordController.text,
-        );
+    final identifier = _usernameController.text.trim();
+    final password = _passwordController.text;
+    final auth = ref.read(authControllerProvider.notifier);
+
+    switch (_flow) {
+      case _LoginFlow.productivity:
+        auth.login(identifier, password);
+        break;
+      case _LoginFlow.vistarPulse:
+        auth.loginDpl(identifier, password);
+        break;
+    }
   }
 
-  void _onDplLogin() {
-    FocusScope.of(context).unfocus();
+  void _onFlowChanged(_LoginFlow next) {
+    if (next == _flow) return;
     setState(() {
-      _submittedOnce = false;
+      _flow = next;
       _inlineError = null;
-    });
-    ref.read(authControllerProvider.notifier).loginDpl(
-          'dpl.manager@vistarlogitek.com',
-          'ChangeMe@123',
-        );
-  }
-
-  void _onDplSupervisorLogin() {
-    FocusScope.of(context).unfocus();
-    setState(() {
       _submittedOnce = false;
-      _inlineError = null;
     });
-    ref.read(authControllerProvider.notifier).loginDpl(
-          'dpl.supervisor1@vistarlogitek.com',
-          'ChangeMe@123',
-        );
+    // Username/email validation rules differ — re-run validation so any
+    // stale error messages disappear once the user starts typing.
+    _formKey.currentState?.reset();
+    _usernameController.clear();
+    _passwordController.clear();
   }
 
   String? _validateUsername(String? value) {
-    final username = value?.trim() ?? '';
-    if (username.isEmpty) return 'Username is required.';
-    if (username.length < 3) return 'Username must be at least 3 characters.';
-    if (username.length > 40) return 'Username must be under 40 characters.';
-    if (username.contains(' ')) return 'Username cannot contain spaces.';
+    final v = value?.trim() ?? '';
+    if (_flow == _LoginFlow.vistarPulse) {
+      if (v.isEmpty) return 'Email is required.';
+      if (v.length > 254) return 'Email is too long.';
+      // Pragmatic email shape — must contain `@` and a `.` in the domain.
+      final emailRe = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+      if (!emailRe.hasMatch(v)) return 'Enter a valid email address.';
+      return null;
+    }
+    if (v.isEmpty) return 'Username is required.';
+    if (v.length < 3) return 'Username must be at least 3 characters.';
+    if (v.length > 40) return 'Username must be under 40 characters.';
+    if (v.contains(' ')) return 'Username cannot contain spaces.';
     return null;
   }
 
@@ -219,22 +234,84 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     ),
                                     const SizedBox(height: 18),
                                     Text(
-                                      'Vistar Pulse',
+                                      _flow == _LoginFlow.vistarPulse
+                                          ? 'Vistar Pulse'
+                                          : 'Productivity',
                                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                             fontWeight: FontWeight.w800,
                                             letterSpacing: 0.2,
-                                            color: _kBrandPurpleDark,
+                                            color: _flow == _LoginFlow.vistarPulse
+                                                ? _kBrandPurpleDark
+                                                : _kBrandOrange,
                                           ),
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      'Sign in to continue tracking production, quality, and shop-floor activity.',
+                                      _flow == _LoginFlow.vistarPulse
+                                          ? 'Sign in to manage daily production loading, shifts, and downtime on the shop floor.'
+                                          : 'Sign in to track classic production entries, quality, and operator activity.',
                                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                             color: const Color(0xFF5F6B7A),
                                             height: 1.4,
                                           ),
                                     ),
-                                    const SizedBox(height: 24),
+                                    const SizedBox(height: 18),
+                                    // Flow toggle — Productivity (classic) vs Vistar Pulse (DPL).
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: SegmentedButton<_LoginFlow>(
+                                        segments: const [
+                                          ButtonSegment<_LoginFlow>(
+                                            value: _LoginFlow.productivity,
+                                            label: Text('Productivity'),
+                                            icon: Icon(Icons.bar_chart_outlined),
+                                          ),
+                                          ButtonSegment<_LoginFlow>(
+                                            value: _LoginFlow.vistarPulse,
+                                            label: Text('Vistar Pulse'),
+                                            icon: Icon(Icons.factory_outlined),
+                                          ),
+                                        ],
+                                        selected: {_flow},
+                                        onSelectionChanged: isLoading
+                                            ? null
+                                            : (s) => _onFlowChanged(s.first),
+                                        showSelectedIcon: false,
+                                        style: ButtonStyle(
+                                          backgroundColor: WidgetStateProperty
+                                              .resolveWith<Color?>((states) {
+                                            if (states.contains(WidgetState.selected)) {
+                                              return _flow == _LoginFlow.vistarPulse
+                                                  ? _kBrandPurple
+                                                  : _kBrandOrange;
+                                            }
+                                            return Colors.white;
+                                          }),
+                                          foregroundColor: WidgetStateProperty
+                                              .resolveWith<Color?>((states) {
+                                            if (states.contains(WidgetState.selected)) {
+                                              return Colors.white;
+                                            }
+                                            return const Color(0xFF5F6B7A);
+                                          }),
+                                          side: WidgetStateProperty.all(
+                                            BorderSide(
+                                              color: _flow == _LoginFlow.vistarPulse
+                                                  ? _kBrandPurple
+                                                  : _kBrandOrange,
+                                              width: 1.4,
+                                            ),
+                                          ),
+                                          textStyle: WidgetStateProperty.all(
+                                            const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 20),
                                     if (_inlineError != null) ...[
                                       Container(
                                         padding: const EdgeInsets.symmetric(
@@ -269,7 +346,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     TextFormField(
                                       controller: _usernameController,
                                       focusNode: _usernameFocusNode,
-                                      autofillHints: const [AutofillHints.username],
+                                      autofillHints: [
+                                        _flow == _LoginFlow.vistarPulse
+                                            ? AutofillHints.email
+                                            : AutofillHints.username,
+                                      ],
+                                      keyboardType: _flow == _LoginFlow.vistarPulse
+                                          ? TextInputType.emailAddress
+                                          : TextInputType.text,
                                       textInputAction: TextInputAction.next,
                                       onFieldSubmitted: (_) => _passwordFocusNode.requestFocus(),
                                       enabled: !isLoading,
@@ -278,10 +362,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                           setState(() => _inlineError = null);
                                         }
                                       },
-                                      decoration: const InputDecoration(
-                                        labelText: 'Username',
-                                        hintText: 'Enter your username',
-                                        prefixIcon: Icon(Icons.person_outline),
+                                      decoration: InputDecoration(
+                                        labelText: _flow == _LoginFlow.vistarPulse
+                                            ? 'Email'
+                                            : 'Username',
+                                        hintText: _flow == _LoginFlow.vistarPulse
+                                            ? 'name@vistarlogitek.com'
+                                            : 'Enter your username',
+                                        prefixIcon: Icon(
+                                          _flow == _LoginFlow.vistarPulse
+                                              ? Icons.alternate_email
+                                              : Icons.person_outline,
+                                        ),
                                       ),
                                       validator: _validateUsername,
                                     ),
@@ -322,7 +414,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       child: FilledButton(
                                         onPressed: isLoading ? null : _onLogin,
                                         style: FilledButton.styleFrom(
-                                          backgroundColor: _kBrandPurple,
+                                          backgroundColor:
+                                              _flow == _LoginFlow.vistarPulse
+                                                  ? _kBrandPurple
+                                                  : _kBrandOrange,
                                           foregroundColor: Colors.white,
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(14),
@@ -339,80 +434,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                                   ),
                                                 ),
                                               )
-                                            : const Text(
-                                                'Sign In',
-                                                style: TextStyle(
+                                            : Text(
+                                                _flow == _LoginFlow.vistarPulse
+                                                    ? 'Sign in to Vistar Pulse'
+                                                    : 'Sign in to Productivity',
+                                                style: const TextStyle(
                                                   fontWeight: FontWeight.w700,
                                                   fontSize: 16,
                                                 ),
                                               ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: SizedBox(
-                                            height: 48,
-                                            child: OutlinedButton.icon(
-                                              onPressed: isLoading
-                                                  ? null
-                                                  : _onDplLogin,
-                                              style: OutlinedButton.styleFrom(
-                                                foregroundColor: _kBrandPurple,
-                                                side: const BorderSide(
-                                                  color: _kBrandPurple,
-                                                  width: 1.4,
-                                                ),
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(14),
-                                                ),
-                                              ),
-                                              icon: const Icon(
-                                                  Icons.factory_outlined),
-                                              label: const Text(
-                                                'DPL Manager',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w800,
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: SizedBox(
-                                            height: 48,
-                                            child: OutlinedButton.icon(
-                                              onPressed: isLoading
-                                                  ? null
-                                                  : _onDplSupervisorLogin,
-                                              style: OutlinedButton.styleFrom(
-                                                foregroundColor: _kBrandOrange,
-                                                side: const BorderSide(
-                                                  color: _kBrandOrange,
-                                                  width: 1.4,
-                                                ),
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(14),
-                                                ),
-                                              ),
-                                              icon: const Icon(
-                                                  Icons.engineering_outlined),
-                                              label: const Text(
-                                                'DPL Supervisor',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w800,
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
                                     ),
                                     const SizedBox(height: 16),
                                     const Text(

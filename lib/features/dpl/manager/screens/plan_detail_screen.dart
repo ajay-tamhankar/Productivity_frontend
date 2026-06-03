@@ -18,6 +18,7 @@ import '../../models/dpl_production_plan_item.dart';
 import '../../models/dpl_supervisor_today.dart';
 import '../providers/dpl_plan_detail_provider.dart';
 import '../providers/dpl_plan_list_provider.dart';
+import '../providers/dpl_viewer_only_provider.dart';
 import '../../supervisor/widgets/live_timer_text.dart';
 import '../widgets/dpl_manager_footer.dart';
 import '../widgets/empty_state.dart';
@@ -36,61 +37,66 @@ class DplPlanDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(dplPlanDetailProvider(planId));
+    final viewerOnly = ref.watch(dplViewerOnlyProvider);
 
     return Scaffold(
       appBar: DplAppBar(
         title: 'Plan Detail',
         actions: [
-          detail.maybeWhen(
-            data: (res) {
-              if (res.isError || res.data == null) {
-                return const SizedBox.shrink();
-              }
-              return PopupMenuButton<_PlanMenu>(
-                onSelected: (action) =>
-                    _handleMenu(context, ref, res.data!, action),
-                itemBuilder: (_) => [
-                  if (DplPlanStatus.isEditable(res.data!.status))
-                    const PopupMenuItem(
-                      value: _PlanMenu.edit,
-                      child: ListTile(
-                        dense: true,
-                        leading: Icon(Icons.edit_outlined),
-                        title: Text('Edit header'),
-                      ),
-                    ),
-                  const PopupMenuItem(
-                    value: _PlanMenu.changeStatus,
-                    child: ListTile(
-                      dense: true,
-                      leading: Icon(Icons.swap_horiz_outlined),
-                      title: Text('Change status'),
-                    ),
-                  ),
-                  // Plan-level Delete is shown only when nothing on
-                  // the plan has been started yet. Once any item is
-                  // in progress or completed, the manager has to use
-                  // Change status / Carry forward instead.
-                  if (res.data!.isDeletable)
-                    const PopupMenuItem(
-                      value: _PlanMenu.delete,
-                      child: ListTile(
-                        dense: true,
-                        leading: Icon(
-                          Icons.delete_outline,
-                          color: Color(0xFFB3261E),
-                        ),
-                        title: Text(
-                          'Delete plan',
-                          style: TextStyle(color: Color(0xFFB3261E)),
+          // Plan-level mutating menu (Edit / Change status / Delete) is
+          // stripped entirely for DPL Customer — they see the plan as a
+          // read-only document.
+          if (!viewerOnly)
+            detail.maybeWhen(
+              data: (res) {
+                if (res.isError || res.data == null) {
+                  return const SizedBox.shrink();
+                }
+                return PopupMenuButton<_PlanMenu>(
+                  onSelected: (action) =>
+                      _handleMenu(context, ref, res.data!, action),
+                  itemBuilder: (_) => [
+                    if (DplPlanStatus.isEditable(res.data!.status))
+                      const PopupMenuItem(
+                        value: _PlanMenu.edit,
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Edit header'),
                         ),
                       ),
+                    const PopupMenuItem(
+                      value: _PlanMenu.changeStatus,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.swap_horiz_outlined),
+                        title: Text('Change status'),
+                      ),
                     ),
-                ],
-              );
-            },
-            orElse: () => const SizedBox.shrink(),
-          ),
+                    // Plan-level Delete is shown only when nothing on
+                    // the plan has been started yet. Once any item is
+                    // in progress or completed, the manager has to use
+                    // Change status / Carry forward instead.
+                    if (res.data!.isDeletable)
+                      const PopupMenuItem(
+                        value: _PlanMenu.delete,
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(
+                            Icons.delete_outline,
+                            color: Color(0xFFB3261E),
+                          ),
+                          title: Text(
+                            'Delete plan',
+                            style: TextStyle(color: Color(0xFFB3261E)),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+              orElse: () => const SizedBox.shrink(),
+            ),
         ],
       ),
       body: RefreshIndicator(
@@ -310,8 +316,15 @@ class _PlanBody extends ConsumerWidget {
     final fmt = NumberFormat.decimalPattern();
     final dateFmt = DateFormat('EEEE, dd MMM yyyy');
     final pct = (plan.completionPct * 100).round();
-    final canEdit = DplPlanStatus.isEditable(plan.status);
-    final readOnly = DplPlanStatus.isReadOnly(plan.status);
+    // DPL Customer is a viewer — collapse it into the existing
+    // `readOnly` / `canEdit` flags so every downstream button
+    // (Add item, item tap, long-press, status menu, carry forward,
+    // delete) auto-disables without per-call gating.
+    final viewerOnly = ref.watch(dplViewerOnlyProvider);
+    final canEdit =
+        !viewerOnly && DplPlanStatus.isEditable(plan.status);
+    final readOnly =
+        viewerOnly || DplPlanStatus.isReadOnly(plan.status);
 
     return ListView(
       padding: const EdgeInsets.all(16),

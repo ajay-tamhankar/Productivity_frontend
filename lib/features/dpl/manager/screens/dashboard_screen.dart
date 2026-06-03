@@ -9,6 +9,7 @@ import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/widgets/dpl_app_bar.dart';
 import '../../models/dpl_dashboard_summary.dart';
 import '../providers/dpl_dashboard_provider.dart';
+import '../providers/dpl_viewer_only_provider.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
 import '../widgets/machine_summary_card.dart';
@@ -85,6 +86,7 @@ class _DplManagerDashboardScreenState
   Widget build(BuildContext context) {
     final date = ref.watch(dplDashboardDateProvider);
     final summary = ref.watch(dplDashboardSummaryProvider);
+    final viewerOnly = ref.watch(dplViewerOnlyProvider);
 
     final isPhone = MediaQuery.of(context).size.width < 600;
 
@@ -93,35 +95,40 @@ class _DplManagerDashboardScreenState
         title: 'Daily Production',
         subtitle: _LiveIndicator(lastTick: _lastTick),
         actions: [
-          if (isPhone)
-            IconButton(
-              tooltip: 'Upload Plan',
-              icon: const Icon(
-                Icons.upload_file_outlined,
-                color: Color(0xFF6B1F8C),
-              ),
-              onPressed: () => context.push('/dpl/manager/upload-plan'),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-              child: FilledButton.icon(
-                onPressed: () => context.push('/dpl/manager/upload-plan'),
-                icon: const Icon(Icons.upload_file_outlined, size: 18),
-                label: const Text(
-                  'Upload Plan',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+          // DPL Customer is read-only — Upload Plan is a write action so
+          // it's stripped from the app bar entirely. The calendar picker
+          // stays because it only changes which date the user is viewing.
+          if (!viewerOnly)
+            if (isPhone)
+              IconButton(
+                tooltip: 'Upload Plan',
+                icon: const Icon(
+                  Icons.upload_file_outlined,
+                  color: Color(0xFF6B1F8C),
                 ),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF6B1F8C),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                onPressed: () => context.push('/dpl/manager/upload-plan'),
+              )
+            else
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                child: FilledButton.icon(
+                  onPressed: () => context.push('/dpl/manager/upload-plan'),
+                  icon: const Icon(Icons.upload_file_outlined, size: 18),
+                  label: const Text(
+                    'Upload Plan',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF6B1F8C),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ),
-            ),
           IconButton(
             tooltip: 'Pick date',
             icon: const Icon(Icons.calendar_today_outlined),

@@ -20,6 +20,7 @@ import '../providers/dpl_daily_log_report_provider.dart';
 import '../providers/dpl_masters_provider.dart';
 import '../providers/dpl_monthly_chart_provider.dart';
 import '../services/dpl_chart_excel_exporter.dart';
+import '../services/dpl_chart_style_tokens.dart';
 import '../services/dpl_daily_log_exporter.dart';
 import '../services/dpl_downtime_exporter.dart';
 import '../providers/dpl_reports_provider.dart';
@@ -1942,6 +1943,10 @@ class _ChartGridState extends State<_ChartGrid> {
 
     final rowDefs = <_RowDef>[];
     for (final machine in machinesToShow) {
+      // Map back to the chart-wide machine index so the band color matches
+      // the Excel export exactly (where machines are colored by their
+      // position in `chart.machines`, not in the filtered view).
+      final machineIdx = c.machines.indexWhere((m) => m.id == machine.id);
       for (final shift in c.shifts) {
         final dataRow = c.rows.firstWhere(
           (r) => r.machineId == machine.id && r.shiftId == shift.id,
@@ -1954,6 +1959,7 @@ class _ChartGridState extends State<_ChartGrid> {
         );
         rowDefs.add(_RowDef(
           machineName: machine.name,
+          machineIndex: machineIdx < 0 ? 0 : machineIdx,
           shiftCode: shift.code,
           shiftName: shift.name,
           kind: _RowKind.plan,
@@ -1962,6 +1968,7 @@ class _ChartGridState extends State<_ChartGrid> {
         ));
         rowDefs.add(_RowDef(
           machineName: machine.name,
+          machineIndex: machineIdx < 0 ? 0 : machineIdx,
           shiftCode: shift.code,
           shiftName: shift.name,
           kind: _RowKind.actual,
@@ -1971,6 +1978,7 @@ class _ChartGridState extends State<_ChartGrid> {
         if (!widget.compact) {
           rowDefs.add(_RowDef(
             machineName: machine.name,
+            machineIndex: machineIdx < 0 ? 0 : machineIdx,
             shiftCode: shift.code,
             shiftName: shift.name,
             kind: _RowKind.downtime,
@@ -2002,9 +2010,9 @@ class _ChartGridState extends State<_ChartGrid> {
                 children: [
                   Container(
                     height: headerHeight,
-                    decoration: const BoxDecoration(
-                      color: _kSurfaceAlt,
-                      border: Border(
+                    decoration: BoxDecoration(
+                      color: DplChartTokens.dateBand,
+                      border: const Border(
                         right: BorderSide(color: _kBorder),
                         bottom: BorderSide(color: _kBorder),
                       ),
@@ -2016,7 +2024,7 @@ class _ChartGridState extends State<_ChartGrid> {
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 11,
-                        color: _kNeutral,
+                        color: Colors.black87,
                       ),
                     ),
                   ),
@@ -2043,10 +2051,10 @@ class _ChartGridState extends State<_ChartGrid> {
                     children: [
                       Container(
                         height: headerHeight,
-                        decoration: const BoxDecoration(
-                          color: _kSurfaceAlt,
-                          border:
-                              Border(bottom: BorderSide(color: _kBorder)),
+                        decoration: BoxDecoration(
+                          color: DplChartTokens.dateBand,
+                          border: const Border(
+                              bottom: BorderSide(color: _kBorder)),
                         ),
                         child: Row(
                           children: [
@@ -2056,9 +2064,9 @@ class _ChartGridState extends State<_ChartGrid> {
                               width: totalColWidth,
                               height: headerHeight,
                               alignment: Alignment.center,
-                              decoration: const BoxDecoration(
-                                color: _kSurfaceAlt,
-                                border: Border(
+                              decoration: BoxDecoration(
+                                color: DplChartTokens.totalBand,
+                                border: const Border(
                                   left: BorderSide(color: _kBorder),
                                 ),
                               ),
@@ -2067,7 +2075,7 @@ class _ChartGridState extends State<_ChartGrid> {
                                 style: TextStyle(
                                   fontWeight: FontWeight.w900,
                                   fontSize: 11,
-                                  color: _kNeutral,
+                                  color: Colors.black87,
                                 ),
                               ),
                             ),
@@ -2103,6 +2111,7 @@ enum _RowKind { plan, actual, downtime }
 
 class _RowDef {
   final String machineName;
+  final int machineIndex;
   final String shiftCode;
   final String shiftName;
   final _RowKind kind;
@@ -2111,12 +2120,17 @@ class _RowDef {
 
   const _RowDef({
     required this.machineName,
+    required this.machineIndex,
     required this.shiftCode,
     required this.shiftName,
     required this.kind,
     required this.row,
     required this.isFirstInGroup,
   });
+
+  /// Background tint for the row — mirrors the Excel per-machine band.
+  Color get bandColor =>
+      DplChartTokens.machineBandColorAt(machineIndex);
 
   String get kindLabel {
     switch (kind) {
@@ -2147,9 +2161,16 @@ class _LeftCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Plan rows get red text to match the Excel template; Actual stays
+    // neutral; Downtime uses the warn color.
+    final labelColor = def.kind == _RowKind.plan
+        ? DplChartTokens.redLabel
+        : (def.kind == _RowKind.downtime ? _kWarn : Colors.black87);
+
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(
+      decoration: BoxDecoration(
+        color: def.bandColor,
+        border: const Border(
           right: BorderSide(color: _kBorder),
           bottom: BorderSide(color: _kBorder),
         ),
@@ -2192,7 +2213,7 @@ class _LeftCell extends StatelessWidget {
                     fontSize: 11,
                     height: 1.0,
                     fontWeight: FontWeight.w900,
-                    color: def.kindAccent,
+                    color: labelColor,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -2215,11 +2236,15 @@ class _DayHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final isWeekend =
         date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
+    // Match the Excel: date band is green; weekends get the pale-yellow tint
+    // so they remain visually distinct against the green.
     return Container(
       width: width,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: isWeekend ? const Color(0xFFFEF7E0) : _kSurfaceAlt,
+        color: isWeekend
+            ? DplChartTokens.weekendBand
+            : DplChartTokens.dateBand,
         border: const Border(
           right: BorderSide(color: _kBorder),
           bottom: BorderSide(color: _kBorder),
@@ -2284,9 +2309,12 @@ class _DataRowStrip extends StatelessWidget {
     }
   }
 
-  Color? _cellBg(DplChartCell? cell) {
-    if (def.kind != _RowKind.actual) return null;
-    if (cell == null || cell.planQty == 0) return null;
+  /// Cell background — Actual rows get a completion-% heat tint that
+  /// overrides the machine band; everything else stays on the band so
+  /// the row reads as a single colored strip (matching the Excel).
+  Color _cellBg(DplChartCell? cell) {
+    if (def.kind != _RowKind.actual) return def.bandColor;
+    if (cell == null || cell.planQty == 0) return def.bandColor;
     final pct = cell.completionPct;
     if (pct >= 1.0) return const Color(0xFFDBEAFE);
     if (pct >= 0.9) return const Color(0xFFDCFCE7);
@@ -2302,9 +2330,9 @@ class _DataRowStrip extends StatelessWidget {
         Container(
           width: totalColWidth,
           alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: _kSurfaceAlt,
-            border: Border(
+          decoration: BoxDecoration(
+            color: DplChartTokens.totalBand,
+            border: const Border(
               left: BorderSide(color: _kBorder),
               bottom: BorderSide(color: _kBorder),
             ),

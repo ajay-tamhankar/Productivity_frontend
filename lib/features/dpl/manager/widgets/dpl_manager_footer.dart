@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/widgets/dpl_bottom_nav.dart';
 import '../providers/dpl_manager_tab_provider.dart';
+import '../providers/dpl_viewer_only_provider.dart';
 
 /// Bottom nav for every DPL Manager screen.
 ///
@@ -26,11 +27,31 @@ class DplManagerFooter extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final index = ref.watch(dplManagerTabProvider);
+    final viewerOnly = ref.watch(dplViewerOnlyProvider);
+    final rawIndex = ref.watch(dplManagerTabProvider);
+
+    // DPL Customer only has Dashboard + Plans — strip the other two
+    // items so the footer matches the shell nav exactly.
+    final items = viewerOnly
+        ? const <DplNavItem>[
+            DplNavItem(
+              icon: Icons.dashboard_outlined,
+              selectedIcon: Icons.dashboard,
+              label: 'Dashboard',
+            ),
+            DplNavItem(
+              icon: Icons.assignment_outlined,
+              selectedIcon: Icons.assignment,
+              label: 'Plans',
+            ),
+          ]
+        : dplManagerNavItems;
+
+    final index = rawIndex.clamp(0, items.length - 1);
 
     final nav = DplBottomNav(
       currentIndex: index,
-      items: dplManagerNavItems,
+      items: items,
       onTap: (i) {
         ref.read(dplManagerTabProvider.notifier).set(i);
         if (popToShellOnTap) {

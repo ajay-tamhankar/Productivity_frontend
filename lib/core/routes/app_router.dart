@@ -49,16 +49,19 @@ GoRouter appRouter(Ref ref) {
       final isBrinRole = AppConstants.isBrinRole(role);
       final isDplManagerRole = AppConstants.isDplManagerRole(role);
       final isDplSupervisorRole = AppConstants.isDplSupervisorRole(role);
+      final isDplCustomerRole = AppConstants.isDplCustomerRole(role);
 
       final defaultDashboardPath = isDplManagerRole
           ? dplManagerPath
           : isDplSupervisorRole
               ? dplSupervisorPath
-              : isAdminRole
-                  ? adminDashboardPath
-                  : isBrinRole
-                      ? brinDashboardPath
-                      : operatorDashboardPath;
+              : isDplCustomerRole
+                  ? dplManagerPath
+                  : isAdminRole
+                      ? adminDashboardPath
+                      : isBrinRole
+                          ? brinDashboardPath
+                          : operatorDashboardPath;
 
       // If still loading init state, don't redirect aggressively
       if (authState.isLoading && !isAuth) return null;
@@ -79,7 +82,11 @@ GoRouter appRouter(Ref ref) {
         return defaultDashboardPath;
       }
       if (state.matchedLocation == operatorDashboardPath &&
-          (isAdminRole || isBrinRole || isDplManagerRole || isDplSupervisorRole)) {
+          (isAdminRole ||
+              isBrinRole ||
+              isDplManagerRole ||
+              isDplSupervisorRole ||
+              isDplCustomerRole)) {
         return defaultDashboardPath;
       }
       if (state.matchedLocation == newEntryPath && isBrinRole) {
@@ -87,8 +94,20 @@ GoRouter appRouter(Ref ref) {
       }
 
       // Sandbox DPL routes to DPL roles only.
-      if (state.matchedLocation.startsWith('/dpl/manager') && !isDplManagerRole) {
+      // DPL Customer can enter `/dpl/manager` shell and view plan detail,
+      // but write-only routes (upload, masters, identity audit) are blocked.
+      if (state.matchedLocation.startsWith('/dpl/manager') &&
+          !(isDplManagerRole || isDplCustomerRole)) {
         return defaultDashboardPath;
+      }
+      if (isDplCustomerRole) {
+        final loc = state.matchedLocation;
+        final isWriteOnlyDplRoute = loc.startsWith('/dpl/manager/upload-plan') ||
+            loc.startsWith('/dpl/manager/masters') ||
+            loc.startsWith('/dpl/manager/identity-audit');
+        if (isWriteOnlyDplRoute) {
+          return dplManagerPath;
+        }
       }
       if (state.matchedLocation.startsWith('/dpl/supervisor') &&
           !isDplSupervisorRole) {

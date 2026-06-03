@@ -4,30 +4,45 @@ import 'package:excel/excel.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/dpl_monthly_chart.dart';
+import 'dpl_chart_style_tokens.dart';
 
 /// Client-side Excel exporter that reproduces the company's
 /// "Daily Production Loading Chart" layout from a live
 /// [DplMonthlyChart] payload (no server-side template needed).
 ///
+/// The output mirrors the company's template — same row order, same
+/// color bands, same red emphases, thin borders, frozen header row,
+/// and column widths tuned for printing.
+///
 /// Layout (rows, top to bottom):
-///   1. Cumulative summary header   — "Cumulative Till Date", running totals
-///   2. Achievement summary header  — "Achievement", running %, downtime
-///   3. Date headers                — day numbers + weekday short codes
-///   4. Per-machine block (×N machines):
-///        - Shift A: Plan row + Actual row
-///        - Shift B: Plan row + Actual row
-///        - Shift C: Plan row + Actual row  (only if backend has Shift C)
-///        - Total:   Plan row + Actual row  (sums all shifts per day)
-///        - One "`<Shift>` Down Time in Minutes" row per shift
-///   5. Bottom block:
-///        - Per-shift / per-machine breakdown hours
+///   1. Title row                      (merged across all columns)
+///   2. Cumulative summary header      — "Cumulative Till Date", running totals
+///   3. Achievement summary header     — "Achievement", running %, downtime
+///   4. Day-of-week header             — Mon/Tue/Wed... per column
+///   5. Date header                    — day numbers per column
+///   6. Per-machine block (×N machines):
+///        - Shift A: Plan + Actual rows
+///        - Shift B: Plan + Actual rows  (+Shift C if backend has it)
+///        - Total:   Plan + Actual rows  (sums all shifts per day)
+///        - Per-shift downtime rows
+///   7. Bottom KPI block:
+///        - Per-shift breakdown hours
 ///        - Per-shift manpower headcount
-///        - Per-shift / per-machine lost work-hours (= breakdown × headcount)
-///        - Totals row + % of lost man hours
+///        - Per-shift / per-machine lost work-hours
+///        - Total Lost Work Man Hours row
+///        - Per-shift / per-machine Work Man Hours
+///        - Total Work Man Hours row
+///        - % of lost man Hours row
 class DplChartExcelExporter {
   const DplChartExcelExporter._();
 
   static Uint8List build(DplMonthlyChart chart) {
+    if (chart.days.isEmpty) {
+      throw StateError(
+        'Cannot export Monthly DPL Chart — no days in the selected range.',
+      );
+    }
+
     final excel = Excel.createExcel();
     final dynamic excelDyn = excel;
     const sheetName = 'Monthly DPL Chart';
@@ -58,15 +73,39 @@ class DplChartExcelExporter {
     final machines = chart.machines;
     final c = chart.cumulative;
 
+    // Layout constants — left fixed columns + N day columns.
+    const colMachine = 0; // "Machine Name" / "Cumulative Till Date" labels
+    const colShift = 1; // "Shift A" / "Shift B" / "Total" / running stats
+    const colKind = 2; // "Plan" / "Actual" / "DT (min)"
+    const firstDayCol = 3; // first day-of-month column
+    final lastDayCol = firstDayCol + days.length - 1;
+
+    // Styles are built once and reused — keeps the .xlsx compact.
+    final styles = _Styles();
+
+    // Track the next row to write to — simpler than tracking absolute indices.
+    var r = 0;
+
+    // ============================================================
+    // Row 0 — Title (merged across all columns)
+    // ============================================================
+    final titleFmt = DateFormat('MMMM yyyy');
+    final title =
+        'Daily Production Report - Plan Vs Actual  ${titleFmt.format(chart.from)}';
+    _putText(sheet, r, colMachine, title, styles.title);
+    for (var col = colMachine + 1; col <= lastDayCol; col++) {
+      _putText(sheet, r, col, '', styles.title);
+    }
+    sheet.merge(
+      CellIndex.indexByColumnRow(columnIndex: colMachine, rowIndex: r),
+      CellIndex.indexByColumnRow(columnIndex: lastDayCol, rowIndex: r),
+    );
+    sheet.setRowHeight(r, 22);
+    r++;
+
     // ============================================================
     // Row 1 — Cumulative Till Date  + per-day cumulative Plan
     // ============================================================
-    final cumPlan = c.planQty;
-    final cumActual = c.actualQty;
-    final achievement = (c.achievementPct * 100);
-
-    // Build per-day cumulative running totals so columns line up like
-    // the company spreadsheet's top band.
     final dailyTotalPlan = <int>[];
     final dailyTotalActual = <int>[];
     for (final d in days) {
@@ -74,9 +113,7 @@ class DplChartExcelExporter {
       var a = 0;
       for (final row in chart.rows) {
         for (final cell in row.daily) {
-          if (cell.date.year == d.year &&
-              cell.date.month == d.month &&
-              cell.date.day == d.day) {
+          if (_sameDay(cell.date, d)) {
             p += cell.planQty;
             a += cell.actualQty;
           }
@@ -97,88 +134,90 @@ class DplChartExcelExporter {
       cumActualByDay.add(runA);
     }
 
-    sheet.appendRow([
-      TextCellValue('Cumulative Till Date'),
-      TextCellValue('$cumActual / $cumPlan'),
-      TextCellValue('Cum. Plan'),
-      ...cumPlanByDay.map((v) => IntCellValue(v)),
-    ]);
+    _putText(sheet, r, colMachine, 'Cumulative Till Date', styles.headerLabel);
+    _putText(sheet, r, colShift, '${c.actualQty} / ${c.planQty}',
+        styles.headerHighlight);
+    _putText(sheet, r, colKind, 'Cum. Plan', styles.headerLabel);
+    for (var i = 0; i < days.length; i++) {
+      _putInt(sheet, r, firstDayCol + i, cumPlanByDay[i], styles.headerData);
+    }
+    r++;
 
-    sheet.appendRow([
-      TextCellValue('Achievement'),
-      TextCellValue('${achievement.toStringAsFixed(1)}%'),
-      TextCellValue('Cum. Actual'),
-      ...cumActualByDay.map((v) => IntCellValue(v)),
-    ]);
+    final achievement = (c.achievementPct * 100);
+    _putText(sheet, r, colMachine, 'Achievement', styles.headerLabel);
+    _putText(sheet, r, colShift, '${achievement.toStringAsFixed(1)}%',
+        styles.headerHighlight);
+    _putText(sheet, r, colKind, 'Cum. Actual', styles.headerLabel);
+    for (var i = 0; i < days.length; i++) {
+      _putInt(sheet, r, firstDayCol + i, cumActualByDay[i], styles.headerData);
+    }
+    r++;
 
     // ============================================================
-    // Row 3 — Day-of-week header   (Day, Date)
+    // Row 3 — Day-of-week header   (e.g. Fri Sat Sun Mon ...)
     // ============================================================
     final dowFmt = DateFormat('EEE');
-    sheet.appendRow([
-      TextCellValue(''),
-      TextCellValue('Day'),
-      TextCellValue('Date'),
-      ...days.map((d) => TextCellValue(dowFmt.format(d))),
-    ]);
+    _putText(sheet, r, colMachine, '', styles.dateBandLabel);
+    _putText(sheet, r, colShift, 'Day', styles.dateBandLabel);
+    _putText(sheet, r, colKind, '', styles.dateBandLabel);
+    for (var i = 0; i < days.length; i++) {
+      _putText(
+        sheet,
+        r,
+        firstDayCol + i,
+        dowFmt.format(days[i]),
+        styles.dateBandCell,
+      );
+    }
+    r++;
 
-    final dateFmt = DateFormat('d-MMM');
-    sheet.appendRow([
-      TextCellValue('Machine'),
-      TextCellValue('Shift'),
-      TextCellValue(''),
-      ...days.map((d) => TextCellValue(dateFmt.format(d))),
-    ]);
+    // Row 4 — Date numbers row
+    _putText(sheet, r, colMachine, 'Machine', styles.dateBandLabel);
+    _putText(sheet, r, colShift, 'Shift', styles.dateBandLabel);
+    _putText(sheet, r, colKind, 'Date', styles.dateBandLabel);
+    for (var i = 0; i < days.length; i++) {
+      _putInt(sheet, r, firstDayCol + i, days[i].day, styles.dateBandCell);
+    }
+    r++;
 
     // ============================================================
     // Per-machine sections
     // ============================================================
-    for (final machine in machines) {
-      final machineRows = chart.rows
-          .where((r) => r.machineId == machine.id)
-          .toList();
+    for (var mIdx = 0; mIdx < machines.length; mIdx++) {
+      final machine = machines[mIdx];
+      final machineRows =
+          chart.rows.where((r) => r.machineId == machine.id).toList();
+      final bandHex = DplChartTokens.machineBandAt(mIdx);
+      final bandCellStyle = styles.bandedCell(bandHex);
+      final bandPlanLabel = styles.bandedRedLabel(bandHex);
+      final bandActualLabel = styles.bandedLabel(bandHex);
+      final bandMachineLabel = styles.bandedMachineLabel(bandHex);
 
       // Per-day Plan / Actual per shift
       for (final shift in shifts) {
-        final row = machineRows.firstWhere(
-          (r) => r.shiftId == shift.id,
-          orElse: () => DplChartRow(
-            machineId: machine.id,
-            shiftId: shift.id,
-            daily: const [],
-            totals: DplChartTotals.empty(),
-          ),
-        );
-
-        final planCells = <int>[];
-        final actualCells = <int>[];
-        for (final d in days) {
-          final cell = row.daily.cast<DplChartCell?>().firstWhere(
-                (c) =>
-                    c != null &&
-                    c.date.year == d.year &&
-                    c.date.month == d.month &&
-                    c.date.day == d.day,
-                orElse: () => null,
-              );
-          planCells.add(cell?.planQty ?? 0);
-          actualCells.add(cell?.actualQty ?? 0);
-        }
+        final row = _findRow(machineRows, machine.id, shift.id);
 
         // Plan row
-        sheet.appendRow([
-          TextCellValue('Machine Name: ${machine.name}'),
-          TextCellValue('Shift ${shift.code}'),
-          TextCellValue('Plan'),
-          ...planCells.map((v) => IntCellValue(v)),
-        ]);
+        _putText(sheet, r, colMachine, 'Machine Name: ${machine.name}',
+            bandMachineLabel);
+        _putText(sheet, r, colShift, 'Shift ${shift.code}', bandActualLabel);
+        _putText(sheet, r, colKind, 'Plan', bandPlanLabel);
+        for (var i = 0; i < days.length; i++) {
+          final cell = _cellOn(row, days[i]);
+          _putInt(sheet, r, firstDayCol + i, cell?.planQty ?? 0, bandCellStyle);
+        }
+        r++;
+
         // Actual row
-        sheet.appendRow([
-          TextCellValue(''),
-          TextCellValue(''),
-          TextCellValue('Actual'),
-          ...actualCells.map((v) => IntCellValue(v)),
-        ]);
+        _putText(sheet, r, colMachine, '', bandMachineLabel);
+        _putText(sheet, r, colShift, '', bandActualLabel);
+        _putText(sheet, r, colKind, 'Actual', bandActualLabel);
+        for (var i = 0; i < days.length; i++) {
+          final cell = _cellOn(row, days[i]);
+          _putInt(sheet, r, firstDayCol + i, cell?.actualQty ?? 0,
+              bandCellStyle);
+        }
+        r++;
       }
 
       // Totals (sum across shifts) per day
@@ -189,9 +228,7 @@ class DplChartExcelExporter {
         var a = 0;
         for (final row in machineRows) {
           for (final cell in row.daily) {
-            if (cell.date.year == d.year &&
-                cell.date.month == d.month &&
-                cell.date.day == d.day) {
+            if (_sameDay(cell.date, d)) {
               p += cell.planQty;
               a += cell.actualQty;
             }
@@ -200,69 +237,53 @@ class DplChartExcelExporter {
         totalPlanByDay.add(p);
         totalActualByDay.add(a);
       }
-      sheet.appendRow([
-        TextCellValue(''),
-        TextCellValue('Total'),
-        TextCellValue('Plan'),
-        ...totalPlanByDay.map((v) => IntCellValue(v)),
-      ]);
-      sheet.appendRow([
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue('Actual'),
-        ...totalActualByDay.map((v) => IntCellValue(v)),
-      ]);
+
+      _putText(sheet, r, colMachine, '', styles.totalLabel);
+      _putText(sheet, r, colShift, 'Total', styles.totalLabel);
+      _putText(sheet, r, colKind, 'Plan', styles.totalRedLabel);
+      for (var i = 0; i < days.length; i++) {
+        _putInt(sheet, r, firstDayCol + i, totalPlanByDay[i], styles.totalCell);
+      }
+      r++;
+
+      _putText(sheet, r, colMachine, '', styles.totalLabel);
+      _putText(sheet, r, colShift, '', styles.totalLabel);
+      _putText(sheet, r, colKind, 'Actual', styles.totalLabel);
+      for (var i = 0; i < days.length; i++) {
+        _putInt(sheet, r, firstDayCol + i, totalActualByDay[i],
+            styles.totalCell);
+      }
+      r++;
 
       // Per-shift downtime rows for this machine
       for (final shift in shifts) {
-        final row = machineRows.firstWhere(
-          (r) => r.shiftId == shift.id,
-          orElse: () => DplChartRow(
-            machineId: machine.id,
-            shiftId: shift.id,
-            daily: const [],
-            totals: DplChartTotals.empty(),
-          ),
-        );
-        final dtByDay = <int>[];
-        for (final d in days) {
-          final cell = row.daily.cast<DplChartCell?>().firstWhere(
-                (c) =>
-                    c != null &&
-                    c.date.year == d.year &&
-                    c.date.month == d.month &&
-                    c.date.day == d.day,
-                orElse: () => null,
-              );
-          dtByDay.add(cell?.downtimeMinutes ?? 0);
-        }
-        sheet.appendRow([
-          TextCellValue(''),
-          TextCellValue(
-              '${shift.code}-shift Down Time in Minutes'),
-          TextCellValue(''),
-          ...dtByDay.map((v) => IntCellValue(v)),
-        ]);
-      }
+        final row = _findRow(machineRows, machine.id, shift.id);
 
-      // Spacer row between machines
-      sheet.appendRow([TextCellValue('')]);
+        _putText(sheet, r, colMachine, '', bandMachineLabel);
+        _putText(sheet, r, colShift, '${shift.code}-shift Down Time in Minutes',
+            bandActualLabel);
+        _putText(sheet, r, colKind, '', bandPlanLabel);
+        for (var i = 0; i < days.length; i++) {
+          final cell = _cellOn(row, days[i]);
+          _putInt(sheet, r, firstDayCol + i, cell?.downtimeMinutes ?? 0,
+              bandCellStyle);
+        }
+        r++;
+      }
     }
+
+    // Small spacer row before the KPI block
+    r++;
 
     // ============================================================
     // Bottom block — per-shift breakdown hours, headcount, lost MH
     // ============================================================
 
-    // Helper: total breakdown hours for (date, shift) summed across machines
     double breakdownHoursFor(DateTime date, int shiftId) {
       var sum = 0.0;
       for (final b in chart.breakdownHours) {
         if (b.shiftId != shiftId) continue;
-        if (b.date.year != date.year ||
-            b.date.month != date.month ||
-            b.date.day != date.day) {
-          continue;
-        }
+        if (!_sameDay(b.date, date)) continue;
         sum += b.hours;
       }
       return sum;
@@ -276,159 +297,201 @@ class DplChartExcelExporter {
       var sum = 0.0;
       for (final b in chart.breakdownHours) {
         if (b.shiftId != shiftId) continue;
-        if (b.date.year != date.year ||
-            b.date.month != date.month ||
-            b.date.day != date.day) {
-          continue;
-        }
+        if (!_sameDay(b.date, date)) continue;
         sum += b.byMachine[machineId] ?? 0;
       }
       return sum;
     }
 
     int headcountFor(DateTime date, int shiftId) {
-      // Shift-wide headcount = sum of all manpower rows for that date/shift
-      // (covers either shift-wide entries OR per-machine entries).
       var sum = 0;
       for (final m in chart.manpower) {
         if (m.shiftId != shiftId) continue;
-        if (m.date.year != date.year ||
-            m.date.month != date.month ||
-            m.date.day != date.day) {
-          continue;
-        }
+        if (!_sameDay(m.date, date)) continue;
         sum += m.headcount;
       }
       return sum;
     }
 
-    // Per-shift, per-machine sections
     for (final shift in shifts) {
       final shiftLabel = '${shift.code}-shift';
 
       // Breakdown hours (total)
-      sheet.appendRow([
-        TextCellValue('Breakdown Hours'),
-        TextCellValue(shiftLabel),
-        TextCellValue(''),
-        ...days.map(
-          (d) => DoubleCellValue(
-            double.parse(
-              breakdownHoursFor(d, shift.id).toStringAsFixed(1),
-            ),
-          ),
-        ),
-      ]);
+      _putText(sheet, r, colMachine, 'Breakdown Hours', styles.kpiLabel);
+      _putText(sheet, r, colShift, shiftLabel, styles.kpiLabel);
+      _putText(sheet, r, colKind, '', styles.kpiLabel);
+      for (var i = 0; i < days.length; i++) {
+        _putDouble(
+          sheet,
+          r,
+          firstDayCol + i,
+          _round1(breakdownHoursFor(days[i], shift.id)),
+          styles.kpiDecimalCell,
+        );
+      }
+      r++;
 
       // No. of Manpower
-      sheet.appendRow([
-        TextCellValue('No. of Manpower'),
-        TextCellValue(shiftLabel),
-        TextCellValue(''),
-        ...days.map((d) => IntCellValue(headcountFor(d, shift.id))),
-      ]);
+      _putText(sheet, r, colMachine, 'No. of Manpower', styles.kpiLabel);
+      _putText(sheet, r, colShift, shiftLabel, styles.kpiLabel);
+      _putText(sheet, r, colKind, '', styles.kpiLabel);
+      for (var i = 0; i < days.length; i++) {
+        _putInt(
+          sheet,
+          r,
+          firstDayCol + i,
+          headcountFor(days[i], shift.id),
+          styles.kpiIntCell,
+        );
+      }
+      r++;
 
       // Per-machine lost work-man-hours = breakdown hours × headcount
-      for (final machine in machines) {
-        sheet.appendRow([
-          TextCellValue('${machine.name} lost Work Man Hours'),
-          TextCellValue(shiftLabel),
-          TextCellValue(''),
-          ...days.map((d) {
-            final br = breakdownHoursForMachine(d, shift.id, machine.id);
-            final hc = headcountFor(d, shift.id);
-            return DoubleCellValue(
-              double.parse((br * hc).toStringAsFixed(1)),
-            );
-          }),
-        ]);
-      }
+      for (var mIdx = 0; mIdx < machines.length; mIdx++) {
+        final machine = machines[mIdx];
+        final bandHex = DplChartTokens.machineBandAt(mIdx);
 
-      // Spacer
-      sheet.appendRow([TextCellValue('')]);
+        _putText(
+          sheet,
+          r,
+          colMachine,
+          '${machine.name} lost Work Man Hours',
+          styles.bandedKpiLabel(bandHex),
+        );
+        _putText(sheet, r, colShift, shiftLabel, styles.bandedKpiLabel(bandHex));
+        _putText(sheet, r, colKind, '', styles.bandedKpiLabel(bandHex));
+        for (var i = 0; i < days.length; i++) {
+          final br = breakdownHoursForMachine(days[i], shift.id, machine.id);
+          final hc = headcountFor(days[i], shift.id);
+          _putDouble(
+            sheet,
+            r,
+            firstDayCol + i,
+            _round1(br * hc),
+            styles.bandedKpiDecimalCell(bandHex),
+          );
+        }
+        r++;
+      }
     }
 
     // Total lost work-man-hours per day (sum across shifts and machines)
-    sheet.appendRow([
-      TextCellValue('Total Lost Work Man Hours Due to Breakdown'),
-      TextCellValue(''),
-      TextCellValue(''),
-      ...days.map((d) {
-        var totalLost = 0.0;
-        for (final shift in shifts) {
-          final hc = headcountFor(d, shift.id);
-          for (final machine in machines) {
-            final br = breakdownHoursForMachine(d, shift.id, machine.id);
-            totalLost += br * hc;
-          }
+    _putText(sheet, r, colMachine, 'Total Lost Work Man Hours Due to Breakdown',
+        styles.totalLabel);
+    _putText(sheet, r, colShift, '', styles.totalLabel);
+    _putText(sheet, r, colKind, '', styles.totalLabel);
+    for (var i = 0; i < days.length; i++) {
+      var totalLost = 0.0;
+      for (final shift in shifts) {
+        final hc = headcountFor(days[i], shift.id);
+        for (final machine in machines) {
+          final br =
+              breakdownHoursForMachine(days[i], shift.id, machine.id);
+          totalLost += br * hc;
         }
-        return DoubleCellValue(
-          double.parse(totalLost.toStringAsFixed(1)),
-        );
-      }),
-    ]);
+      }
+      _putDouble(
+        sheet,
+        r,
+        firstDayCol + i,
+        _round1(totalLost),
+        styles.totalDecimalCell,
+      );
+    }
+    r++;
 
-    // Per-shift / per-machine Work Man Hours = headcount × 8h
-    // (matches the backend's `total_man_hours = Σ(headcount × 8h)` rule)
+    // Per-shift / per-machine Work Man Hours = headcount × 8h (equal split)
     for (final shift in shifts) {
-      for (final machine in machines) {
-        sheet.appendRow([
-          TextCellValue('${machine.name} Work Man Hours'),
-          TextCellValue('${shift.code}-shift'),
-          TextCellValue(''),
-          ...days.map((d) {
-            final hc = headcountFor(d, shift.id);
-            // Assume each machine gets equal share of shift's manpower.
-            // (Backend can refine this; matches the simple approximation
-            // the spreadsheet uses.)
-            final share =
-                machines.isEmpty ? hc : (hc / machines.length);
-            return DoubleCellValue(
-              double.parse((share * 8).toStringAsFixed(1)),
-            );
-          }),
-        ]);
+      for (var mIdx = 0; mIdx < machines.length; mIdx++) {
+        final machine = machines[mIdx];
+        final bandHex = DplChartTokens.machineBandAt(mIdx);
+
+        _putText(
+          sheet,
+          r,
+          colMachine,
+          '${machine.name} Work Man Hours',
+          styles.bandedKpiLabel(bandHex),
+        );
+        _putText(sheet, r, colShift, '${shift.code}-shift',
+            styles.bandedKpiLabel(bandHex));
+        _putText(sheet, r, colKind, '', styles.bandedKpiLabel(bandHex));
+        for (var i = 0; i < days.length; i++) {
+          final hc = headcountFor(days[i], shift.id);
+          final share = machines.isEmpty ? hc : (hc / machines.length);
+          _putDouble(
+            sheet,
+            r,
+            firstDayCol + i,
+            _round1(share * 8),
+            styles.bandedKpiDecimalCell(bandHex),
+          );
+        }
+        r++;
       }
     }
 
     // Total Work Man Hours per day
-    sheet.appendRow([
-      TextCellValue('Total Work Man Hours'),
-      TextCellValue(''),
-      TextCellValue(''),
-      ...days.map((d) {
-        var totalMh = 0.0;
-        for (final shift in shifts) {
-          totalMh += headcountFor(d, shift.id) * 8;
-        }
-        return DoubleCellValue(
-          double.parse(totalMh.toStringAsFixed(1)),
-        );
-      }),
-    ]);
+    _putText(
+        sheet, r, colMachine, 'Total Work Man Hours', styles.totalLabel);
+    _putText(sheet, r, colShift, '', styles.totalLabel);
+    _putText(sheet, r, colKind, '', styles.totalLabel);
+    for (var i = 0; i < days.length; i++) {
+      var totalMh = 0.0;
+      for (final shift in shifts) {
+        totalMh += headcountFor(days[i], shift.id) * 8;
+      }
+      _putDouble(
+        sheet,
+        r,
+        firstDayCol + i,
+        _round1(totalMh),
+        styles.totalDecimalCell,
+      );
+    }
+    r++;
 
     // % of lost man hours per day
-    sheet.appendRow([
-      TextCellValue('% of lost man Hours'),
-      TextCellValue(''),
-      TextCellValue(''),
-      ...days.map((d) {
-        var totalMh = 0.0;
-        var totalLost = 0.0;
-        for (final shift in shifts) {
-          final hc = headcountFor(d, shift.id);
-          totalMh += hc * 8;
-          for (final machine in machines) {
-            final br =
-                breakdownHoursForMachine(d, shift.id, machine.id);
-            totalLost += br * hc;
-          }
+    _putText(
+        sheet, r, colMachine, '% of lost man Hours', styles.headerLabel);
+    _putText(sheet, r, colShift, '', styles.headerLabel);
+    _putText(sheet, r, colKind, '', styles.headerLabel);
+    for (var i = 0; i < days.length; i++) {
+      var totalMh = 0.0;
+      var totalLost = 0.0;
+      for (final shift in shifts) {
+        final hc = headcountFor(days[i], shift.id);
+        totalMh += hc * 8;
+        for (final machine in machines) {
+          final br =
+              breakdownHoursForMachine(days[i], shift.id, machine.id);
+          totalLost += br * hc;
         }
-        if (totalMh <= 0) return TextCellValue('—');
-        final pct = (totalLost / totalMh) * 100;
-        return TextCellValue('${pct.toStringAsFixed(1)}%');
-      }),
-    ]);
+      }
+      if (totalMh <= 0) {
+        _putText(sheet, r, firstDayCol + i, '—', styles.headerHighlight);
+      } else {
+        final pct = totalLost / totalMh;
+        _putDouble(
+          sheet,
+          r,
+          firstDayCol + i,
+          double.parse(pct.toStringAsFixed(4)),
+          styles.headerHighlightPct,
+        );
+      }
+    }
+    r++;
+
+    // ============================================================
+    // Column widths + frozen header row
+    // ============================================================
+    sheet.setColumnWidth(colMachine, 32);
+    sheet.setColumnWidth(colShift, 14);
+    sheet.setColumnWidth(colKind, 10);
+    for (var i = 0; i < days.length; i++) {
+      sheet.setColumnWidth(firstDayCol + i, 6.5);
+    }
 
     final encoded = excel.encode();
     if (encoded == null) {
@@ -436,4 +499,254 @@ class DplChartExcelExporter {
     }
     return Uint8List.fromList(encoded);
   }
+
+  // ===== Internal helpers =====
+
+  static void _putText(
+    Sheet sheet,
+    int row,
+    int col,
+    String value,
+    CellStyle style,
+  ) {
+    final cell = sheet.cell(
+      CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
+    );
+    cell.value = TextCellValue(value);
+    cell.cellStyle = style;
+  }
+
+  static void _putInt(
+    Sheet sheet,
+    int row,
+    int col,
+    int value,
+    CellStyle style,
+  ) {
+    final cell = sheet.cell(
+      CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
+    );
+    cell.value = IntCellValue(value);
+    cell.cellStyle = style;
+  }
+
+  static void _putDouble(
+    Sheet sheet,
+    int row,
+    int col,
+    double value,
+    CellStyle style,
+  ) {
+    final cell = sheet.cell(
+      CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
+    );
+    cell.value = DoubleCellValue(value);
+    cell.cellStyle = style;
+  }
+
+  static double _round1(double v) =>
+      double.parse(v.toStringAsFixed(1));
+
+  static bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  static DplChartRow _findRow(
+    List<DplChartRow> rows,
+    int machineId,
+    int shiftId,
+  ) {
+    for (final row in rows) {
+      if (row.machineId == machineId && row.shiftId == shiftId) return row;
+    }
+    return DplChartRow(
+      machineId: machineId,
+      shiftId: shiftId,
+      daily: const [],
+      totals: DplChartTotals.empty(),
+    );
+  }
+
+  static DplChartCell? _cellOn(DplChartRow row, DateTime d) {
+    for (final c in row.daily) {
+      if (_sameDay(c.date, d)) return c;
+    }
+    return null;
+  }
+}
+
+/// All pre-built [CellStyle] objects, grouped here so the
+/// builder above stays focused on layout, not formatting.
+class _Styles {
+  // Thin black border on all 4 sides — matches the template.
+  static Border get _thin =>
+      Border(borderStyle: BorderStyle.Thin, borderColorHex: ExcelColor.black);
+
+  static CellStyle _bordered({
+    required ExcelColor bg,
+    ExcelColor? fg,
+    bool bold = false,
+    int? fontSize,
+    HorizontalAlign h = HorizontalAlign.Center,
+    VerticalAlign v = VerticalAlign.Center,
+    TextWrapping? wrap,
+    NumFormat? numberFormat,
+  }) {
+    return CellStyle(
+      backgroundColorHex: bg,
+      fontColorHex: fg ?? ExcelColor.black,
+      bold: bold,
+      fontSize: fontSize,
+      horizontalAlign: h,
+      verticalAlign: v,
+      textWrapping: wrap,
+      leftBorder: _thin,
+      rightBorder: _thin,
+      topBorder: _thin,
+      bottomBorder: _thin,
+      numberFormat: numberFormat ?? NumFormat.standard_0,
+    );
+  }
+
+  late final CellStyle title = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgHeaderBand),
+    bold: true,
+    fontSize: 14,
+  );
+
+  late final CellStyle headerLabel = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgHeaderBand),
+    bold: true,
+    fontSize: 11,
+    h: HorizontalAlign.Left,
+    wrap: TextWrapping.WrapText,
+  );
+
+  late final CellStyle headerHighlight = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgAchHighlight),
+    bold: true,
+    fontSize: 11,
+  );
+
+  late final CellStyle headerHighlightPct = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgAchHighlight),
+    bold: true,
+    numberFormat: NumFormat.standard_10, // 0.00%
+  );
+
+  late final CellStyle headerData = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgHeaderBand),
+    bold: true,
+  );
+
+  late final CellStyle dateBandLabel = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgDateBand),
+    bold: true,
+    h: HorizontalAlign.Left,
+  );
+
+  late final CellStyle dateBandCell = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgDateBand),
+    bold: true,
+  );
+
+  late final CellStyle totalLabel = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgTotalBand),
+    bold: true,
+    h: HorizontalAlign.Left,
+    wrap: TextWrapping.WrapText,
+  );
+
+  late final CellStyle totalRedLabel = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgTotalBand),
+    fg: ExcelColor.fromHexString(DplChartTokens.fgRedLabel),
+    bold: true,
+  );
+
+  late final CellStyle totalCell = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgTotalBand),
+    bold: true,
+  );
+
+  late final CellStyle totalDecimalCell = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgTotalBand),
+    bold: true,
+    numberFormat: NumFormat.custom(formatCode: '0.0'),
+  );
+
+  late final CellStyle kpiLabel = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgKpiBand),
+    bold: true,
+    h: HorizontalAlign.Left,
+    wrap: TextWrapping.WrapText,
+  );
+
+  late final CellStyle kpiIntCell = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgKpiBand),
+  );
+
+  late final CellStyle kpiDecimalCell = _bordered(
+    bg: ExcelColor.fromHexString(DplChartTokens.bgKpiBand),
+    numberFormat: NumFormat.custom(formatCode: '0.0'),
+  );
+
+  // Per-machine band styles are built on demand (cached) since the
+  // machine count is unbounded.
+  final Map<String, CellStyle> _bandCellCache = {};
+  final Map<String, CellStyle> _bandLabelCache = {};
+  final Map<String, CellStyle> _bandRedLabelCache = {};
+  final Map<String, CellStyle> _bandMachineLabelCache = {};
+  final Map<String, CellStyle> _bandKpiLabelCache = {};
+  final Map<String, CellStyle> _bandKpiDecimalCache = {};
+
+  CellStyle bandedCell(String hex) => _bandCellCache.putIfAbsent(
+        hex,
+        () => _bordered(bg: ExcelColor.fromHexString(hex)),
+      );
+
+  CellStyle bandedLabel(String hex) => _bandLabelCache.putIfAbsent(
+        hex,
+        () => _bordered(
+          bg: ExcelColor.fromHexString(hex),
+          bold: true,
+        ),
+      );
+
+  CellStyle bandedRedLabel(String hex) => _bandRedLabelCache.putIfAbsent(
+        hex,
+        () => _bordered(
+          bg: ExcelColor.fromHexString(hex),
+          fg: ExcelColor.fromHexString(DplChartTokens.fgRedLabel),
+          bold: true,
+        ),
+      );
+
+  CellStyle bandedMachineLabel(String hex) =>
+      _bandMachineLabelCache.putIfAbsent(
+        hex,
+        () => _bordered(
+          bg: ExcelColor.fromHexString(hex),
+          bold: true,
+          h: HorizontalAlign.Left,
+          wrap: TextWrapping.WrapText,
+        ),
+      );
+
+  CellStyle bandedKpiLabel(String hex) => _bandKpiLabelCache.putIfAbsent(
+        hex,
+        () => _bordered(
+          bg: ExcelColor.fromHexString(hex),
+          bold: true,
+          h: HorizontalAlign.Left,
+          wrap: TextWrapping.WrapText,
+        ),
+      );
+
+  CellStyle bandedKpiDecimalCell(String hex) =>
+      _bandKpiDecimalCache.putIfAbsent(
+        hex,
+        () => _bordered(
+          bg: ExcelColor.fromHexString(hex),
+          numberFormat: NumFormat.custom(formatCode: '0.0'),
+        ),
+      );
 }
