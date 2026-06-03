@@ -15,8 +15,10 @@ import '../providers/dpl_shifts_provider.dart';
 import '../../models/dpl_part.dart';
 import '../../models/dpl_production_plan.dart';
 import '../../models/dpl_production_plan_item.dart';
+import '../../models/dpl_supervisor_today.dart';
 import '../providers/dpl_plan_detail_provider.dart';
 import '../providers/dpl_plan_list_provider.dart';
+import '../../supervisor/widgets/live_timer_text.dart';
 import '../widgets/dpl_manager_footer.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
@@ -380,6 +382,10 @@ class _PlanBody extends ConsumerWidget {
             ],
           ),
         ),
+        if (plan.activeDowntime != null) ...[
+          const SizedBox(height: 12),
+          _PlanActiveDowntimeCard(downtime: plan.activeDowntime!),
+        ],
         const SizedBox(height: 16),
         Row(
           children: [
@@ -1551,6 +1557,60 @@ class _CarryForwardSheetState extends ConsumerState<_CarryForwardSheet> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Per-plan live-downtime strip on the manager plan detail screen.
+/// Sized + styled like the green "Started 10:39 - Running 13:52"
+/// running strip on plan items, but in red to flag the downtime.
+class _PlanActiveDowntimeCard extends StatelessWidget {
+  final ActiveDowntime downtime;
+  const _PlanActiveDowntimeCard({required this.downtime});
+
+  @override
+  Widget build(BuildContext context) {
+    final reason = downtime.reasonName.trim().isEmpty
+        ? 'Downtime'
+        : downtime.reasonName.trim();
+    const color = Color(0xFFB3261E);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFECEA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            size: 14,
+            color: color,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Downtime: $reason  -  ',
+              style: const TextStyle(
+                color: color,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          LiveTimerText(
+            startTime: downtime.startTime,
+            style: const TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
           ),
         ],
       ),

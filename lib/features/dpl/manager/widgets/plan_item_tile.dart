@@ -210,6 +210,16 @@ class DplPlanItemTile extends StatelessWidget {
                 const SizedBox(height: 8),
                 _LiveStatusStrip(item: item),
               ],
+              // Accumulated downtime chip — stays visible after a
+              // downtime is resumed (and after the item completes)
+              // so the manager can see total minutes lost without
+              // having to wait for the item to stop.
+              if (item.status != 'pending' &&
+                  item.totalPausedMinutes > 0 &&
+                  item.pausedAt == null) ...[
+                const SizedBox(height: 6),
+                _DowntimeAccumulatedChip(minutes: item.totalPausedMinutes),
+              ],
               // Trolley photo captured at STOP time — supervisors
               // are required to snap it before completing an item,
               // so for completed items there should always be one.
@@ -317,13 +327,7 @@ class _LiveStatusStrip extends StatelessWidget {
     }
 
     if (isPaused) {
-      final pausedAt = item.pausedAt!.toLocal();
-      return _strip(
-        icon: Icons.pause_circle_outline,
-        color: const Color(0xFFB45309),
-        bg: const Color(0xFFFEF3C7),
-        text: 'Paused since ${_hm(pausedAt)}',
-      );
+      return _PausedStripWithLiveTimer(pausedAt: item.pausedAt!);
     }
 
     // In progress, running.
@@ -365,6 +369,102 @@ class _LiveStatusStrip extends StatelessWidget {
                 fontSize: 12,
               ),
               overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Small red chip showing total downtime accumulated on an item.
+/// Stays visible after a downtime is resumed (where the live
+/// paused-since strip disappears) so the manager can see how much
+/// time was lost without waiting for the item to be stopped.
+class _DowntimeAccumulatedChip extends StatelessWidget {
+  final int minutes;
+  const _DowntimeAccumulatedChip({required this.minutes});
+
+  String _format(int minutes) {
+    if (minutes <= 0) return '0m';
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    if (h == 0) return '${m}m';
+    if (m == 0) return '${h}h';
+    return '${h}h ${m}m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFFB3261E);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFECEA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.timer_off_outlined,
+            size: 14,
+            color: color,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Downtime so far: ${_format(minutes)}',
+              style: const TextStyle(
+                color: color,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PausedStripWithLiveTimer extends StatelessWidget {
+  final DateTime pausedAt;
+  const _PausedStripWithLiveTimer({required this.pausedAt});
+
+  @override
+  Widget build(BuildContext context) {
+    final localPaused = pausedAt.toLocal();
+    final hm = '${localPaused.hour.toString().padLeft(2, '0')}:'
+        '${localPaused.minute.toString().padLeft(2, '0')}';
+    const color = Color(0xFFB45309);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.pause_circle_outline, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            'Paused since $hm  -  Paused for ',
+            style: const TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+          LiveTimerText(
+            startTime: pausedAt,
+            style: const TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
             ),
           ),
         ],

@@ -1690,6 +1690,50 @@ class DplApiService {
     );
   }
 
+  /// `GET /manager/active-downtimes` — every currently open downtime
+  /// across all plans, sorted newest-first. Drives the manager-side
+  /// red sticky banner.
+  Future<DplApiResponse<List<ActiveDowntime>>> listManagerActiveDowntimes({
+    int? machineId,
+  }) {
+    return _send<List<ActiveDowntime>>(
+      () => _dio.get(
+        DplPaths.managerActiveDowntimes,
+        queryParameters: _cleanQuery({
+          'machine_id': ?machineId,
+        }),
+      ),
+      fallback: 'Failed to load active downtimes.',
+      fromJson: (data) {
+        List<dynamic>? raw;
+        if (data is List) {
+          raw = data;
+        } else if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          for (final key in const [
+            'downtimes',
+            'active_downtimes',
+            'activeDowntimes',
+            'items',
+            'data',
+            'rows',
+          ]) {
+            final v = map[key];
+            if (v is List) {
+              raw = v;
+              break;
+            }
+          }
+        }
+        if (raw == null) return const <ActiveDowntime>[];
+        return raw
+            .whereType<Map>()
+            .map((e) => ActiveDowntime.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      },
+    );
+  }
+
   /// `GET /manager/trolley-photos/:id/image` — manager view of the
   /// raw image bytes.
   Future<DplApiResponse<Uint8List>> getManagerTrolleyPhotoBytes(

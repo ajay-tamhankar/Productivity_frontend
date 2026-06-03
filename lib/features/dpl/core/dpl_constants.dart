@@ -120,6 +120,9 @@ class DplPaths {
   static const String managerTrolleyPhotos = '/manager/trolley-photos';
   static String managerTrolleyPhotoImage(int id) =>
       '/manager/trolley-photos/$id/image';
+
+  // Manager — live banner (active downtimes across all plans/machines).
+  static const String managerActiveDowntimes = '/manager/active-downtimes';
 }
 
 /// Allowed `context` values for the identity-verify endpoint.

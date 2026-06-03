@@ -1,5 +1,6 @@
 import '_json_helpers.dart';
 import 'dpl_production_plan_item.dart';
+import 'dpl_supervisor_today.dart';
 
 class DplProductionPlan {
   final int id;
@@ -19,6 +20,11 @@ class DplProductionPlan {
   final String? remarks;
   final List<DplProductionPlanItem> items;
 
+  /// Currently-open downtime on this plan, when present. The manager
+  /// `GET /manager/plans/:id` endpoint embeds this so the plan detail
+  /// screen can render a live banner without a second fetch.
+  final ActiveDowntime? activeDowntime;
+
   const DplProductionPlan({
     required this.id,
     required this.planDate,
@@ -35,6 +41,7 @@ class DplProductionPlan {
     this.status = 'draft',
     this.remarks,
     this.items = const [],
+    this.activeDowntime,
   });
 
   factory DplProductionPlan.fromJson(Map<String, dynamic> json) {
@@ -114,6 +121,11 @@ class DplProductionPlan {
       status: parseStringOr(json['status'], 'draft'),
       remarks: json['remarks']?.toString(),
       items: items,
+      activeDowntime: () {
+        final raw = json['active_downtime'] ?? json['activeDowntime'];
+        if (raw is! Map) return null;
+        return ActiveDowntime.fromJson(Map<String, dynamic>.from(raw));
+      }(),
     );
   }
 
@@ -212,6 +224,7 @@ class DplProductionPlan {
     String? status,
     String? remarks,
     List<DplProductionPlanItem>? items,
+    ActiveDowntime? activeDowntime,
   }) {
     return DplProductionPlan(
       id: id ?? this.id,
@@ -229,6 +242,7 @@ class DplProductionPlan {
       status: status ?? this.status,
       remarks: remarks ?? this.remarks,
       items: items ?? this.items,
+      activeDowntime: activeDowntime ?? this.activeDowntime,
     );
   }
 }

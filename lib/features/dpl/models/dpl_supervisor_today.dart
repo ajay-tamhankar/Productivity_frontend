@@ -120,19 +120,35 @@ class ActiveDowntime {
   final String reasonName;
   final DateTime startTime;
   final int? machineId;
+  final String? machineName;
   final int? planId;
   final int? planItemId;
+  final int? supervisorUserId;
+  final String? supervisorName;
+  final String? shiftCode;
+  final String? category;
 
   const ActiveDowntime({
     required this.id,
     required this.reasonName,
     required this.startTime,
     this.machineId,
+    this.machineName,
     this.planId,
     this.planItemId,
+    this.supervisorUserId,
+    this.supervisorName,
+    this.shiftCode,
+    this.category,
   });
 
   factory ActiveDowntime.fromJson(Map<String, dynamic> json) {
+    String? strOrNull(dynamic raw) {
+      if (raw == null) return null;
+      final text = raw.toString().trim();
+      return text.isEmpty ? null : text;
+    }
+
     return ActiveDowntime(
       id: parseIntOr(json['id']),
       reasonName: parseStringOr(
@@ -142,9 +158,18 @@ class ActiveDowntime {
           parseDateTimeOrNull(json['start_time'] ?? json['startTime']) ??
               DateTime.now().toUtc(),
       machineId: parseIntOrNull(json['machine_id'] ?? json['machineId']),
+      machineName: strOrNull(json['machine_name'] ?? json['machineName']),
       planId: parseIntOrNull(json['plan_id'] ?? json['planId']),
       planItemId:
           parseIntOrNull(json['plan_item_id'] ?? json['planItemId']),
+      supervisorUserId: parseIntOrNull(
+        json['supervisor_user_id'] ?? json['supervisorUserId'],
+      ),
+      supervisorName: strOrNull(
+        json['supervisor_name'] ?? json['supervisorName'],
+      ),
+      shiftCode: strOrNull(json['shift_code'] ?? json['shiftCode']),
+      category: strOrNull(json['category']),
     );
   }
 }
