@@ -13,6 +13,7 @@ import 'screens/dashboard_screen.dart';
 import 'screens/masters_hub_screen.dart';
 import 'screens/plan_list_screen.dart';
 import 'screens/reports_screen.dart';
+import 'widgets/manager_downtime_banner.dart';
 
 /// Bottom-nav container for the DPL Manager experience.
 /// Dashboard / Plans / Reports / Settings.
@@ -64,7 +65,15 @@ class DplManagerShell extends ConsumerWidget {
     final index = rawIndex.clamp(0, pages.length - 1);
 
     return Scaffold(
-      body: IndexedStack(index: index, children: pages),
+      body: Column(
+        children: [
+          // Global sticky red banner — visible to both DPL Manager and
+          // the read-only "DPL Customer" viewer on every tab, mirroring
+          // the supervisor shell. Hidden when no downtime is active.
+          const ManagerDowntimeBanner(),
+          Expanded(child: IndexedStack(index: index, children: pages)),
+        ],
+      ),
       bottomNavigationBar: DplBottomNav(
         currentIndex: index,
         items: navItems,
