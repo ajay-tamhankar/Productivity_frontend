@@ -437,7 +437,7 @@ class ReportExportService {
       final date = _formatDate(entry.entryDate);
       final startTime = _normalizeTime(entry.startTime);
       final endTime = _normalizeTime(entry.endTime);
-      final operator = _display(entry.operatorName, entry.operatorId);
+      final operator = _operatorLabel(entry);
       final rcNumber = _safe(entry.rcNumber ?? '');
       final itemCode = _display(entry.itemCode, entry.itemId);
       final finishWt = entry.finishWeight > 0
@@ -476,6 +476,11 @@ class ReportExportService {
     if (primary.isNotEmpty) return primary;
     final alt = fallback.trim();
     return alt.isEmpty ? '-' : alt;
+  }
+
+  static String _operatorLabel(ProductionEntryModel entry) {
+    if (entry.operatorNames.isNotEmpty) return entry.operatorNames.join(', ');
+    return _display(entry.operatorName, entry.operatorId);
   }
 
   static String _formatDate(String rawDate) {

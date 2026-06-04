@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../models/dpl_supervisor_today.dart';
 import '../../supervisor/widgets/live_timer_text.dart';
 import '../providers/dpl_manager_active_downtimes_provider.dart';
+import 'active_downtime_details_sheet.dart';
 
 /// Global sticky red banner shown above the manager's screen content
 /// whenever any plan has an active downtime — mirrors the supervisor
@@ -18,7 +18,6 @@ class ManagerDowntimeBanner extends ConsumerWidget {
     final downtime = ref.watch(managerFirstActiveDowntimeProvider);
     if (downtime == null) return const SizedBox.shrink();
 
-    final planId = downtime.planId;
     final machineLabel = (downtime.machineName ?? '').trim().isEmpty
         ? null
         : downtime.machineName!.trim();
@@ -33,9 +32,10 @@ class ManagerDowntimeBanner extends ConsumerWidget {
     return Material(
       color: const Color(0xFFB3261E),
       child: InkWell(
-        onTap: planId == null
-            ? null
-            : () => context.push('/dpl/manager/plans/$planId'),
+        onTap: () => showManagerActiveDowntimeDetailsSheet(
+          context,
+          downtime: downtime,
+        ),
         child: SafeArea(
           top: false,
           bottom: false,
@@ -89,14 +89,12 @@ class ManagerDowntimeBanner extends ConsumerWidget {
                     fontFamily: 'monospace',
                   ),
                 ),
-                if (planId != null) ...[
-                  const SizedBox(width: 8),
-                  const Icon(
-                    Icons.chevron_right,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                ],
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.chevron_right,
+                  color: Colors.white,
+                  size: 18,
+                ),
               ],
             ),
           ),

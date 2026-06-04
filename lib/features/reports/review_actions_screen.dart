@@ -92,6 +92,13 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
     return text.isEmpty ? '-' : text;
   }
 
+  String _operatorLabel(ProductionEntryModel entry) {
+    if (entry.operatorNames.isNotEmpty) return entry.operatorNames.join(', ');
+    final name = (entry.operatorName ?? '').trim();
+    if (name.isNotEmpty) return name;
+    return _safeText(entry.operatorId);
+  }
+
   String _formatDate(String rawDate) {
     final parsed = DateTime.tryParse(rawDate);
     if (parsed == null) return _safeText(rawDate);
@@ -479,7 +486,16 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
                         cells: [
                           DataCell(Text(_formatDate(entry.entryDate))),
                           DataCell(Text(_safeText(entry.shift))),
-                          DataCell(Text(_safeText(entry.operatorName ?? entry.operatorId))),
+                          DataCell(
+                            SizedBox(
+                              width: 160,
+                              child: Text(
+                                _operatorLabel(entry),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
                           DataCell(
                             SizedBox(
                               width: 190,

@@ -27,12 +27,6 @@ class ReportsListScreen extends StatelessWidget {
         accent: Color(0xFF2E7D32),
       ),
       _ReportMeta(
-        title: 'Operator Performance',
-        subtitle: 'Review operator-level throughput',
-        icon: Icons.groups_2_outlined,
-        accent: Color(0xFF6A1B9A),
-      ),
-      _ReportMeta(
         title: 'Machine Performance',
         subtitle: 'Machine efficiency and quality trends',
         icon: Icons.precision_manufacturing_outlined,
@@ -49,6 +43,12 @@ class ReportsListScreen extends StatelessWidget {
         subtitle: 'Machine and operator output by item',
         icon: Icons.speed_outlined,
         accent: Color(0xFF00897B),
+      ),
+      _ReportMeta(
+        title: 'Downtime Report',
+        subtitle: 'Machine downtime windows and duration',
+        icon: Icons.timer_off_outlined,
+        accent: Color(0xFFAD1457),
       ),
     ];
 
@@ -137,6 +137,9 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
   bool get _isItemProductivityReport =>
       widget.reportName.trim().toLowerCase() == 'item productivity';
 
+  bool get _isDowntimeReport =>
+      widget.reportName.trim().toLowerCase() == 'downtime report';
+
   int get _effectiveRowsPerPage =>
       _isItemProductivityReport ? _productivityRowsPerPage : _rowsPerPage;
 
@@ -190,10 +193,54 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
     return text.isEmpty ? '-' : text;
   }
 
+  String _operatorLabel(ProductionEntryModel entry) {
+    if (entry.operatorNames.isNotEmpty) return entry.operatorNames.join(', ');
+    final name = (entry.operatorName ?? '').trim();
+    if (name.isNotEmpty) return name;
+    return _safeText(entry.operatorId);
+  }
+
   String _formatDate(String rawDate) {
     final parsed = DateTime.tryParse(rawDate);
     if (parsed == null) return _safeText(rawDate);
     return DateFormat('dd MMM yyyy').format(parsed);
+  }
+
+  String _formatDowntimeTime(String? raw) {
+    final text = (raw ?? '').trim();
+    if (text.isEmpty) return '-';
+    final parsed = DateTime.tryParse(text);
+    if (parsed != null) return DateFormat('HH:mm').format(parsed.toLocal());
+    final hhmm = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)').firstMatch(text);
+    if (hhmm != null) return '${hhmm.group(1)}:${hhmm.group(2)}';
+    return text;
+  }
+
+  Duration? _downtimeDuration(ProductionEntryModel entry) {
+    final start = DateTime.tryParse(entry.machineDowntimeStartTime ?? '');
+    final end = DateTime.tryParse(entry.machineDowntimeEndTime ?? '');
+    if (start == null || end == null) return null;
+    final diff = end.difference(start);
+    return diff.isNegative ? null : diff;
+  }
+
+  String _formatDuration(Duration d) {
+    final hours = d.inHours;
+    final mins = d.inMinutes.remainder(60);
+    if (hours > 0) return '${hours}h ${mins}m';
+    return '${mins}m';
+  }
+
+  bool _hasDowntime(ProductionEntryModel entry) {
+    final start = (entry.machineDowntimeStartTime ?? '').trim();
+    final end = (entry.machineDowntimeEndTime ?? '').trim();
+    return start.isNotEmpty && end.isNotEmpty;
+  }
+
+  List<ProductionEntryModel> _downtimeEntries(
+    List<ProductionEntryModel> entries,
+  ) {
+    return entries.where(_hasDowntime).toList();
   }
 
   List<ProductionEntryModel> _filtered(List<ProductionEntryModel> source) {
@@ -251,12 +298,17 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
         kg: kg,
         hours: runningHours,
       );
-      summary.addOperator(
-        name: _safeText(entry.operatorName ?? entry.operatorId),
-        pieces: entry.actualQuantity,
-        kg: kg,
-        hours: runningHours,
-      );
+      final operatorNamesForItem = entry.operatorNames.isNotEmpty
+          ? entry.operatorNames
+          : <String>[_operatorLabel(entry)];
+      for (final name in operatorNamesForItem) {
+        summary.addOperator(
+          name: _safeText(name),
+          pieces: entry.actualQuantity,
+          kg: kg,
+          hours: runningHours,
+        );
+      }
     }
 
     final summaries = byItem.values.toList()
@@ -464,7 +516,10 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(reportsControllerProvider);
-    final entries = _filtered(state.entries);
+    final filteredAll = _filtered(state.entries);
+    final entries = _isDowntimeReport
+        ? _downtimeEntries(filteredAll)
+        : filteredAll;
 
     final approved = entries
         .where(
@@ -477,6 +532,22 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
         )
         .length;
     final qty = entries.fold<int>(0, (sum, e) => sum + e.actualQuantity);
+
+    final downtimeTotal = _isDowntimeReport
+        ? entries.fold<Duration>(
+            Duration.zero,
+            (sum, e) => sum + (_downtimeDuration(e) ?? Duration.zero),
+          )
+        : Duration.zero;
+    final downtimeMachines = _isDowntimeReport
+        ? entries
+              .map(
+                (e) => _safeText(e.machineName ?? e.machineId).toLowerCase(),
+              )
+              .where((name) => name != '-')
+              .toSet()
+              .length
+        : 0;
 
     final rowsPerPage = _effectiveRowsPerPage;
     final totalPages = state.totalCount == 0
@@ -554,24 +625,45 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
               Wrap(
                 spacing: 10,
                 runSpacing: 10,
-                children: [
-                  _StatCard(
-                    title: 'Records',
-                    value: _countFormat.format(entries.length),
-                  ),
-                  _StatCard(
-                    title: 'Approved',
-                    value: _countFormat.format(approved),
-                  ),
-                  _StatCard(
-                    title: 'Rejected',
-                    value: _countFormat.format(rejected),
-                  ),
-                  _StatCard(
-                    title: 'Total Qty',
-                    value: _countFormat.format(qty),
-                  ),
-                ],
+                children: _isDowntimeReport
+                    ? [
+                        _StatCard(
+                          title: 'Downtime Entries',
+                          value: _countFormat.format(entries.length),
+                        ),
+                        _StatCard(
+                          title: 'Total Downtime',
+                          value: downtimeTotal == Duration.zero
+                              ? '0m'
+                              : _formatDuration(downtimeTotal),
+                        ),
+                        _StatCard(
+                          title: 'Machines Affected',
+                          value: _countFormat.format(downtimeMachines),
+                        ),
+                        _StatCard(
+                          title: 'Approved',
+                          value: _countFormat.format(approved),
+                        ),
+                      ]
+                    : [
+                        _StatCard(
+                          title: 'Records',
+                          value: _countFormat.format(entries.length),
+                        ),
+                        _StatCard(
+                          title: 'Approved',
+                          value: _countFormat.format(approved),
+                        ),
+                        _StatCard(
+                          title: 'Rejected',
+                          value: _countFormat.format(rejected),
+                        ),
+                        _StatCard(
+                          title: 'Total Qty',
+                          value: _countFormat.format(qty),
+                        ),
+                      ],
               ),
               const SizedBox(height: 12),
               _FilterPanel(
@@ -592,14 +684,28 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                   subtitle: 'Fetching latest records.',
                 )
               else if (entries.isEmpty)
-                const _StateCard(
-                  title: 'No entries found',
-                  subtitle: 'Try changing search or status filter.',
+                _StateCard(
+                  title: _isDowntimeReport
+                      ? 'No downtime recorded'
+                      : 'No entries found',
+                  subtitle: _isDowntimeReport
+                      ? 'No production entries with machine downtime in the selected range.'
+                      : 'Try changing search or status filter.',
                 )
               else if (_isItemProductivityReport)
                 _ItemProductivityView(
                   summaries: _buildItemProductivity(entries),
                   numberFormat: _countFormat,
+                )
+              else if (_isDowntimeReport)
+                _DowntimeTable(
+                  entries: entries,
+                  safeText: _safeText,
+                  operatorLabel: _operatorLabel,
+                  formatDate: _formatDate,
+                  formatTime: _formatDowntimeTime,
+                  duration: _downtimeDuration,
+                  formatDuration: _formatDuration,
                 )
               else
                 Container(
@@ -650,12 +756,10 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                             DataCell(Text(_safeText(entry.shift))),
                             DataCell(
                               SizedBox(
-                                width: 140,
+                                width: 160,
                                 child: Text(
-                                  _safeText(
-                                    entry.operatorName ?? entry.operatorId,
-                                  ),
-                                  maxLines: 1,
+                                  _operatorLabel(entry),
+                                  maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -1333,6 +1437,124 @@ class _ProductivityTable extends StatelessWidget {
   }
 }
 
+class _DowntimeTable extends StatelessWidget {
+  final List<ProductionEntryModel> entries;
+  final String Function(String?) safeText;
+  final String Function(ProductionEntryModel) operatorLabel;
+  final String Function(String) formatDate;
+  final String Function(String?) formatTime;
+  final Duration? Function(ProductionEntryModel) duration;
+  final String Function(Duration) formatDuration;
+
+  const _DowntimeTable({
+    required this.entries,
+    required this.safeText,
+    required this.operatorLabel,
+    required this.formatDate,
+    required this.formatTime,
+    required this.duration,
+    required this.formatDuration,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2EAF6)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          dataRowMinHeight: 64,
+          dataRowMaxHeight: 92,
+          horizontalMargin: 10,
+          columnSpacing: 14,
+          headingRowColor: WidgetStateProperty.all(const Color(0xFFFFF0F6)),
+          columns: const [
+            DataColumn(label: Text('Date')),
+            DataColumn(label: Text('Shift')),
+            DataColumn(label: Text('Machine')),
+            DataColumn(label: Text('Operator')),
+            DataColumn(label: Text('Item')),
+            DataColumn(label: Text('Downtime Start')),
+            DataColumn(label: Text('Downtime End')),
+            DataColumn(label: Text('Duration')),
+            DataColumn(label: Text('Notes')),
+          ],
+          rows: entries.map((entry) {
+            final machine = safeText(entry.machineName ?? entry.machineId);
+            final item = safeText(entry.itemDescription ?? entry.itemId);
+            final dur = duration(entry);
+            final durLabel = dur == null ? '-' : formatDuration(dur);
+            final notes = safeText(entry.notes);
+
+            return DataRow(
+              cells: [
+                DataCell(Text(formatDate(entry.entryDate))),
+                DataCell(Text(safeText(entry.shift))),
+                DataCell(
+                  SizedBox(
+                    width: 180,
+                    child: Text(
+                      machine,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                DataCell(
+                  SizedBox(
+                    width: 160,
+                    child: Text(
+                      operatorLabel(entry),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                DataCell(
+                  SizedBox(
+                    width: 200,
+                    child: Text(
+                      item,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                DataCell(Text(formatTime(entry.machineDowntimeStartTime))),
+                DataCell(Text(formatTime(entry.machineDowntimeEndTime))),
+                DataCell(
+                  Text(
+                    durLabel,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFAD1457),
+                    ),
+                  ),
+                ),
+                DataCell(
+                  SizedBox(
+                    width: 200,
+                    child: Text(
+                      notes,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
 class _StateCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -1386,6 +1608,13 @@ class _EntryCard extends StatelessWidget {
     return DateFormat('dd MMM yyyy').format(parsed);
   }
 
+  String _operatorLabel() {
+    if (entry.operatorNames.isNotEmpty) return entry.operatorNames.join(', ');
+    final name = (entry.operatorName ?? '').trim();
+    if (name.isNotEmpty) return name;
+    return _safeText(entry.operatorId);
+  }
+
   @override
   Widget build(BuildContext context) {
     final status = _safeText(entry.approvalStatus ?? 'PENDING').toUpperCase();
@@ -1422,7 +1651,7 @@ class _EntryCard extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            'Operator: ${_safeText(entry.operatorName ?? entry.operatorId)} | RC: ${_safeText(entry.rcNumber)}',
+            'Operator: ${_operatorLabel()} | RC: ${_safeText(entry.rcNumber)}',
             style: const TextStyle(color: Color(0xFF5D6A7A)),
           ),
           const SizedBox(height: 3),

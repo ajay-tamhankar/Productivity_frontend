@@ -7,12 +7,18 @@ import '../../supervisor/widgets/live_timer_text.dart';
 import 'status_badge.dart';
 import 'trolley_photo_thumbnail.dart';
 
-enum _ItemMenuAction { changeStatus, carryForward, delete }
+enum _ItemMenuAction { edit, changeStatus, carryForward, delete }
 
 class DplPlanItemTile extends StatelessWidget {
   final DplProductionPlanItem item;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
+  /// Manager-only callback: opens the Edit Item dialog (where shift,
+  /// qty, part, etc. can be changed). When null, the overflow menu
+  /// hides the "Edit" row. Pair this with `onTap` for the same dialog
+  /// so both gestures lead to the same place.
+  final VoidCallback? onEdit;
 
   /// Manager-only callback: opens the per-item status override sheet.
   /// When null, the overflow menu doesn't show a "Change status" row.
@@ -33,6 +39,7 @@ class DplPlanItemTile extends StatelessWidget {
     required this.item,
     this.onTap,
     this.onLongPress,
+    this.onEdit,
     this.onChangeStatus,
     this.onCarryForward,
     this.onDelete,
@@ -120,7 +127,8 @@ class DplPlanItemTile extends StatelessWidget {
                       ],
                     ],
                   ),
-                  if (onChangeStatus != null ||
+                  if (onEdit != null ||
+                      onChangeStatus != null ||
                       onCarryForward != null ||
                       onDelete != null)
                     PopupMenuButton<_ItemMenuAction>(
@@ -131,6 +139,9 @@ class DplPlanItemTile extends StatelessWidget {
                       ),
                       onSelected: (a) {
                         switch (a) {
+                          case _ItemMenuAction.edit:
+                            onEdit?.call();
+                            break;
                           case _ItemMenuAction.changeStatus:
                             onChangeStatus?.call();
                             break;
@@ -143,6 +154,19 @@ class DplPlanItemTile extends StatelessWidget {
                         }
                       },
                       itemBuilder: (_) => [
+                        if (onEdit != null)
+                          const PopupMenuItem(
+                            value: _ItemMenuAction.edit,
+                            child: ListTile(
+                              dense: true,
+                              leading: Icon(Icons.edit_outlined),
+                              title: Text('Edit item'),
+                              subtitle: Text(
+                                'Change shift, qty, part, etc.',
+                                style: TextStyle(fontSize: 11),
+                              ),
+                            ),
+                          ),
                         if (onChangeStatus != null)
                           const PopupMenuItem(
                             value: _ItemMenuAction.changeStatus,
@@ -163,7 +187,8 @@ class DplPlanItemTile extends StatelessWidget {
                               leading: const Icon(Icons.skip_next_outlined),
                               title: const Text('Carry to next shift'),
                               subtitle: Text(
-                                'Leftover: ${item.planQty - item.actualQty}',
+                                'Splits leftover (${item.planQty - item.actualQty}) '
+                                'into a new shift; this item stays.',
                                 style: const TextStyle(fontSize: 11),
                               ),
                             ),

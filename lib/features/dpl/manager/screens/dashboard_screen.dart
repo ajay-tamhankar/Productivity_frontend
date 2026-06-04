@@ -12,6 +12,7 @@ import '../providers/dpl_dashboard_provider.dart';
 import '../providers/dpl_viewer_only_provider.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
+import '../widgets/machine_downtime_banner.dart';
 import '../widgets/machine_summary_card.dart';
 
 /// How often the dashboard re-pulls totals + per-machine state. Picked
@@ -413,18 +414,32 @@ class _DashboardBody extends StatelessWidget {
           ..._mergeByMachine(summary.machines).map(
             (m) => Padding(
               padding: EdgeInsets.only(bottom: cardGap),
-              child: DplMachineSummaryCard(
-                machineId: m.machineId,
-                machineName: m.machineName,
-                shiftLabels: m.shiftLabels,
-                status: m.status,
-                planQty: m.planQty,
-                actualQty: m.actualQty,
-                completionPct: m.completionPct,
-                supervisorName: m.supervisorName,
-                onTap: m.planId == null
-                    ? null
-                    : () => context.push('/dpl/manager/plans/${m.planId}'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DplMachineSummaryCard(
+                    machineId: m.machineId,
+                    machineName: m.machineName,
+                    shiftLabels: m.shiftLabels,
+                    status: m.status,
+                    planQty: m.planQty,
+                    actualQty: m.actualQty,
+                    completionPct: m.completionPct,
+                    supervisorName: m.supervisorName,
+                    onTap: m.planId == null
+                        ? null
+                        : () => context.push(
+                              '/dpl/manager/plans/${m.planId}',
+                            ),
+                  ),
+                  // Per-machine downtime strip — only renders when this
+                  // machine has an open downtime, so cards without one
+                  // collapse back to their normal height.
+                  MachineDowntimeBanner(
+                    machineId: m.machineId,
+                    planId: m.planId,
+                  ),
+                ],
               ),
             ),
           ),

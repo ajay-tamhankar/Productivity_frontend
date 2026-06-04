@@ -439,6 +439,9 @@ class _PlanBody extends ConsumerWidget {
                 onLongPress: (readOnly || i.status != 'pending')
                     ? null
                     : () => _confirmDeleteItem(context, ref, plan, i),
+                onEdit: (readOnly || i.status != 'pending')
+                    ? null
+                    : () => _editItem(context, ref, plan, i),
                 onChangeStatus: readOnly
                     ? null
                     : () => _showChangeItemStatus(context, ref, plan, i),
@@ -608,6 +611,33 @@ class _PlanBody extends ConsumerWidget {
       builder: (_) => _CarryForwardSheet(item: item),
     );
     if (result == null) return;
+
+    // Pure-move shortcut: when the source has produced nothing yet AND
+    // the user is carrying the full plan qty, this is really a "move
+    // to shift" — not a split. Reassign the existing row's shift_id
+    // via the standard item-update endpoint instead of creating a
+    // duplicate that would double the plan total. Single API call,
+    // atomic, no orphan rows possible.
+    final isPureMove =
+        item.actualQty == 0 && result.planQty == item.planQty;
+    if (isPureMove) {
+      final res = await ref.read(dplApiServiceProvider).updatePlanItem(
+            plan.id,
+            item.id,
+            item.copyWith(shiftId: result.shiftId),
+          );
+      if (!context.mounted) return;
+      if (res.isError) {
+        DplSnack.error(
+          context,
+          res.error ?? 'Failed to move item to the next shift.',
+        );
+        return;
+      }
+      DplSnack.success(context, 'Item moved to the next shift.');
+      ref.invalidate(dplPlanDetailProvider(plan.id));
+      return;
+    }
 
     final res = await ref.read(dplApiServiceProvider).carryForwardItem(
           plan.id,
@@ -1383,14 +1413,33 @@ class _CarryForwardSheetState extends ConsumerState<_CarryForwardSheet> {
 
   int get _leftover => widget.item.planQty - widget.item.actualQty;
 
+  /// True when the source has produced nothing yet AND the typed carry
+  /// qty equals the full plan qty. In that case the action is really
+  /// a *move* — the handler will reassign the existing row's shift_id
+  /// rather than create a duplicate, so the sheet should advertise it
+  /// as such (different title, no "Also close" checkbox).
+  bool get _isPureMove {
+    final qty = int.tryParse(_qtyCtrl.text.trim()) ?? 0;
+    return widget.item.actualQty == 0 &&
+        qty > 0 &&
+        qty == widget.item.planQty;
+  }
+
   @override
   void initState() {
     super.initState();
     _qtyCtrl = TextEditingController(text: _leftover.toString());
+    // Rebuild on qty edits so the Move/Carry mode flips live as the
+    // manager types — otherwise the title and button would lie about
+    // what `_submit` is about to do.
+    _qtyCtrl.addListener(_onQtyChanged);
   }
+
+  void _onQtyChanged() => setState(() {});
 
   @override
   void dispose() {
+    _qtyCtrl.removeListener(_onQtyChanged);
     _qtyCtrl.dispose();
     super.dispose();
   }
@@ -1429,6 +1478,7 @@ class _CarryForwardSheetState extends ConsumerState<_CarryForwardSheet> {
     final shiftsAsync = ref.watch(dplShiftsProvider);
     final shifts = shiftsAsync.asData?.value.data ?? const <DplShift>[];
     final loadingShifts = shiftsAsync.isLoading;
+    final isPureMove = _isPureMove;
 
     // Suggest the "next" shift in the masters list. Cheap heuristic:
     // first active shift whose id isnt the source. The manager can
@@ -1463,9 +1513,9 @@ class _CarryForwardSheetState extends ConsumerState<_CarryForwardSheet> {
               ),
             ),
           ),
-          const Text(
-            'Carry to Next Shift',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          Text(
+            isPureMove ? 'Move to Next Shift' : 'Carry to Next Shift',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 4),
           Text(
@@ -1532,24 +1582,39 @@ class _CarryForwardSheetState extends ConsumerState<_CarryForwardSheet> {
                 : (v) => setState(() => _shiftId = v),
           ),
           const SizedBox(height: 6),
-          CheckboxListTile(
-            value: _completeSource,
-            onChanged: (v) =>
-                setState(() => _completeSource = v ?? false),
-            controlAffinity: ListTileControlAffinity.leading,
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-            title: const Text(
-              'Also close this item as completed',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          // In pure-move mode the source row is reassigned, not split,
+          // so there's nothing to "also close" — hide the checkbox to
+          // keep the sheet honest. Show a one-line explainer instead
+          // so the manager understands the existing item is the one
+          // that's moving.
+          if (isPureMove)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                'Nothing produced yet, so this item will be moved to the '
+                'target shift. No duplicate will be created.',
+                style: TextStyle(fontSize: 11, color: Color(0xFF5D6A7A)),
+              ),
+            )
+          else
+            CheckboxListTile(
+              value: _completeSource,
+              onChanged: (v) =>
+                  setState(() => _completeSource = v ?? false),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text(
+                'Also close this item as completed',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+              subtitle: const Text(
+                'By default the leftover is just shifted to the next plan and '
+                'this item stays open at its current actual quantity. Tick this '
+                'to additionally mark the current item as completed.',
+                style: TextStyle(fontSize: 11, color: Color(0xFF5D6A7A)),
+              ),
             ),
-            subtitle: const Text(
-              'By default the leftover is just shifted to the next plan and '
-              'this item stays open at its current actual quantity. Tick this '
-              'to additionally mark the current item as completed.',
-              style: TextStyle(fontSize: 11, color: Color(0xFF5D6A7A)),
-            ),
-          ),
           const SizedBox(height: 6),
           Row(
             children: [
@@ -1568,8 +1633,10 @@ class _CarryForwardSheetState extends ConsumerState<_CarryForwardSheet> {
                 child: SizedBox(
                   height: 48,
                   child: FilledButton.icon(
-                    icon: const Icon(Icons.skip_next_outlined),
-                    label: const Text('Carry Forward'),
+                    icon: Icon(isPureMove
+                        ? Icons.swap_horiz_outlined
+                        : Icons.skip_next_outlined),
+                    label: Text(isPureMove ? 'Move' : 'Carry Forward'),
                     onPressed: _submit,
                   ),
                 ),
