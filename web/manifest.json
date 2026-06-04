@@ -3,7 +3,7 @@
     "short_name": "Vistar Pulse",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#6B1F8C",
+    "background_color": "#FFFFFF",
     "theme_color": "#6B1F8C",
     "description": "Vistar Pulse — production tracking & shop-floor activity.",
     "orientation": "portrait-primary",

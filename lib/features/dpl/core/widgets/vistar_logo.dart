@@ -22,14 +22,15 @@ class VistarLogo extends StatelessWidget {
     this.fallbackColor,
   });
 
-  static const _wordmarkAsset = 'assets/images/vistar_logo.png';
-  static const _markAsset = 'assets/images/vistar_mark.png';
+  // Single brand image used for both the wordmark and the small mark.
+  // The PNG lives at the path below; the typographic fallbacks above
+  // still kick in if the file is ever missing during onboarding.
+  static const _logoAsset = 'assets/images/vistar_logo.png';
 
   @override
   Widget build(BuildContext context) {
-    final asset = showWordmark ? _wordmarkAsset : _markAsset;
     return Image.asset(
-      asset,
+      _logoAsset,
       height: height,
       fit: BoxFit.contain,
       errorBuilder: (_, _, _) => _fallback(),
@@ -111,8 +112,12 @@ class _WordmarkFallback extends StatelessWidget {
 /// Call from `main()` after the binding is ready.
 Future<void> precacheVistarLogos(BuildContext context) async {
   if (kIsWeb) return; // precache is no-op on web
-  await Future.wait([
-    precacheImage(const AssetImage(VistarLogo._wordmarkAsset), context),
-    precacheImage(const AssetImage(VistarLogo._markAsset), context),
-  ]).catchError((_) => <void>[]);
+  try {
+    await precacheImage(
+      const AssetImage(VistarLogo._logoAsset),
+      context,
+    );
+  } catch (_) {
+    // Asset missing during onboarding — fallbacks handle render.
+  }
 }

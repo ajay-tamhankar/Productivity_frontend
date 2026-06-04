@@ -1,23 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../models/dpl_dashboard_summary.dart';
 import 'status_badge.dart';
 
+/// Single card on the Manager Dashboard's "Machines" list.
+///
+/// Now built from values supplied by the parent screen rather than a raw
+/// [DplMachineSummary] row, so a machine that has plans across multiple
+/// shifts can be rendered as **one** card with multiple shift pills
+/// (Shift A · Shift B · Shift C) and totals summed across those shifts.
 class DplMachineSummaryCard extends StatelessWidget {
-  final DplMachineSummary summary;
+  final String machineName;
+  final int machineId;
+
+  /// All shift labels that contribute to this card, e.g.
+  /// `['Shift A', 'Shift B']`. Sorted by code by the caller.
+  final List<String> shiftLabels;
+
+  /// Highest-priority status across all merged rows (drives the badge).
+  final String status;
+
+  final int planQty;
+  final int actualQty;
+  final double completionPct;
+
+  /// Supervisor display — already merged/joined by the caller (e.g.
+  /// `"A shift Supervisor · B shift Supervisor"` when the shifts have
+  /// different supervisors).
+  final String supervisorName;
+
   final VoidCallback? onTap;
 
   const DplMachineSummaryCard({
     super.key,
-    required this.summary,
+    required this.machineName,
+    required this.machineId,
+    required this.shiftLabels,
+    required this.status,
+    required this.planQty,
+    required this.actualQty,
+    required this.completionPct,
+    required this.supervisorName,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat.decimalPattern();
-    final pct = (summary.completionPct * 100).round();
+    final pct = (completionPct * 100).round();
     final isPhone = MediaQuery.of(context).size.width < 600;
 
     return Material(
@@ -39,9 +69,9 @@ class DplMachineSummaryCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      summary.machineName.isEmpty
-                          ? 'Machine #${summary.machineId}'
-                          : summary.machineName,
+                      machineName.isEmpty
+                          ? 'Machine #$machineId'
+                          : machineName,
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: isPhone ? 14 : 16,
@@ -50,11 +80,23 @@ class DplMachineSummaryCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (summary.shiftLabel.isNotEmpty) ...[
-                    _ShiftChip(label: summary.shiftLabel, isPhone: isPhone),
-                    SizedBox(width: isPhone ? 6 : 8),
-                  ],
-                  DplStatusBadge(status: summary.status),
+                  // Right edge — shift pills (wraps when there are many)
+                  // followed by the status badge. Wrap so a machine with
+                  // 3 shifts doesn't squeeze the machine name on narrow
+                  // viewports.
+                  Flexible(
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: isPhone ? 4 : 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        for (final label in shiftLabels)
+                          _ShiftChip(label: label, isPhone: isPhone),
+                        DplStatusBadge(status: status),
+                      ],
+                    ),
+                  ),
                 ],
               ),
               SizedBox(height: isPhone ? 6 : 8),
@@ -63,14 +105,14 @@ class DplMachineSummaryCard extends StatelessWidget {
                   Expanded(
                     child: _kv(
                       label: 'Plan Qty',
-                      value: fmt.format(summary.planQty),
+                      value: fmt.format(planQty),
                       isPhone: isPhone,
                     ),
                   ),
                   Expanded(
                     child: _kv(
                       label: 'Actual',
-                      value: fmt.format(summary.actualQty),
+                      value: fmt.format(actualQty),
                       isPhone: isPhone,
                     ),
                   ),
@@ -87,7 +129,7 @@ class DplMachineSummaryCard extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(999),
                 child: LinearProgressIndicator(
-                  value: summary.completionPct.clamp(0, 1),
+                  value: completionPct.clamp(0, 1),
                   minHeight: isPhone ? 5 : 6,
                   backgroundColor: const Color(0xFFEEF1F5),
                 ),
@@ -103,9 +145,9 @@ class DplMachineSummaryCard extends StatelessWidget {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      summary.supervisorName.isEmpty
+                      supervisorName.isEmpty
                           ? 'No supervisor assigned'
-                          : summary.supervisorName,
+                          : supervisorName,
                       style: TextStyle(
                         color: const Color(0xFF5D6A7A),
                         fontWeight: FontWeight.w600,

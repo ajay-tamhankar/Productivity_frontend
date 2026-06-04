@@ -233,6 +233,127 @@ class _LiveIndicator extends StatelessWidget {
   }
 }
 
+/// One bucket per machine after `_mergeByMachine` has folded the backend's
+/// per-(plan, shift) rows together. Carries every distinct shift label that
+/// touched the machine plus combined Plan/Actual totals.
+class _MergedMachineRow {
+  final int machineId;
+  final String machineName;
+  final List<String> shiftLabels;
+  final String status;
+  final int planQty;
+  final int actualQty;
+  final double completionPct;
+  final String supervisorName;
+  final int? planId;
+
+  const _MergedMachineRow({
+    required this.machineId,
+    required this.machineName,
+    required this.shiftLabels,
+    required this.status,
+    required this.planQty,
+    required this.actualQty,
+    required this.completionPct,
+    required this.supervisorName,
+    required this.planId,
+  });
+}
+
+/// Highest-priority status wins when a machine has plans across several
+/// shifts (e.g. one shift in_progress, one pending → show in_progress).
+const Map<String, int> _statusPriority = {
+  'in_progress': 5,
+  'running': 5,
+  'pending': 4,
+  'published': 3,
+  'completed': 2,
+  'locked': 1,
+};
+
+int _statusRank(String status) =>
+    _statusPriority[status.trim().toLowerCase()] ?? 0;
+
+/// Groups the backend's per-(plan, shift) rows by `machineId`, preserving
+/// the order the backend returned them. Each merged row carries every
+/// distinct shift code that touched the machine plus summed totals.
+List<_MergedMachineRow> _mergeByMachine(List<DplMachineSummary> rows) {
+  final order = <int>[];
+  final byId = <int, List<DplMachineSummary>>{};
+  for (final r in rows) {
+    if (!byId.containsKey(r.machineId)) {
+      order.add(r.machineId);
+      byId[r.machineId] = <DplMachineSummary>[];
+    }
+    byId[r.machineId]!.add(r);
+  }
+
+  return order.map((id) {
+    final group = byId[id]!;
+    final first = group.first;
+
+    // Distinct shift labels, sorted by underlying code so the pills always
+    // read "A → B → C" regardless of backend order.
+    final labelByCode = <String, String>{};
+    for (final r in group) {
+      final code = r.shiftCode.trim();
+      final label = r.shiftLabel.trim();
+      if (label.isEmpty) continue;
+      labelByCode.putIfAbsent(code.isEmpty ? label : code, () => label);
+    }
+    final sortedKeys = labelByCode.keys.toList()..sort();
+    final shiftLabels = sortedKeys.map((k) => labelByCode[k]!).toList();
+
+    // Sum totals across the group; re-derive completion so it matches the
+    // displayed Plan / Actual exactly.
+    var planQty = 0;
+    var actualQty = 0;
+    for (final r in group) {
+      planQty += r.planQty;
+      actualQty += r.actualQty;
+    }
+    final pct = planQty == 0 ? 0.0 : (actualQty / planQty).clamp(0.0, 1.0);
+
+    // Pick the most-active status across rows.
+    var status = first.status;
+    for (final r in group.skip(1)) {
+      if (_statusRank(r.status) > _statusRank(status)) status = r.status;
+    }
+
+    // Join distinct supervisor names — keeps the line useful when shifts
+    // have different supervisors without inventing a synthetic label.
+    final supervisors = <String>{};
+    for (final r in group) {
+      final n = r.supervisorName.trim();
+      if (n.isNotEmpty) supervisors.add(n);
+    }
+    final supervisorName = supervisors.join(' · ');
+
+    // First non-null planId from the group drives the tap-through. With
+    // Option-A routing the user lands on the parent plan; Plan Detail
+    // shows every item including the other-shift items.
+    int? planId;
+    for (final r in group) {
+      if (r.planId != null) {
+        planId = r.planId;
+        break;
+      }
+    }
+
+    return _MergedMachineRow(
+      machineId: id,
+      machineName: first.machineName,
+      shiftLabels: shiftLabels,
+      status: status,
+      planQty: planQty,
+      actualQty: actualQty,
+      completionPct: pct.toDouble(),
+      supervisorName: supervisorName,
+      planId: planId,
+    );
+  }).toList();
+}
+
 class _DashboardBody extends StatelessWidget {
   final DplDashboardSummary summary;
 
@@ -289,11 +410,18 @@ class _DashboardBody extends StatelessWidget {
             message: 'Upload a plan or set up machines from the Settings tab.',
           )
         else
-          ...summary.machines.map(
+          ..._mergeByMachine(summary.machines).map(
             (m) => Padding(
               padding: EdgeInsets.only(bottom: cardGap),
               child: DplMachineSummaryCard(
-                summary: m,
+                machineId: m.machineId,
+                machineName: m.machineName,
+                shiftLabels: m.shiftLabels,
+                status: m.status,
+                planQty: m.planQty,
+                actualQty: m.actualQty,
+                completionPct: m.completionPct,
+                supervisorName: m.supervisorName,
                 onTap: m.planId == null
                     ? null
                     : () => context.push('/dpl/manager/plans/${m.planId}'),

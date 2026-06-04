@@ -75,6 +75,31 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   build_runner: ^2.12.2
   riverpod_generator: ^4.0.3
+  # Generates Android / iOS / Web launcher icons from a single PNG. Run
+  # `dart run flutter_launcher_icons` after updating `assets/images/vistar_logo.png`
+  # to regenerate the home-screen icons.
+  flutter_launcher_icons: ^0.14.1
+
+# Launcher icon configuration. Source PNG should be square (≥1024×1024
+# is ideal). Re-run `dart run flutter_launcher_icons` whenever the file
+# at `image_path` changes.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  # App Store rejects iOS launcher icons that carry an alpha channel.
+  # `remove_alpha_ios` flattens transparency onto white before encoding.
+  remove_alpha_ios: true
+  image_path: assets/images/vistar_logo.png
+  # Adaptive icon support for Android 8+ — same PNG layered onto a
+  # white background so the system can apply the platform mask.
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/images/vistar_logo.png
+  # Web favicon — drop the same image into the PWA manifest icons.
+  web:
+    generate: true
+    image_path: assets/images/vistar_logo.png
+    background_color: "#FFFFFF"
+    theme_color: "#6B1F8C"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

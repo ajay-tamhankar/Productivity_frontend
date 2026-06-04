@@ -1374,7 +1374,11 @@ class _CarryForwardSheet extends ConsumerStatefulWidget {
 class _CarryForwardSheetState extends ConsumerState<_CarryForwardSheet> {
   late final TextEditingController _qtyCtrl;
   int? _shiftId;
-  bool _completeSource = true;
+  // Default OFF — managers wanted "carry-forward" to mean *only* shift the
+  // leftover to the next plan, without closing the current item. Power
+  // users who actually want to close the source can still tick the box
+  // below before submitting.
+  bool _completeSource = false;
   String? _error;
 
   int get _leftover => widget.item.planQty - widget.item.actualQty;
@@ -1531,17 +1535,18 @@ class _CarryForwardSheetState extends ConsumerState<_CarryForwardSheet> {
           CheckboxListTile(
             value: _completeSource,
             onChanged: (v) =>
-                setState(() => _completeSource = v ?? true),
+                setState(() => _completeSource = v ?? false),
             controlAffinity: ListTileControlAffinity.leading,
             contentPadding: EdgeInsets.zero,
             dense: true,
             title: const Text(
-              'Mark source item as completed',
+              'Also close this item as completed',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
             ),
             subtitle: const Text(
-              'Closes the original item at its current actual quantity. '
-              'Uncheck to keep it open.',
+              'By default the leftover is just shifted to the next plan and '
+              'this item stays open at its current actual quantity. Tick this '
+              'to additionally mark the current item as completed.',
               style: TextStyle(fontSize: 11, color: Color(0xFF5D6A7A)),
             ),
           ),
