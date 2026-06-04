@@ -43,6 +43,11 @@ dependencies:
   intl: ^0.20.2
   fl_chart: ^1.2.0
   excel: ^4.0.6
+  # Used to patch the worksheet XML emitted by `excel` so the Monthly DPL
+  # Chart export can carry freeze panes (the excel package doesn't expose
+  # them). `archive` is already a transitive dep — listed here explicitly
+  # so the analyzer is happy.
+  archive: ^3.6.1
   pdf: ^3.11.3
   share_plus: ^10.0.2
   # Added by the DPL Manager module — Excel picker for the Upload Plan screen.

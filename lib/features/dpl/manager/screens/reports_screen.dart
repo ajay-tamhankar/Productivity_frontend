@@ -2161,10 +2161,10 @@ class _LeftCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Plan rows get red text to match the Excel template; Actual stays
-    // neutral; Downtime uses the warn color.
+    // Plan rows get an emphasis (dark navy) color so they stand out from
+    // Actual without using red; Downtime uses the warn color.
     final labelColor = def.kind == _RowKind.plan
-        ? DplChartTokens.redLabel
+        ? DplChartTokens.emphasisLabel
         : (def.kind == _RowKind.downtime ? _kWarn : Colors.black87);
 
     return Container(
