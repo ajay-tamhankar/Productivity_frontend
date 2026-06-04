@@ -20,11 +20,12 @@ import 'error_retry.dart';
 ///
 /// Provides two actions:
 ///   * **Open plan** — pushes `/dpl/manager/plans/:id`.
-///   * **Stop downtime** — confirms then closes the downtime by hitting
-///     `POST /supervisor/downtime/:id/resume` (the only existing resume
-///     endpoint). For the read-only DPL Customer role the Stop button
-///     is hidden so they keep the same view-only contract as the rest
-///     of the dashboard.
+///   * **Close downtime** — confirms (with an optional reason note) and
+///     calls `POST /manager/downtime/:id/close`, the manager-scoped
+///     recovery endpoint for orphaned downtimes (supervisor offline,
+///     stuck banner, etc.). For the read-only DPL Customer role the
+///     button is hidden so they keep the same view-only contract as
+///     the rest of the dashboard.
 ///
 /// Open with [showManagerActiveDowntimeDetailsSheet] so callers get a
 /// consistent rounded-top, modal-barrier shape.
@@ -46,35 +47,13 @@ class _ManagerActiveDowntimeDetailsSheetState
   bool _isStopping = false;
 
   Future<void> _confirmAndStop() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Stop downtime?'),
-        content: Text(
-          'This will close downtime "${widget.downtime.reasonName.isEmpty ? 'Active' : widget.downtime.reasonName}" '
-          'and mark the machine as resumed. Continue?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB3261E),
-            ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Stop downtime'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
+    final reason = await _promptForReason();
+    if (reason == null || !mounted) return;
 
     setState(() => _isStopping = true);
     final res = await ref
         .read(dplApiServiceProvider)
-        .resumeDowntime(widget.downtime.id);
+        .managerCloseDowntime(widget.downtime.id, reason: reason);
     if (!mounted) return;
     setState(() => _isStopping = false);
 
@@ -82,7 +61,7 @@ class _ManagerActiveDowntimeDetailsSheetState
       handleSupervisorError(
         context,
         res,
-        fallback: 'Failed to stop downtime.',
+        fallback: 'Failed to close downtime.',
       );
       return;
     }
@@ -91,8 +70,60 @@ class _ManagerActiveDowntimeDetailsSheetState
     // strip, and the dashboard KPIs all re-pull immediately.
     ref.invalidate(managerActiveDowntimesProvider);
     ref.invalidate(dplDashboardSummaryProvider);
-    DplSnack.success(context, 'Downtime stopped.');
+    DplSnack.success(context, 'Downtime closed.');
     Navigator.of(context).pop();
+  }
+
+  /// Confirms the action and lets the manager attach a short note
+  /// explaining why they're force-closing (e.g. "supervisor logged off").
+  /// Returns the trimmed reason string on confirm (empty string allowed),
+  /// or `null` if the manager cancelled.
+  Future<String?> _promptForReason() async {
+    final ctrl = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Close downtime?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Force-close "${widget.downtime.reasonName.isEmpty ? 'Active' : widget.downtime.reasonName}". '
+              'Use this when the supervisor went offline without resuming.',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Reason (optional)',
+                hintText: 'e.g. Supervisor logged off',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(null),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB3261E),
+            ),
+            onPressed: () =>
+                Navigator.of(dialogCtx).pop(ctrl.text.trim()),
+            child: const Text('Close downtime'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    return result;
   }
 
   void _openPlan() {
@@ -272,7 +303,7 @@ class _ManagerActiveDowntimeDetailsSheetState
                                 ),
                               )
                             : const Icon(Icons.stop_circle_outlined),
-                        label: const Text('Stop downtime'),
+                        label: const Text('Close downtime'),
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFFB3261E),
                           foregroundColor: Colors.white,

@@ -1734,6 +1734,38 @@ class DplApiService {
     );
   }
 
+  /// `POST /manager/downtime/:downtimeId/close` — manager-scoped
+  /// recovery action that force-closes an orphaned active downtime
+  /// (e.g. a supervisor logged off without resuming, leaving the red
+  /// banner stuck). [reason] is optional context that gets persisted on
+  /// the closed event. Returns the now-closed event so callers can
+  /// double-check `end_time` / `status` if they need to.
+  Future<DplApiResponse<DplDowntimeEvent>> managerCloseDowntime(
+    int downtimeId, {
+    String? reason,
+  }) {
+    return _send<DplDowntimeEvent>(
+      () => _dio.post(
+        DplPaths.managerDowntimeClose(downtimeId),
+        data: {
+          if (reason != null && reason.trim().isNotEmpty)
+            'reason': reason.trim(),
+        },
+      ),
+      fallback: 'Failed to close downtime.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DplDowntimeEvent.fromJson(
+            Map<String, dynamic>.from(data),
+          );
+        }
+        throw const FormatException(
+          'Expected object response for close downtime.',
+        );
+      },
+    );
+  }
+
   /// `GET /manager/trolley-photos/:id/image` — manager view of the
   /// raw image bytes.
   Future<DplApiResponse<Uint8List>> getManagerTrolleyPhotoBytes(

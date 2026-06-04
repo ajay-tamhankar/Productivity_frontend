@@ -123,6 +123,12 @@ class DplPaths {
 
   // Manager — live banner (active downtimes across all plans/machines).
   static const String managerActiveDowntimes = '/manager/active-downtimes';
+
+  // Manager — force-close a stuck/orphaned active downtime. Manager-
+  // scoped recovery route; differs from the supervisor `resume` route
+  // in that it doesn't require the original supervisor to be online.
+  static String managerDowntimeClose(int downtimeId) =>
+      '/manager/downtime/$downtimeId/close';
 }
 
 /// Allowed `context` values for the identity-verify endpoint.
