@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../models/dpl_dashboard_summary.dart';
 import '../models/dpl_downtime_event.dart';
+import '../models/dpl_downtime_event_detail.dart';
 import '../models/dpl_downtime_reason.dart';
 import '../models/dpl_excel_preview.dart';
 import '../models/dpl_machine.dart';
@@ -749,6 +750,51 @@ class DplApiService {
           return DplPlanVsActualReport.fromJson({'rows': data});
         }
         return DplPlanVsActualReport.empty();
+      },
+    );
+  }
+
+  /// `GET /manager/reports/downtime/events` — flat list of every closed
+  /// downtime occurrence in the requested window, enriched with machine,
+  /// shift, supervisor, reason + category, and remarks. Mirrors the
+  /// per-event "Details" sheet of the Excel export. Sorted newest-first
+  /// by the backend. Same filter shape as [reportDowntime].
+  Future<DplApiResponse<List<DplDowntimeEventDetail>>> listDowntimeEvents({
+    DateTime? from,
+    DateTime? to,
+    int? machineId,
+    int? shiftId,
+  }) {
+    return _send<List<DplDowntimeEventDetail>>(
+      () => _dio.get(
+        DplPaths.reportDowntimeEvents,
+        queryParameters: _cleanQuery({
+          if (from != null) 'from': _ymd(from),
+          if (to != null) 'to': _ymd(to),
+          'machine_id': ?machineId,
+          'shift_id': ?shiftId,
+        }),
+      ),
+      fallback: 'Failed to load downtime events.',
+      fromJson: (data) {
+        List<dynamic>? raw;
+        if (data is List) {
+          raw = data;
+        } else if (data is Map) {
+          for (final key in const ['events', 'items', 'data', 'rows']) {
+            final v = data[key];
+            if (v is List) {
+              raw = v;
+              break;
+            }
+          }
+        }
+        if (raw == null) return const <DplDowntimeEventDetail>[];
+        return raw
+            .whereType<Map>()
+            .map((e) =>
+                DplDowntimeEventDetail.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
       },
     );
   }

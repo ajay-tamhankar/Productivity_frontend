@@ -235,15 +235,37 @@ class DplPlanItemTile extends StatelessWidget {
                 const SizedBox(height: 8),
                 _LiveStatusStrip(item: item),
               ],
-              // Accumulated downtime chip — stays visible after a
-              // downtime is resumed (and after the item completes)
-              // so the manager can see total minutes lost without
-              // having to wait for the item to stop.
-              if (item.status != 'pending' &&
-                  item.totalPausedMinutes > 0 &&
-                  item.pausedAt == null) ...[
-                const SizedBox(height: 6),
-                _DowntimeAccumulatedChip(minutes: item.totalPausedMinutes),
+              // Time-lost chips — render downtime and manual-pause
+              // minutes as separate chips so the manager can see at a
+              // glance which channel ate the time. Backend split the
+              // two; `totalPausedMinutes` is only used as a fallback
+              // when neither new field is populated (older responses).
+              if (item.status != 'pending' && item.pausedAt == null) ...[
+                if (item.downtimeMinutes > 0 ||
+                    item.manualPauseMinutes > 0) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (item.downtimeMinutes > 0)
+                        _DowntimeAccumulatedChip(
+                          minutes: item.downtimeMinutes,
+                        ),
+                      if (item.manualPauseMinutes > 0)
+                        _PausedAccumulatedChip(
+                          minutes: item.manualPauseMinutes,
+                        ),
+                    ],
+                  ),
+                ] else if (item.totalPausedMinutes > 0) ...[
+                  // Backwards-compat: backend hasn't shipped split
+                  // fields yet but the legacy accumulator is set. We
+                  // can't tell which channel, so keep the muted
+                  // "Paused so far" wording.
+                  const SizedBox(height: 6),
+                  _PausedAccumulatedChip(minutes: item.totalPausedMinutes),
+                ],
               ],
               // Trolley photo captured at STOP time — supervisors
               // are required to snap it before completing an item,
@@ -402,10 +424,9 @@ class _LiveStatusStrip extends StatelessWidget {
   }
 }
 
-/// Small red chip showing total downtime accumulated on an item.
-/// Stays visible after a downtime is resumed (where the live
-/// paused-since strip disappears) so the manager can see how much
-/// time was lost without waiting for the item to be stopped.
+/// Small red chip showing total machine downtime accumulated on an
+/// item (`downtime_minutes` from the API — minutes resolved from
+/// `dpl_downtime_events`, NOT supervisor pauses).
 class _DowntimeAccumulatedChip extends StatelessWidget {
   final int minutes;
   const _DowntimeAccumulatedChip({required this.minutes});
@@ -430,6 +451,7 @@ class _DowntimeAccumulatedChip extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(
             Icons.timer_off_outlined,
@@ -437,17 +459,66 @@ class _DowntimeAccumulatedChip extends StatelessWidget {
             color: color,
           ),
           const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              'Downtime so far: ${_format(minutes)}',
-              style: const TextStyle(
-                color: color,
-                fontWeight: FontWeight.w800,
-                fontSize: 12,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+          Text(
+            'Downtime so far: ${_format(minutes)}',
+            style: const TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Small amber chip showing total supervisor-pause time accumulated on
+/// an item (`manual_pause_minutes` from the API — minutes resolved from
+/// `dpl_plan_item_pauses`, NOT machine downtime).
+class _PausedAccumulatedChip extends StatelessWidget {
+  final int minutes;
+  const _PausedAccumulatedChip({required this.minutes});
+
+  String _format(int minutes) {
+    if (minutes <= 0) return '0m';
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    if (h == 0) return '${m}m';
+    if (m == 0) return '${h}h';
+    return '${h}h ${m}m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFFB45309);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4E5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.pause_circle_outline,
+            size: 14,
+            color: color,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'Paused so far: ${_format(minutes)}',
+            style: const TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

@@ -13,6 +13,7 @@ import '../../core/dpl_api_service.dart';
 import '../../core/dpl_constants.dart';
 import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_refresh_icon_button.dart';
+import '../../models/dpl_downtime_event_detail.dart';
 import '../../models/dpl_machine.dart';
 import '../../models/dpl_monthly_chart.dart';
 import '../../models/dpl_reports.dart';
@@ -23,6 +24,7 @@ import '../services/dpl_chart_excel_exporter.dart';
 import '../services/dpl_chart_style_tokens.dart';
 import '../services/dpl_daily_log_exporter.dart';
 import '../services/dpl_downtime_exporter.dart';
+import '../services/dpl_downtime_matrix_exporter.dart';
 import '../providers/dpl_reports_provider.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
@@ -136,12 +138,64 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
       }
 
       if (_currentTab == 3) {
-        // Downtime — client-side, date-wise with reasons under each
-        // day. Reads the same provider the screen does so the file
-        // matches what the user sees.
-        final async = ref.read(dplDowntimeByDateReportProvider);
-        final res = async.asData?.value;
-        final report = res?.data;
+        // Downtime — client-side. Routes to the active sub-view's
+        // exporter so the file always matches what the user is looking
+        // at. Both branches re-fetch their provider via `.future` so
+        // the autoDispose lifecycle (the unwatched sub-view's provider
+        // may have been disposed) doesn't surface as an empty cache.
+        final subView = ref.read(dplDowntimeSubViewProvider);
+        final range = ref.read(dplReportRangeProvider);
+
+        if (subView == DplDowntimeSubView.reasonMatrix) {
+          final res = await ref.read(dplDowntimeEventsProvider.future);
+          final events = res.data ?? const <DplDowntimeEventDetail>[];
+          final matrix = DplDowntimeMatrix.fromEvents(events);
+          if (matrix.isEmpty) {
+            if (!mounted) return;
+            DplSnack.error(
+              context,
+              'No downtime events to export for this range.',
+            );
+            return;
+          }
+          final isCsv = format == DplReportFormat.csv;
+          // PDF is not supported for the matrix view — fall back to
+          // Excel so the user's tap still produces a file. The popup
+          // menu hides PDF when this sub-view is active (see build),
+          // but a stray cached selection should still degrade safely.
+          final bytes = isCsv
+              ? DplDowntimeMatrixExporter.buildCsv(
+                  matrix,
+                  from: range.from,
+                  to: range.to,
+                )
+              : DplDowntimeMatrixExporter.buildExcel(
+                  matrix,
+                  from: range.from,
+                  to: range.to,
+                );
+          final ext = isCsv ? 'csv' : 'xlsx';
+          final mime = isCsv
+              ? 'text/csv'
+              : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          final fileName =
+              'dpl_downtime_reason_matrix_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.$ext';
+          final path = await saveReportBytes(
+            bytes: bytes,
+            fileName: fileName,
+            mimeType: mime,
+          );
+          if (!mounted) return;
+          DplSnack.success(
+            context,
+            path == null ? 'Downloaded.' : 'Saved: $path',
+          );
+          return;
+        }
+
+        // Summary sub-view (default).
+        final res = await ref.read(dplDowntimeByDateReportProvider.future);
+        final report = res.data;
         if (report == null || report.isEmpty) {
           if (!mounted) return;
           DplSnack.error(
@@ -150,7 +204,6 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
           );
           return;
         }
-        final range = ref.read(dplReportRangeProvider);
         final isPdf = format == DplReportFormat.pdf;
         final bytes = isPdf
             ? await DplDowntimeExporter.buildPdf(
@@ -354,25 +407,42 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
                   )
                 : const Icon(Icons.download_outlined),
             onSelected: (value) => _downloadActiveTab(format: value),
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: DplReportFormat.xlsx,
-                child: ListTile(
-                  dense: true,
-                  leading: Icon(Icons.table_view_outlined),
-                  title: Text('Download Excel'),
-                ),
-              ),
-              if (_currentTab != 1)
+            itemBuilder: (context) {
+              // Downtime → Reason Matrix offers Excel + CSV (no PDF).
+              // Every other tab offers Excel and (except the chart tab)
+              // PDF.
+              final onMatrix = _currentTab == 3 &&
+                  ref.read(dplDowntimeSubViewProvider) ==
+                      DplDowntimeSubView.reasonMatrix;
+              return [
                 const PopupMenuItem(
-                  value: DplReportFormat.pdf,
+                  value: DplReportFormat.xlsx,
                   child: ListTile(
                     dense: true,
-                    leading: Icon(Icons.picture_as_pdf_outlined),
-                    title: Text('Download PDF'),
+                    leading: Icon(Icons.table_view_outlined),
+                    title: Text('Download Excel'),
                   ),
                 ),
-            ],
+                if (onMatrix)
+                  const PopupMenuItem(
+                    value: DplReportFormat.csv,
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(Icons.description_outlined),
+                      title: Text('Download CSV'),
+                    ),
+                  ),
+                if (!onMatrix && _currentTab != 1)
+                  const PopupMenuItem(
+                    value: DplReportFormat.pdf,
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(Icons.picture_as_pdf_outlined),
+                      title: Text('Download PDF'),
+                    ),
+                  ),
+              ];
+            },
           ),
           DplRefreshIconButton(
             tooltip: 'Refresh all',
@@ -2568,6 +2638,46 @@ class _DowntimeTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final view = ref.watch(dplDowntimeSubViewProvider);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+          child: SegmentedButton<DplDowntimeSubView>(
+            segments: const [
+              ButtonSegment(
+                value: DplDowntimeSubView.summary,
+                label: Text('Summary'),
+                icon: Icon(Icons.donut_large_outlined),
+              ),
+              ButtonSegment(
+                value: DplDowntimeSubView.reasonMatrix,
+                label: Text('Reason Matrix'),
+                icon: Icon(Icons.grid_on_outlined),
+              ),
+            ],
+            selected: {view},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => ref
+                .read(dplDowntimeSubViewProvider.notifier)
+                .set(s.first),
+          ),
+        ),
+        Expanded(
+          child: view == DplDowntimeSubView.summary
+              ? const _DowntimeSummaryView()
+              : const _DowntimeReasonMatrixView(),
+        ),
+      ],
+    );
+  }
+}
+
+class _DowntimeSummaryView extends ConsumerWidget {
+  const _DowntimeSummaryView();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final fmt = NumberFormat.decimalPattern();
     final async = ref.watch(dplDowntimeByDateReportProvider);
 
@@ -2667,6 +2777,414 @@ class _DowntimeTab extends ConsumerWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Reason Matrix view — pivot of (machine × reason) by date. Mirrors the
+// reference "Down Time Reason" spreadsheet shape 1:1, with grand-total
+// row, total-duration footer, and an in-view download menu (Excel/CSV).
+// Built client-side from `/manager/reports/downtime/events`.
+// -----------------------------------------------------------------------------
+
+class _DowntimeReasonMatrixView extends ConsumerStatefulWidget {
+  const _DowntimeReasonMatrixView();
+
+  @override
+  ConsumerState<_DowntimeReasonMatrixView> createState() =>
+      _DowntimeReasonMatrixViewState();
+}
+
+class _DowntimeReasonMatrixViewState
+    extends ConsumerState<_DowntimeReasonMatrixView> {
+  bool _isDownloading = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final async = ref.watch(dplDowntimeEventsProvider);
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(dplDowntimeEventsProvider);
+        await ref.read(dplDowntimeEventsProvider.future);
+      },
+      child: async.when(
+        loading: () => const Padding(
+          padding: EdgeInsets.all(16),
+          child: SkeletonList(count: 5),
+        ),
+        error: (e, _) => DplErrorRetry(
+          message: e.toString(),
+          onRetry: () => ref.invalidate(dplDowntimeEventsProvider),
+        ),
+        data: (res) {
+          if (res.isError) {
+            return DplErrorRetry(
+              message: res.error ?? 'Failed to load downtime events.',
+              onRetry: () => ref.invalidate(dplDowntimeEventsProvider),
+            );
+          }
+          final events = res.data ?? const <DplDowntimeEventDetail>[];
+          final matrix = DplDowntimeMatrix.fromEvents(events);
+          if (matrix.isEmpty) {
+            return const _EmptyScroll(
+              icon: Icons.grid_off_outlined,
+              title: 'No downtime events',
+              message:
+                  'No closed downtime events were logged for this date range.',
+            );
+          }
+          return _DowntimeMatrixContent(
+            matrix: matrix,
+            isDownloading: _isDownloading,
+            onDownload: (format) => _download(matrix, format),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _download(
+    DplDowntimeMatrix matrix,
+    String format,
+  ) async {
+    setState(() => _isDownloading = true);
+    try {
+      final range = ref.read(dplReportRangeProvider);
+      final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final isCsv = format == 'csv';
+      final bytes = isCsv
+          ? DplDowntimeMatrixExporter.buildCsv(
+              matrix,
+              from: range.from,
+              to: range.to,
+            )
+          : DplDowntimeMatrixExporter.buildExcel(
+              matrix,
+              from: range.from,
+              to: range.to,
+            );
+      final ext = isCsv ? 'csv' : 'xlsx';
+      final mime = isCsv
+          ? 'text/csv'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      final fileName = 'dpl_downtime_reason_matrix_$stamp.$ext';
+      final path = await saveReportBytes(
+        bytes: bytes,
+        fileName: fileName,
+        mimeType: mime,
+      );
+      if (!mounted) return;
+      DplSnack.success(
+        context,
+        path == null ? 'Downloaded.' : 'Saved: $path',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      DplSnack.error(context, 'Failed to export: $e');
+    } finally {
+      if (mounted) setState(() => _isDownloading = false);
+    }
+  }
+}
+
+class _DowntimeMatrixContent extends StatelessWidget {
+  final DplDowntimeMatrix matrix;
+  final bool isDownloading;
+  final void Function(String format) onDownload;
+
+  const _DowntimeMatrixContent({
+    required this.matrix,
+    required this.isDownloading,
+    required this.onDownload,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat.decimalPattern();
+    final reasonCount = matrix.rows.length;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: _kBorder),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 18,
+                  runSpacing: 10,
+                  children: [
+                    _MiniKv(
+                      label: 'Days',
+                      value: fmt.format(matrix.dates.length),
+                    ),
+                    _MiniKv(
+                      label: 'Reasons',
+                      value: fmt.format(reasonCount),
+                    ),
+                    _MiniKv(
+                      label: 'Total Downtime',
+                      value: _formatHrsMin(matrix.grandTotal),
+                      color: _kBad,
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                enabled: !isDownloading,
+                tooltip: 'Download reason matrix',
+                icon: isDownloading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _kPrimary,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.download_outlined,
+                        color: _kPrimary,
+                      ),
+                onSelected: onDownload,
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'xlsx',
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(Icons.table_view_outlined),
+                      title: Text('Download Excel'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'csv',
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(Icons.description_outlined),
+                      title: Text('Download CSV'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _DowntimeMatrixTable(matrix: matrix),
+      ],
+    );
+  }
+}
+
+class _DowntimeMatrixTable extends StatelessWidget {
+  final DplDowntimeMatrix matrix;
+  const _DowntimeMatrixTable({required this.matrix});
+
+  static const double _machineColWidth = 110;
+  static const double _reasonColWidth = 180;
+  static const double _dateColWidth = 60;
+  static const double _grandColWidth = 76;
+  static const double _rowHeight = 34;
+  static const double _headerHeight = 38;
+
+  @override
+  Widget build(BuildContext context) {
+    final dateHeader = DateFormat('dd-MMM');
+
+    // Precompute the display label for the Machine column so the first
+    // row of each group shows the name and subsequent rows leave it
+    // blank — matching the reference spreadsheet layout.
+    final machineLabels = <String>[];
+    String? lastMachine;
+    for (final row in matrix.rows) {
+      machineLabels.add(row.machineName == lastMachine ? '' : row.machineName);
+      lastMachine = row.machineName;
+    }
+
+    final tableWidth = _machineColWidth +
+        _reasonColWidth +
+        matrix.dates.length * _dateColWidth +
+        _grandColWidth;
+
+    Widget headerCell(String text, {double? width, Color? bg}) => Container(
+          width: width,
+          height: _headerHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: bg ?? _kSurfaceAlt,
+            border: const Border(
+              right: BorderSide(color: _kBorder),
+              bottom: BorderSide(color: _kBorder),
+            ),
+          ),
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 11,
+              color: _kNeutral,
+            ),
+          ),
+        );
+
+    Widget bodyCell(
+      String text, {
+      double? width,
+      bool muted = false,
+      bool bold = false,
+      Color? bg,
+      TextAlign align = TextAlign.right,
+    }) =>
+        Container(
+          width: width,
+          height: _rowHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          alignment: align == TextAlign.right
+              ? Alignment.centerRight
+              : (align == TextAlign.center
+                  ? Alignment.center
+                  : Alignment.centerLeft),
+          decoration: BoxDecoration(
+            color: bg,
+            border: const Border(
+              right: BorderSide(color: _kBorder),
+              bottom: BorderSide(color: _kBorder),
+            ),
+          ),
+          child: Text(
+            text,
+            textAlign: align,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11.5,
+              color: muted ? _kNeutral : Colors.black87,
+              fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
+            ),
+          ),
+        );
+
+    final headerRow = Row(
+      children: [
+        headerCell('Machine Name', width: _machineColWidth),
+        headerCell('Down Time Reason', width: _reasonColWidth),
+        for (final d in matrix.dates)
+          headerCell(dateHeader.format(d), width: _dateColWidth),
+        headerCell(
+          'Grand Total',
+          width: _grandColWidth,
+          bg: const Color(0xFFFFF4F4),
+        ),
+      ],
+    );
+
+    final bodyRows = <Widget>[
+      for (var i = 0; i < matrix.rows.length; i++)
+        Row(
+          children: [
+            bodyCell(
+              machineLabels[i],
+              width: _machineColWidth,
+              align: TextAlign.left,
+              bold: machineLabels[i].isNotEmpty,
+            ),
+            bodyCell(
+              matrix.rows[i].reasonName,
+              width: _reasonColWidth,
+              align: TextAlign.left,
+            ),
+            for (final v in matrix.rows[i].minutesByDate)
+              bodyCell(
+                v == 0 ? '' : v.toString(),
+                width: _dateColWidth,
+                muted: v == 0,
+              ),
+            bodyCell(
+              matrix.rows[i].rowTotal.toString(),
+              width: _grandColWidth,
+              bold: true,
+              bg: const Color(0xFFFFF4F4),
+            ),
+          ],
+        ),
+    ];
+
+    final grandTotalRow = Row(
+      children: [
+        bodyCell('', width: _machineColWidth, bg: _kSurfaceAlt),
+        bodyCell(
+          'Grand Total',
+          width: _reasonColWidth,
+          align: TextAlign.left,
+          bold: true,
+          bg: _kSurfaceAlt,
+        ),
+        for (final v in matrix.dateTotals)
+          bodyCell(
+            v.toString(),
+            width: _dateColWidth,
+            bold: true,
+            bg: _kSurfaceAlt,
+          ),
+        bodyCell(
+          matrix.grandTotal.toString(),
+          width: _grandColWidth,
+          bold: true,
+          bg: const Color(0xFFFFEAEA),
+        ),
+      ],
+    );
+
+    final durationRow = Row(
+      children: [
+        bodyCell('', width: _machineColWidth),
+        bodyCell('', width: _reasonColWidth),
+        for (final v in matrix.dateTotals)
+          bodyCell(
+            _formatHrsMin(v),
+            width: _dateColWidth,
+            muted: true,
+          ),
+        bodyCell('', width: _grandColWidth),
+      ],
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: _kBorder),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(11),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: tableWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                headerRow,
+                ...bodyRows,
+                grandTotalRow,
+                durationRow,
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

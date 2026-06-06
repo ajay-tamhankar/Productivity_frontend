@@ -48,6 +48,8 @@ class DplPaths {
   // Manager — reports
   static const String reportPlanVsActual = '/manager/reports/plan-vs-actual';
   static const String reportDowntime = '/manager/reports/downtime';
+  static const String reportDowntimeEvents =
+      '/manager/reports/downtime/events';
   static const String reportSupervisorPerformance =
       '/manager/reports/supervisor-performance';
   static const String reportPartWise = '/manager/reports/part-wise';

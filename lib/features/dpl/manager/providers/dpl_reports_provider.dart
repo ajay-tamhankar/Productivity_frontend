@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/dpl_api_response.dart';
 import '../../core/dpl_api_service.dart';
+import '../../models/dpl_downtime_event_detail.dart';
 import '../../models/dpl_reports.dart';
 
 class DplReportRange {
@@ -76,6 +77,36 @@ final dplDowntimeByDateReportProvider = FutureProvider.autoDispose<
         groupBy: const ['day', 'reason'],
       );
 });
+
+/// Flat per-event downtime list with reason + remarks. Powers the
+/// "Reason Matrix" segment on the Downtime tab.
+final dplDowntimeEventsProvider = FutureProvider.autoDispose<
+    DplApiResponse<List<DplDowntimeEventDetail>>>((ref) async {
+  final r = ref.watch(dplReportRangeProvider);
+  return ref.watch(dplApiServiceProvider).listDowntimeEvents(
+        from: r.from,
+        to: r.to,
+        machineId: r.machineId,
+      );
+});
+
+/// Which sub-view of the Downtime tab is currently active. Lifted to
+/// the provider layer so the parent screen's AppBar download button
+/// can route to the correct exporter without prop-drilling through
+/// the segmented control.
+enum DplDowntimeSubView { summary, reasonMatrix }
+
+class DplDowntimeSubViewController extends Notifier<DplDowntimeSubView> {
+  @override
+  DplDowntimeSubView build() => DplDowntimeSubView.summary;
+
+  void set(DplDowntimeSubView v) => state = v;
+}
+
+final dplDowntimeSubViewProvider =
+    NotifierProvider<DplDowntimeSubViewController, DplDowntimeSubView>(
+  DplDowntimeSubViewController.new,
+);
 
 
 final dplSupervisorPerformanceReportProvider = FutureProvider.autoDispose<

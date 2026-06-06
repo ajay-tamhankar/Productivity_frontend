@@ -17,8 +17,19 @@ class DplProductionPlanItem {
   /// Most recent downtime start (server-managed). Used by the supervisor
   /// execution screen to know an item is currently paused.
   final DateTime? pausedAt;
-  /// Total minutes the item has spent paused across all downtimes.
+  /// Total minutes the item has spent paused — sum of [downtimeMinutes]
+  /// and [manualPauseMinutes]. Kept for backwards-compat with code that
+  /// was reading this single accumulator before the backend split it.
   final int totalPausedMinutes;
+
+  /// Minutes lost to machine downtime on this item — sourced from
+  /// `dpl_downtime_events` (status = `resolved`).
+  final int downtimeMinutes;
+
+  /// Minutes the supervisor manually paused this item — sourced from
+  /// `dpl_plan_item_pauses` (status = `resumed`). These are pauses
+  /// with a free-text reason, distinct from machine downtime.
+  final int manualPauseMinutes;
   /// Shift the item ran in — server-derived from `start_time`. Null for
   /// items started before the column was added or never started.
   final int? shiftId;
@@ -52,6 +63,8 @@ class DplProductionPlanItem {
     this.endTime,
     this.pausedAt,
     this.totalPausedMinutes = 0,
+    this.downtimeMinutes = 0,
+    this.manualPauseMinutes = 0,
     this.shiftId,
     this.shiftCode,
     this.shiftName,
@@ -119,6 +132,12 @@ class DplProductionPlanItem {
       pausedAt: parseDateTimeOrNull(json['paused_at'] ?? json['pausedAt']),
       totalPausedMinutes: parseIntOr(
         json['total_paused_minutes'] ?? json['totalPausedMinutes'],
+      ),
+      downtimeMinutes: parseIntOr(
+        json['downtime_minutes'] ?? json['downtimeMinutes'],
+      ),
+      manualPauseMinutes: parseIntOr(
+        json['manual_pause_minutes'] ?? json['manualPauseMinutes'],
       ),
       shiftId: parseIntOrNull(
         json['shift_id'] ?? json['shiftId'] ?? shift['id'],
@@ -225,6 +244,8 @@ class DplProductionPlanItem {
     DateTime? endTime,
     DateTime? pausedAt,
     int? totalPausedMinutes,
+    int? downtimeMinutes,
+    int? manualPauseMinutes,
     int? shiftId,
     String? shiftCode,
     String? shiftName,
@@ -247,6 +268,8 @@ class DplProductionPlanItem {
       endTime: endTime ?? this.endTime,
       pausedAt: pausedAt ?? this.pausedAt,
       totalPausedMinutes: totalPausedMinutes ?? this.totalPausedMinutes,
+      downtimeMinutes: downtimeMinutes ?? this.downtimeMinutes,
+      manualPauseMinutes: manualPauseMinutes ?? this.manualPauseMinutes,
       shiftId: shiftId ?? this.shiftId,
       shiftCode: shiftCode ?? this.shiftCode,
       shiftName: shiftName ?? this.shiftName,

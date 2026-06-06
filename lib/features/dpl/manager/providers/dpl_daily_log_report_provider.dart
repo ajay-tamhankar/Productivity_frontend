@@ -105,7 +105,14 @@ class DplDailyLogRow {
       actualQty: item.actualQty,
       startTime: item.startTime,
       endTime: item.endTime,
-      downtimeMinutes: item.totalPausedMinutes,
+      // Use the split `downtime_minutes` field when the backend
+      // provided it. Fall back to `totalPausedMinutes` for older
+      // responses where the split wasn't available — that legacy
+      // accumulator includes manual pauses too, so it's a best-effort
+      // approximation, not a perfect match.
+      downtimeMinutes: item.downtimeMinutes > 0
+          ? item.downtimeMinutes
+          : item.totalPausedMinutes,
       reasonOrRemarks: reason.isEmpty ? '-' : reason,
     );
   }
