@@ -64,8 +64,7 @@ class DplDailyLogRow {
     return effective < 0 ? 0 : effective;
   }
 
-  double get completionPct =>
-      planQty <= 0 ? 0 : (actualQty / planQty).clamp(0.0, 1.0);
+  double get completionPct => planQty <= 0 ? 0 : actualQty / planQty;
 
   static DplDailyLogRow fromPlanItem({
     required DplProductionPlan plan,

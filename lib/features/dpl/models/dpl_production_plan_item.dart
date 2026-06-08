@@ -194,8 +194,7 @@ class DplProductionPlanItem {
         if (remarks != null) 'remarks': remarks,
       };
 
-  double get completionPct =>
-      planQty <= 0 ? 0 : (actualQty / planQty).clamp(0.0, 1.0);
+  double get completionPct => planQty <= 0 ? 0 : actualQty / planQty;
 
   /// Display label for the shift, e.g. "Shift A".
   ///

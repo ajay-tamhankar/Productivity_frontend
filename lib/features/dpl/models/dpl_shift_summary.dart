@@ -94,7 +94,7 @@ class DplShiftMachineSummary {
     );
     if (pct < 0) pct = plan <= 0 ? 0 : actual / plan;
     if (pct > 1) pct = pct / 100;
-    pct = pct.clamp(0.0, 1.0).toDouble();
+    if (pct < 0) pct = 0;
 
     return DplShiftMachineSummary(
       machineId: parseIntOr(json['machine_id'] ?? json['machineId']),
@@ -159,7 +159,7 @@ class DplShiftTotals {
     );
     if (pct < 0) pct = plan <= 0 ? 0 : actual / plan;
     if (pct > 1) pct = pct / 100;
-    pct = pct.clamp(0.0, 1.0).toDouble();
+    if (pct < 0) pct = 0;
 
     return DplShiftTotals(
       planQty: plan,
@@ -199,6 +199,7 @@ class DplShiftSubmitResult {
       0,
     );
     if (pct > 1) pct = pct / 100;
+    if (pct < 0) pct = 0;
     return DplShiftSubmitResult(
       plansSubmitted:
           parseIntOr(json['plans_submitted'] ?? json['plansSubmitted']),
@@ -206,7 +207,7 @@ class DplShiftSubmitResult {
           parseIntOr(json['total_plan_qty'] ?? json['totalPlanQty']),
       totalActualQty:
           parseIntOr(json['total_actual_qty'] ?? json['totalActualQty']),
-      completionPct: pct.clamp(0.0, 1.0).toDouble(),
+      completionPct: pct,
     );
   }
 }

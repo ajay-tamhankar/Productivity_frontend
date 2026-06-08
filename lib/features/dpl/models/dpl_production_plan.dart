@@ -157,7 +157,7 @@ class DplProductionPlan {
     final plan = effectiveTotalPlanQty;
     final actual = effectiveTotalActualQty;
     if (plan <= 0) return 0;
-    return (actual / plan).clamp(0.0, 1.0);
+    return actual / plan;
   }
 
   /// Distinct shift tokens (code if available, else `#<id>`) derived

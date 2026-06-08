@@ -1217,8 +1217,7 @@ class _MachineRollup {
     required this.machineName,
   });
 
-  double get completionPct =>
-      planQty <= 0 ? 0 : (actualQty / planQty).clamp(0.0, 1.0);
+  double get completionPct => planQty <= 0 ? 0 : actualQty / planQty;
   int get variance => actualQty - planQty;
 }
 
@@ -3839,8 +3838,7 @@ class _DailyLogTotals {
     );
   }
 
-  double get achievementPct =>
-      planQty <= 0 ? 0 : (actualQty / planQty).clamp(0.0, 1.0);
+  double get achievementPct => planQty <= 0 ? 0 : actualQty / planQty;
 }
 
 class _DailyLogGroup {

@@ -202,8 +202,7 @@ class DplChartCell {
 
   int get variance => actualQty - planQty;
 
-  double get completionPct =>
-      planQty <= 0 ? 0 : (actualQty / planQty).clamp(0.0, 1.0);
+  double get completionPct => planQty <= 0 ? 0 : actualQty / planQty;
 }
 
 class DplChartTotals {
@@ -232,8 +231,7 @@ class DplChartTotals {
         downtimeMinutes: 0,
       );
 
-  double get completionPct =>
-      planQty <= 0 ? 0 : (actualQty / planQty).clamp(0.0, 1.0);
+  double get completionPct => planQty <= 0 ? 0 : actualQty / planQty;
 }
 
 class DplChartBreakdownRow {
@@ -299,7 +297,9 @@ class DplChartCumulative {
       var v = parseDoubleOr(json[a] ?? json[b], -1);
       if (v < 0) v = 0;
       if (v > 1) v = v / 100;
-      return v.clamp(0.0, 1.0).toDouble();
+      // No upper clamp — achievementPct can legitimately exceed 1.0
+      // (over-production); lostPct is bounded by definition.
+      return v.toDouble();
     }
 
     return DplChartCumulative(

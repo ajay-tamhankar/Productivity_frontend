@@ -14,6 +14,7 @@ import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
 import '../widgets/machine_downtime_banner.dart';
 import '../widgets/machine_summary_card.dart';
+import '../widgets/status_badge.dart';
 
 /// How often the dashboard re-pulls totals + per-machine state. Picked
 /// to be slow enough to not hammer the API (a manager glancing at the
@@ -236,7 +237,9 @@ class _LiveIndicator extends StatelessWidget {
 
 /// One bucket per machine after `_mergeByMachine` has folded the backend's
 /// per-(plan, shift) rows together. Carries every distinct shift label that
-/// touched the machine plus combined Plan/Actual totals.
+/// touched the machine plus combined Plan/Actual totals AND a per-plan
+/// breakdown that drives the tap-through picker when the machine has more
+/// than one plan on the selected date.
 class _MergedMachineRow {
   final int machineId;
   final String machineName;
@@ -246,7 +249,9 @@ class _MergedMachineRow {
   final int actualQty;
   final double completionPct;
   final String supervisorName;
-  final int? planId;
+  /// Distinct plans on this machine for the selected date, in backend
+  /// order. Length 1 = direct tap-through; length >1 = picker sheet.
+  final List<_PlanRef> plans;
 
   const _MergedMachineRow({
     required this.machineId,
@@ -257,8 +262,31 @@ class _MergedMachineRow {
     required this.actualQty,
     required this.completionPct,
     required this.supervisorName,
-    required this.planId,
+    required this.plans,
   });
+}
+
+/// Per-plan summary shown inside the multi-plan picker sheet (and used
+/// internally to drive the tap target). One per distinct plan_id within
+/// a machine group.
+class _PlanRef {
+  final int planId;
+  final List<String> shiftLabels;
+  final String status;
+  final int planQty;
+  final int actualQty;
+  final String supervisorName;
+
+  const _PlanRef({
+    required this.planId,
+    required this.shiftLabels,
+    required this.status,
+    required this.planQty,
+    required this.actualQty,
+    required this.supervisorName,
+  });
+
+  double get completionPct => planQty <= 0 ? 0 : actualQty / planQty;
 }
 
 /// Highest-priority status wins when a machine has plans across several
@@ -275,82 +303,112 @@ const Map<String, int> _statusPriority = {
 int _statusRank(String status) =>
     _statusPriority[status.trim().toLowerCase()] ?? 0;
 
-/// Groups the backend's per-(plan, shift) rows by `machineId`, preserving
-/// the order the backend returned them. Each merged row carries every
-/// distinct shift code that touched the machine plus summed totals.
+/// Helper: derive the sorted distinct shift labels for a slice of rows.
+/// Pills always read "A → B → C" regardless of backend order.
+List<String> _shiftLabelsOf(List<DplMachineSummary> rows) {
+  final labelByCode = <String, String>{};
+  for (final r in rows) {
+    final code = r.shiftCode.trim();
+    final label = r.shiftLabel.trim();
+    if (label.isEmpty) continue;
+    labelByCode.putIfAbsent(code.isEmpty ? label : code, () => label);
+  }
+  final sortedKeys = labelByCode.keys.toList()..sort();
+  return sortedKeys.map((k) => labelByCode[k]!).toList();
+}
+
+/// Helper: highest-priority status across a slice of rows.
+String _topStatusOf(List<DplMachineSummary> rows) {
+  var status = rows.first.status;
+  for (final r in rows.skip(1)) {
+    if (_statusRank(r.status) > _statusRank(status)) status = r.status;
+  }
+  return status;
+}
+
+/// Helper: distinct, ` · `-joined supervisor names for a slice of rows.
+String _supervisorsOf(List<DplMachineSummary> rows) {
+  final supervisors = <String>{};
+  for (final r in rows) {
+    final n = r.supervisorName.trim();
+    if (n.isNotEmpty) supervisors.add(n);
+  }
+  return supervisors.join(' · ');
+}
+
+/// Groups the backend's per-(plan, shift) rows by `machineId` so each
+/// physical machine renders as exactly one dashboard card. Totals are
+/// summed across every plan + shift on the machine; a per-plan breakdown
+/// is kept so the tap target can resolve to the right plan (direct push
+/// for single-plan machines, picker sheet for multi-plan machines —
+/// otherwise a "card shows 92, detail shows 24" mismatch is possible).
 List<_MergedMachineRow> _mergeByMachine(List<DplMachineSummary> rows) {
   final order = <int>[];
-  final byId = <int, List<DplMachineSummary>>{};
+  final byMachine = <int, List<DplMachineSummary>>{};
   for (final r in rows) {
-    if (!byId.containsKey(r.machineId)) {
+    if (!byMachine.containsKey(r.machineId)) {
       order.add(r.machineId);
-      byId[r.machineId] = <DplMachineSummary>[];
+      byMachine[r.machineId] = <DplMachineSummary>[];
     }
-    byId[r.machineId]!.add(r);
+    byMachine[r.machineId]!.add(r);
   }
 
   return order.map((id) {
-    final group = byId[id]!;
+    final group = byMachine[id]!;
     final first = group.first;
 
-    // Distinct shift labels, sorted by underlying code so the pills always
-    // read "A → B → C" regardless of backend order.
-    final labelByCode = <String, String>{};
-    for (final r in group) {
-      final code = r.shiftCode.trim();
-      final label = r.shiftLabel.trim();
-      if (label.isEmpty) continue;
-      labelByCode.putIfAbsent(code.isEmpty ? label : code, () => label);
-    }
-    final sortedKeys = labelByCode.keys.toList()..sort();
-    final shiftLabels = sortedKeys.map((k) => labelByCode[k]!).toList();
-
-    // Sum totals across the group; re-derive completion so it matches the
-    // displayed Plan / Actual exactly.
     var planQty = 0;
     var actualQty = 0;
     for (final r in group) {
       planQty += r.planQty;
       actualQty += r.actualQty;
     }
-    final pct = planQty == 0 ? 0.0 : (actualQty / planQty).clamp(0.0, 1.0);
+    // No upper clamp — over-achievement is real data the card should
+    // surface. The progress bar clamps `value` to [0,1] at render time.
+    final pct = planQty == 0 ? 0.0 : (actualQty / planQty);
 
-    // Pick the most-active status across rows.
-    var status = first.status;
-    for (final r in group.skip(1)) {
-      if (_statusRank(r.status) > _statusRank(status)) status = r.status;
-    }
-
-    // Join distinct supervisor names — keeps the line useful when shifts
-    // have different supervisors without inventing a synthetic label.
-    final supervisors = <String>{};
+    // Second-level group: by plan_id within this machine. Drives the
+    // picker sheet so each plan's detail is one tap away when the
+    // machine has more than one.
+    final planOrder = <int>[];
+    final byPlan = <int, List<DplMachineSummary>>{};
     for (final r in group) {
-      final n = r.supervisorName.trim();
-      if (n.isNotEmpty) supervisors.add(n);
-    }
-    final supervisorName = supervisors.join(' · ');
-
-    // First non-null planId from the group drives the tap-through. With
-    // Option-A routing the user lands on the parent plan; Plan Detail
-    // shows every item including the other-shift items.
-    int? planId;
-    for (final r in group) {
-      if (r.planId != null) {
-        planId = r.planId;
-        break;
+      final pid = r.planId;
+      if (pid == null) continue;
+      if (!byPlan.containsKey(pid)) {
+        planOrder.add(pid);
+        byPlan[pid] = <DplMachineSummary>[];
       }
+      byPlan[pid]!.add(r);
     }
+    final plans = planOrder.map((pid) {
+      final pGroup = byPlan[pid]!;
+      var pPlan = 0;
+      var pActual = 0;
+      for (final r in pGroup) {
+        pPlan += r.planQty;
+        pActual += r.actualQty;
+      }
+      return _PlanRef(
+        planId: pid,
+        shiftLabels: _shiftLabelsOf(pGroup),
+        status: _topStatusOf(pGroup),
+        planQty: pPlan,
+        actualQty: pActual,
+        supervisorName: _supervisorsOf(pGroup),
+      );
+    }).toList();
 
     return _MergedMachineRow(
       machineId: id,
       machineName: first.machineName,
-      shiftLabels: shiftLabels,
-      status: status,
+      shiftLabels: _shiftLabelsOf(group),
+      status: _topStatusOf(group),
       planQty: planQty,
       actualQty: actualQty,
       completionPct: pct.toDouble(),
-      supervisorName: supervisorName,
-      planId: planId,
+      supervisorName: _supervisorsOf(group),
+      plans: plans,
     );
   }).toList();
 }
@@ -426,24 +484,259 @@ class _DashboardBody extends StatelessWidget {
                     actualQty: m.actualQty,
                     completionPct: m.completionPct,
                     supervisorName: m.supervisorName,
-                    onTap: m.planId == null
+                    planCount: m.plans.length,
+                    onTap: m.plans.isEmpty
                         ? null
-                        : () => context.push(
-                              '/dpl/manager/plans/${m.planId}',
-                            ),
+                        : m.plans.length == 1
+                            ? () => context.push(
+                                  '/dpl/manager/plans/${m.plans.first.planId}',
+                                )
+                            : () => _showMachinePlanPicker(context, m),
                   ),
                   // Per-machine downtime strip — only renders when this
                   // machine has an open downtime, so cards without one
                   // collapse back to their normal height.
                   MachineDowntimeBanner(
                     machineId: m.machineId,
-                    planId: m.planId,
+                    planId: m.plans.isEmpty ? null : m.plans.first.planId,
                   ),
                 ],
               ),
             ),
           ),
         const SizedBox(height: 32),
+      ],
+    );
+  }
+}
+
+/// Bottom-sheet picker shown when a machine has more than one plan on
+/// the selected date — keeps the dashboard at one card per machine while
+/// still routing each tap to the correct plan detail.
+Future<void> _showMachinePlanPicker(
+  BuildContext context,
+  _MergedMachineRow m,
+) async {
+  final fmt = NumberFormat.decimalPattern();
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (ctx) {
+      return SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          m.machineName.isEmpty
+                              ? 'Machine #${m.machineId}'
+                              : m.machineName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${m.plans.length} plans on this date',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF5D6A7A),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              for (final p in m.plans)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _PlanPickerTile(plan: p, fmt: fmt),
+                ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _PlanPickerTile extends StatelessWidget {
+  final _PlanRef plan;
+  final NumberFormat fmt;
+
+  const _PlanPickerTile({required this.plan, required this.fmt});
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (plan.completionPct * 100).round();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          Navigator.of(context).pop();
+          context.push('/dpl/manager/plans/${plan.planId}');
+        },
+        child: Ink(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2EAF6)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Plan #${plan.planId}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      for (final label in plan.shiftLabels)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEEF2FF),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: const Color(0xFFC7D2FE)),
+                          ),
+                          child: Text(
+                            label,
+                            style: const TextStyle(
+                              color: Color(0xFF3730A3),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      DplStatusBadge(status: plan.status),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _PlanPickerKv(
+                      label: 'Plan',
+                      value: fmt.format(plan.planQty),
+                    ),
+                  ),
+                  Expanded(
+                    child: _PlanPickerKv(
+                      label: 'Actual',
+                      value: fmt.format(plan.actualQty),
+                    ),
+                  ),
+                  Expanded(
+                    child: _PlanPickerKv(
+                      label: 'Completion',
+                      value: plan.planQty <= 0 ? '—' : '$pct%',
+                    ),
+                  ),
+                ],
+              ),
+              if (plan.supervisorName.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.person_outline,
+                      size: 14,
+                      color: Color(0xFF5D6A7A),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        plan.supervisorName,
+                        style: const TextStyle(
+                          color: Color(0xFF5D6A7A),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 12,
+                      color: Color(0xFF5D6A7A),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanPickerKv extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _PlanPickerKv({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            color: Color(0xFF5D6A7A),
+            fontWeight: FontWeight.w600,
+            height: 1.1,
+          ),
+        ),
+        const SizedBox(height: 2),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
       ],
     );
   }

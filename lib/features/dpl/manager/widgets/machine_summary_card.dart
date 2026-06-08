@@ -29,6 +29,11 @@ class DplMachineSummaryCard extends StatelessWidget {
   /// different supervisors).
   final String supervisorName;
 
+  /// Distinct plans on this machine for the selected date. When > 1 the
+  /// card surfaces a "N plans" hint so the user expects the picker sheet
+  /// instead of being dropped straight onto one plan's detail screen.
+  final int planCount;
+
   final VoidCallback? onTap;
 
   const DplMachineSummaryCard({
@@ -41,6 +46,7 @@ class DplMachineSummaryCard extends StatelessWidget {
     required this.actualQty,
     required this.completionPct,
     required this.supervisorName,
+    this.planCount = 1,
     this.onTap,
   });
 
@@ -156,6 +162,30 @@ class DplMachineSummaryCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (planCount > 1) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isPhone ? 6 : 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Text(
+                        '$planCount plans',
+                        style: TextStyle(
+                          color: const Color(0xFF334155),
+                          fontWeight: FontWeight.w700,
+                          fontSize: isPhone ? 10 : 11,
+                          height: 1.0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   Icon(
                     Icons.arrow_forward_ios_rounded,
                     size: isPhone ? 12 : 14,

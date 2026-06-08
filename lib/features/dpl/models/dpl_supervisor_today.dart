@@ -78,7 +78,7 @@ class SupervisorPlanSummary {
     );
     if (pct < 0) pct = plan <= 0 ? 0 : actual / plan;
     if (pct > 1) pct = pct / 100;
-    pct = pct.clamp(0.0, 1.0).toDouble();
+    if (pct < 0) pct = 0;
 
     Map<String, dynamic> machineMap = const {};
     final rawMachine = json['machine'];

@@ -33,9 +33,7 @@ class DplPlanVsActualReport {
     if (totalActual < 0) {
       totalActual = rows.fold(0, (a, r) => a + r.actualQty);
     }
-    final pct = totalPlan == 0
-        ? 0.0
-        : (totalActual / totalPlan).clamp(0.0, 1.0).toDouble();
+    final pct = totalPlan == 0 ? 0.0 : (totalActual / totalPlan).toDouble();
 
     return DplPlanVsActualReport(
       rows: rows,
@@ -91,8 +89,7 @@ class DplPlanVsActualRow {
     );
   }
 
-  double get completionPct =>
-      planQty <= 0 ? 0 : (actualQty / planQty).clamp(0.0, 1.0);
+  double get completionPct => planQty <= 0 ? 0 : actualQty / planQty;
 }
 
 /// Downtime Pareto: each row is one reason + its total minutes.
@@ -220,7 +217,7 @@ class DplSupervisorPerformanceRow {
       pct = totalPlan <= 0 ? 0 : totalActual / totalPlan;
     }
     if (pct > 1) pct = pct / 100;
-    pct = pct.clamp(0.0, 1.0).toDouble();
+    if (pct < 0) pct = 0;
 
     return DplSupervisorPerformanceRow(
       supervisorUserId: parseIntOr(
@@ -282,6 +279,5 @@ class DplPartWiseRow {
     );
   }
 
-  double get completionPct =>
-      totalPlan <= 0 ? 0 : (totalActual / totalPlan).clamp(0.0, 1.0);
+  double get completionPct => totalPlan <= 0 ? 0 : totalActual / totalPlan;
 }

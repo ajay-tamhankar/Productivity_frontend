@@ -87,7 +87,10 @@ class DplDashboardSummary {
       pct = totalPlan <= 0 ? 0 : (totalActual / totalPlan);
     }
     if (pct > 1) pct = pct / 100;
-    pct = pct.clamp(0.0, 1.0).toDouble();
+    // Don't clamp the upper bound — over-achievement (>100%) is real
+    // data we want to surface on the dashboard. Progress bars clamp
+    // `value` to [0,1] at render time so they still cap visually.
+    if (pct < 0) pct = 0;
 
     final downtimeMin = parseIntOr(
       totals['downtime_minutes'] ?? totals['downtimeMinutes'],
@@ -155,7 +158,7 @@ class DplDashboardShiftRollup {
       pct = plan <= 0 ? 0 : (actual / plan);
     }
     if (pct > 1) pct = pct / 100;
-    pct = pct.clamp(0.0, 1.0).toDouble();
+    if (pct < 0) pct = 0;
 
     return DplDashboardShiftRollup(
       shiftId: parseIntOrNull(json['shift_id'] ?? json['shiftId']),
@@ -207,7 +210,7 @@ class DplDashboardMtd {
       pct = plan <= 0 ? 0 : (actual / plan);
     }
     if (pct > 1) pct = pct / 100;
-    pct = pct.clamp(0.0, 1.0).toDouble();
+    if (pct < 0) pct = 0;
 
     return DplDashboardMtd(
       from: parseDateTimeOrNull(json['from']),
@@ -269,7 +272,7 @@ class DplMachineSummary {
       pct = planQty <= 0 ? 0 : (actualQty / planQty);
     }
     if (pct > 1) pct = pct / 100;
-    pct = pct.clamp(0.0, 1.0).toDouble();
+    if (pct < 0) pct = 0;
 
     return DplMachineSummary(
       planId: parseIntOrNull(json['plan_id'] ?? json['planId']),
