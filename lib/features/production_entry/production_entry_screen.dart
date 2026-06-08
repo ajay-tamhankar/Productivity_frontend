@@ -26,6 +26,8 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
   String _shift = 'A';
   String? _machineId;
   String? _itemId;
+  DateTime _startDate = DateTime.now();
+  DateTime _endDate = DateTime.now();
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
   bool _addMachineDowntime = false;
@@ -119,15 +121,53 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
     _recompute();
   }
 
+  Future<void> _pickStartDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 1),
+    );
+    if (picked == null) return;
+    setState(() {
+      _startDate = DateTime(picked.year, picked.month, picked.day);
+      if (_endDate.isBefore(_startDate)) {
+        _endDate = _startDate;
+      }
+      _formError = null;
+    });
+    _recompute();
+  }
+
+  Future<void> _pickEndDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate.isBefore(_startDate) ? _startDate : _endDate,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 1),
+    );
+    if (picked == null) return;
+    setState(() {
+      _endDate = DateTime(picked.year, picked.month, picked.day);
+      _formError = null;
+    });
+    _recompute();
+  }
+
   void _resetForm() {
     for (final ctrl in _operatorNameCtrls) {
       ctrl.dispose();
     }
     _operatorNameCtrls.clear();
+    final today = DateTime.now();
     setState(() {
       _shift = 'A';
       _machineId = null;
       _itemId = null;
+      _startDate = DateTime(today.year, today.month, today.day);
+      _endDate = DateTime(today.year, today.month, today.day);
       _startTime = null;
       _endTime = null;
       _addMachineDowntime = false;
@@ -149,15 +189,30 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
 
   int _safeInt(String v) => int.tryParse(v.trim()) ?? 0;
 
-  DateTime? _toDate(TimeOfDay? t) {
+  DateTime? _toDate(TimeOfDay? t, DateTime date) {
     if (t == null) return null;
-    final n = DateTime.now();
-    return DateTime(n.year, n.month, n.day, t.hour, t.minute);
+    return DateTime(date.year, date.month, date.day, t.hour, t.minute);
+  }
+
+  DateTime? _shiftStart() => _toDate(_startTime, _startDate);
+  DateTime? _shiftEnd() => _toDate(_endTime, _endDate);
+
+  DateTime? _inferDowntimeDateTime(TimeOfDay? t) {
+    if (t == null) return null;
+    final sameDay = _startDate.year == _endDate.year &&
+        _startDate.month == _endDate.month &&
+        _startDate.day == _endDate.day;
+    if (sameDay || _startTime == null) {
+      return _toDate(t, _startDate);
+    }
+    final startMins = _startTime!.hour * 60 + _startTime!.minute;
+    final tMins = t.hour * 60 + t.minute;
+    return _toDate(t, tMins >= startMins ? _startDate : _endDate);
   }
 
   bool _isTimeValid() {
-    final s = _toDate(_startTime);
-    final e = _toDate(_endTime);
+    final s = _shiftStart();
+    final e = _shiftEnd();
     if (s == null || e == null) return false;
     return e.isAfter(s);
   }
@@ -165,10 +220,10 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
   bool _isDowntimeWithinShift() {
     if (!_addMachineDowntime) return true;
 
-    final shiftStart = _toDate(_startTime);
-    final shiftEnd = _toDate(_endTime);
-    final downtimeStart = _toDate(_downtimeStartTime);
-    final downtimeEnd = _toDate(_downtimeEndTime);
+    final shiftStart = _shiftStart();
+    final shiftEnd = _shiftEnd();
+    final downtimeStart = _inferDowntimeDateTime(_downtimeStartTime);
+    final downtimeEnd = _inferDowntimeDateTime(_downtimeEndTime);
 
     if (shiftStart == null ||
         shiftEnd == null ||
@@ -193,14 +248,14 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
       return 'Start Time and End Time are required.';
     }
     if (!_isTimeValid()) {
-      return 'End time must be greater than Start time.';
+      return 'End date/time must be greater than Start date/time.';
     }
     if (_addMachineDowntime) {
       if (_downtimeStartTime == null || _downtimeEndTime == null) {
         return 'Both Downtime Start and Downtime End are required when downtime is enabled.';
       }
-      final downtimeStart = _toDate(_downtimeStartTime);
-      final downtimeEnd = _toDate(_downtimeEndTime);
+      final downtimeStart = _inferDowntimeDateTime(_downtimeStartTime);
+      final downtimeEnd = _inferDowntimeDateTime(_downtimeEndTime);
       if (downtimeStart == null || downtimeEnd == null) {
         return 'Invalid downtime values.';
       }
@@ -430,8 +485,8 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
       return;
     }
 
-    final s = _toDate(_startTime)!;
-    final e = _toDate(_endTime)!;
+    final s = _shiftStart()!;
+    final e = _shiftEnd()!;
     final auth = ref.read(authControllerProvider).asData?.value;
     final rcNumber = _rcNumberCtrl.text.trim();
     final operatorNames = _collectOperatorNames();
@@ -440,7 +495,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
         : null;
 
     final entry = ProductionEntryModel(
-      entryDate: DateFormat('yyyy-MM-dd').format(DateTime.now()),
+      entryDate: DateFormat('yyyy-MM-dd').format(_startDate),
       shift: _shift,
       operatorId: auth?.id ?? 'unknown',
       operatorName: operatorNameJoined,
@@ -456,10 +511,10 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       machineDowntimeStartTime:
           _addMachineDowntime && _downtimeStartTime != null
-          ? _toDate(_downtimeStartTime!)!.toUtc().toIso8601String()
+          ? _inferDowntimeDateTime(_downtimeStartTime)!.toUtc().toIso8601String()
           : null,
       machineDowntimeEndTime: _addMachineDowntime && _downtimeEndTime != null
-          ? _toDate(_downtimeEndTime!)!.toUtc().toIso8601String()
+          ? _inferDowntimeDateTime(_downtimeEndTime)!.toUtc().toIso8601String()
           : null,
       rejectionDetails: _rejectionReasons.entries
           .where((e) => e.value > 0)
@@ -745,6 +800,46 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                             title: 'Time & Quantity',
                             child: Column(
                               children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          minimumSize: const Size.fromHeight(
+                                            52,
+                                          ),
+                                          alignment: Alignment.centerLeft,
+                                        ),
+                                        onPressed: _pickStartDate,
+                                        icon: const Icon(
+                                          Icons.calendar_today_outlined,
+                                        ),
+                                        label: Text(
+                                          'Start Date: ${DateFormat('dd MMM yyyy').format(_startDate)}',
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          minimumSize: const Size.fromHeight(
+                                            52,
+                                          ),
+                                          alignment: Alignment.centerLeft,
+                                        ),
+                                        onPressed: _pickEndDate,
+                                        icon: const Icon(
+                                          Icons.calendar_today_outlined,
+                                        ),
+                                        label: Text(
+                                          'End Date: ${DateFormat('dd MMM yyyy').format(_endDate)}',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
                                 Row(
                                   children: [
                                     Expanded(
