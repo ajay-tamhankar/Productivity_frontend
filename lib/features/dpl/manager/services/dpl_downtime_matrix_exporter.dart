@@ -4,6 +4,7 @@ import 'package:excel/excel.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/dpl_downtime_event_detail.dart';
+import 'dpl_excel_style.dart';
 
 /// Pivot view of downtime events shaped exactly like the production
 /// "Down Time Reason" spreadsheet:
@@ -210,10 +211,10 @@ class DplDowntimeMatrixExporter {
       for (final d in matrix.dates) TextCellValue(dateHeader.format(d)),
       TextCellValue('Grand Total'),
     ];
-    sheet.appendRow(header);
+    appendStyledRow(sheet,header);
 
     if (matrix.isEmpty) {
-      sheet.appendRow(<CellValue?>[
+      appendStyledRow(sheet,<CellValue?>[
         TextCellValue('No downtime events in this range.'),
       ]);
       final encoded = excel.encode();
@@ -232,12 +233,12 @@ class DplDowntimeMatrixExporter {
           v == 0 ? null : IntCellValue(v),
         IntCellValue(row.rowTotal),
       ];
-      sheet.appendRow(cells);
+      appendStyledRow(sheet,cells);
       lastMachine = row.machineName;
     }
 
     // Grand-total row.
-    sheet.appendRow(<CellValue?>[
+    appendStyledRow(sheet,<CellValue?>[
       null,
       TextCellValue('Grand Total'),
       for (final v in matrix.dateTotals) IntCellValue(v),
@@ -245,10 +246,10 @@ class DplDowntimeMatrixExporter {
     ]);
 
     // Blank spacer row.
-    sheet.appendRow(<CellValue?>[]);
+    appendStyledRow(sheet,<CellValue?>[]);
 
     // Formatted "X hr Y min" duration row under the grand-total row.
-    sheet.appendRow(<CellValue?>[
+    appendStyledRow(sheet,<CellValue?>[
       null,
       null,
       for (final v in matrix.dateTotals)
@@ -258,11 +259,11 @@ class DplDowntimeMatrixExporter {
 
     // Range banner appended at the bottom so it doesn't disturb the
     // pivot header row a user might paste-into-another-sheet.
-    sheet.appendRow(<CellValue?>[]);
-    sheet.appendRow(<CellValue?>[
+    appendStyledRow(sheet,<CellValue?>[]);
+    appendStyledRow(sheet,<CellValue?>[
       TextCellValue('Range: ${_rangeLabel(from, to)}'),
     ]);
-    sheet.appendRow(<CellValue?>[
+    appendStyledRow(sheet,<CellValue?>[
       TextCellValue(
         'Generated ${DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.now())}',
       ),

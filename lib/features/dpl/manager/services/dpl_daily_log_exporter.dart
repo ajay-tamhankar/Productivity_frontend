@@ -6,6 +6,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../providers/dpl_daily_log_report_provider.dart';
+import 'dpl_excel_style.dart';
 
 /// Client-side Excel + PDF builders for the Daily Log report. Pure
 /// functions over a [DplDailyLogReport] payload — same shape the
@@ -63,17 +64,17 @@ class DplDailyLogExporter {
     final dateFmt = DateFormat('dd MMM yyyy');
     final timeFmt = DateFormat('HH:mm');
 
-    sheet.appendRow([TextCellValue('Daily Production Log')]);
-    sheet.appendRow([TextCellValue(_rangeLabel(from, to))]);
-    sheet.appendRow([
+    appendStyledRow(sheet,[TextCellValue('Daily Production Log')]);
+    appendStyledRow(sheet,[TextCellValue(_rangeLabel(from, to))]);
+    appendStyledRow(sheet,[
       TextCellValue(
         'Generated on ${DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.now())}',
       ),
     ]);
-    sheet.appendRow(<CellValue?>[]);
+    appendStyledRow(sheet,<CellValue?>[]);
 
     if (report.rows.isEmpty) {
-      sheet.appendRow([TextCellValue('No plans in this range.')]);
+      appendStyledRow(sheet,[TextCellValue('No plans in this range.')]);
       final encoded = excel.encode();
       if (encoded == null) {
         throw Exception('Unable to generate Excel file.');
@@ -90,10 +91,10 @@ class DplDailyLogExporter {
     var grandDowntime = 0;
 
     for (final group in groups) {
-      sheet.appendRow([
+      appendStyledRow(sheet,[
         TextCellValue('Date: ${dateFmt.format(group.date)}'),
       ]);
-      sheet.appendRow(_headers.map(TextCellValue.new).toList());
+      appendStyledRow(sheet,_headers.map(TextCellValue.new).toList());
       var dayPlan = 0;
       var dayActual = 0;
       var dayRun = 0;
@@ -105,7 +106,7 @@ class DplDailyLogExporter {
         dayRun += row.runMinutes ?? 0;
         dayDowntime += row.downtimeMinutes;
 
-        sheet.appendRow([
+        appendStyledRow(sheet,[
           TextCellValue(dateFmt.format(row.planDate)),
           TextCellValue(row.planNo == null ? '#${row.planId}' : '#${row.planNo}'),
           TextCellValue(row.machineName),
@@ -128,7 +129,7 @@ class DplDailyLogExporter {
         ]);
       }
 
-      sheet.appendRow([
+      appendStyledRow(sheet,[
         TextCellValue('Day total'),
         TextCellValue(''),
         TextCellValue(''),
@@ -149,7 +150,7 @@ class DplDailyLogExporter {
         TextCellValue(_formatMin(dayDowntime)),
         TextCellValue(''),
       ]);
-      sheet.appendRow(<CellValue?>[]);
+      appendStyledRow(sheet,<CellValue?>[]);
 
       grandPlan += dayPlan;
       grandActual += dayActual;
@@ -157,7 +158,7 @@ class DplDailyLogExporter {
       grandDowntime += dayDowntime;
     }
 
-    sheet.appendRow([
+    appendStyledRow(sheet,[
       TextCellValue('Grand total'),
       TextCellValue(''),
       TextCellValue(''),

@@ -34,8 +34,24 @@ final dplDioProvider = Provider<Dio>((ref) {
         return handler.next(options);
       },
       onError: (error, handler) {
-        // Auto-logout on a hard 401 so the user is bounced back to login.
-        if (error.response?.statusCode == 401) {
+        // Auto-logout on:
+        //   * Any 401 — including the multi-tenant `ORG_MISMATCH` 401
+        //     fired when an admin reassigns the user's org server-side.
+        //   * 500 with code `NO_ORGANIZATION` — the user record itself
+        //     is misconfigured; no authenticated screen can be served
+        //     until an admin attaches an org, so we kick the session.
+        final status = error.response?.statusCode;
+        final body = error.response?.data;
+        String? apiCode;
+        if (body is Map) {
+          final raw = body['code'];
+          if (raw is String && raw.trim().isNotEmpty) {
+            apiCode = raw.trim();
+          }
+        }
+        final shouldLogout = status == 401 ||
+            (status != null && status >= 500 && apiCode == 'NO_ORGANIZATION');
+        if (shouldLogout) {
           // Fire and forget; we don't want to block the error pipeline.
           Future.microtask(() {
             try {

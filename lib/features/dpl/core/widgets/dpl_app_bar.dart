@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../dpl_organization_provider.dart';
 import 'dpl_user_menu.dart';
 import 'vistar_logo.dart';
 
@@ -64,6 +65,7 @@ class DplAppBar extends ConsumerWidget implements PreferredSizeWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final canPop = Navigator.of(context).canPop();
     final isPhone = MediaQuery.of(context).size.width < 600;
+    final org = ref.watch(dplActiveOrganizationProvider);
 
     // Leading slot has two flavors:
     //   * Back arrow — fixed 56dp slot so titles align consistently
@@ -134,16 +136,26 @@ class DplAppBar extends ConsumerWidget implements PreferredSizeWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            color: _textPrimary,
-                            fontWeight: FontWeight.w800,
-                            fontSize: isPhone ? 15 : 17,
-                            height: 1.15,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                title,
+                                style: TextStyle(
+                                  color: _textPrimary,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: isPhone ? 15 : 17,
+                                  height: 1.15,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (org != null) ...[
+                              const SizedBox(width: 8),
+                              _OrgPill(label: org.displayLabel, isPhone: isPhone),
+                            ],
+                          ],
                         ),
                         if (subtitle != null)
                           Padding(
@@ -171,6 +183,57 @@ class DplAppBar extends ConsumerWidget implements PreferredSizeWidget {
             ?bottom,
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Compact tenant chip rendered next to the AppBar title when the
+/// logged-in user has an active organization. Single visual cue that
+/// makes it obvious which org's data the screen is showing — important
+/// once more than one tenant is provisioned server-side.
+class _OrgPill extends StatelessWidget {
+  final String label;
+  final bool isPhone;
+
+  const _OrgPill({required this.label, required this.isPhone});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isPhone ? 7 : 9,
+        vertical: isPhone ? 2 : 3,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3E8F9),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFD8BFE9)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.business_rounded,
+            size: 11,
+            color: Color(0xFF4A1163),
+          ),
+          const SizedBox(width: 4),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: isPhone ? 110 : 200),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: const Color(0xFF4A1163),
+                fontWeight: FontWeight.w700,
+                fontSize: isPhone ? 10.5 : 11.5,
+                height: 1.0,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }

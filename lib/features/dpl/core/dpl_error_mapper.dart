@@ -53,8 +53,18 @@ class DplErrorMapper {
         message = apiMessage ?? 'Please check your input and try again.';
         break;
       case 401:
-        message = apiMessage ?? 'Session expired. Please log in again.';
-        apiCode ??= 'UNAUTHORIZED';
+        // Multi-tenant: when an admin reassigns a user's org server-side
+        // after they logged in, the next request comes back as 401 with
+        // code ORG_MISMATCH. Treat it like a hard session expiry so the
+        // Dio interceptor logs the user out and the message is honest
+        // about why.
+        if (apiCode == 'ORG_MISMATCH') {
+          message = apiMessage ??
+              'Your organization assignment changed. Please log in again.';
+        } else {
+          message = apiMessage ?? 'Session expired. Please log in again.';
+          apiCode ??= 'UNAUTHORIZED';
+        }
         break;
       case 403:
         message = apiMessage ??
@@ -73,7 +83,15 @@ class DplErrorMapper {
         break;
       default:
         if (statusCode != null && statusCode >= 500) {
-          message = 'Something went wrong, please try again.';
+          // Misconfigured-user case: a user record with no organization
+          // can't be served by any of the auto-filtered queries. Surface
+          // a concrete next step instead of the generic 500 string.
+          if (apiCode == 'NO_ORGANIZATION') {
+            message = apiMessage ??
+                'Your account has no organization assigned. Please contact your administrator.';
+          } else {
+            message = 'Something went wrong, please try again.';
+          }
         } else {
           message = apiMessage ?? fallback;
         }

@@ -17,6 +17,12 @@ class AppConstants {
   static const String offlineEntriesKey = 'OFFLINE_ENTRIES';
   static const String themeModeKey = 'THEME_MODE';
 
+  // DPL active-organization snapshot — written on login, read on app
+  // restart so the AppBar pill renders without an extra round-trip.
+  static const String dplOrgIdKey = 'DPL_ORG_ID';
+  static const String dplOrgCodeKey = 'DPL_ORG_CODE';
+  static const String dplOrgNameKey = 'DPL_ORG_NAME';
+
   // Roles
   static const String roleAdmin = 'ADMIN';
   static const String roleSupervisor = 'SUPERVISOR';

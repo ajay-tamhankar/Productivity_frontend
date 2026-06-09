@@ -67,6 +67,42 @@ class LocalStorageRepository {
     ]);
   }
 
+  // ------------------------------------------------------------
+  // DPL active-organization snapshot
+  // ------------------------------------------------------------
+
+  Future<void> saveDplOrganization({
+    required int id,
+    required String code,
+    required String name,
+  }) async {
+    await Future.wait([
+      _prefs.setInt(AppConstants.dplOrgIdKey, id),
+      _prefs.setString(AppConstants.dplOrgCodeKey, code),
+      _prefs.setString(AppConstants.dplOrgNameKey, name),
+    ]);
+  }
+
+  /// `(id, code, name)` of the active DPL org if one is stored, else
+  /// `null`. Used to re-hydrate the AppBar tenant pill on app start.
+  ({int id, String code, String name})? getDplOrganization() {
+    final id = _prefs.getInt(AppConstants.dplOrgIdKey);
+    if (id == null) return null;
+    return (
+      id: id,
+      code: _prefs.getString(AppConstants.dplOrgCodeKey) ?? '',
+      name: _prefs.getString(AppConstants.dplOrgNameKey) ?? '',
+    );
+  }
+
+  Future<void> clearDplOrganization() async {
+    await Future.wait([
+      _prefs.remove(AppConstants.dplOrgIdKey),
+      _prefs.remove(AppConstants.dplOrgCodeKey),
+      _prefs.remove(AppConstants.dplOrgNameKey),
+    ]);
+  }
+
   Future<void> clearAll() async {
     await _prefs.clear();
   }

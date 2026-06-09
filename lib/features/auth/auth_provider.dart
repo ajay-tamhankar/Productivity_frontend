@@ -4,6 +4,7 @@ import '../../data/api_services/auth_session_events.dart';
 import '../../data/models/user_model.dart';
 import '../../data/repositories/local_storage_repository.dart';
 import '../dpl/core/dpl_api_service.dart';
+import '../dpl/core/dpl_organization_provider.dart';
 import 'auth_repository.dart';
 
 part 'auth_provider.g.dart';
@@ -74,6 +75,10 @@ class AuthController extends _$AuthController {
     state = const AsyncValue.loading();
     final prefs = ref.read(localStorageRepositoryProvider);
     await prefs.clearAll();
+    // `clearAll()` already wipes prefs, but the active-org notifier
+    // holds the value in memory — null it out so the AppBar pill clears
+    // immediately on logout instead of lingering until next app start.
+    await ref.read(dplActiveOrganizationProvider.notifier).clear();
     state = const AsyncValue.data(null);
   }
 
@@ -114,6 +119,17 @@ class AuthController extends _$AuthController {
         name: name,
         role: role,
       );
+
+      // Snapshot the active tenant so the AppBar pill renders without
+      // an extra /me round-trip. Falls through silently if the backend
+      // omitted the org block — it just means no pill until /me is
+      // called by `dplActiveOrganizationProvider.refresh()`.
+      final org = profile?.organization;
+      if (org != null) {
+        await ref.read(dplActiveOrganizationProvider.notifier).set(org);
+      } else {
+        await ref.read(dplActiveOrganizationProvider.notifier).clear();
+      }
 
       state = AsyncValue.data(UserModel(
         id: userId,

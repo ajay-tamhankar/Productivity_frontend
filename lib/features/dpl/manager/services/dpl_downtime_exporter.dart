@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../core/dpl_constants.dart';
 import '../../models/dpl_reports.dart';
+import 'dpl_excel_style.dart';
 
 /// One row of the combined downtime export: a single reason on a
 /// single day.
@@ -134,18 +135,18 @@ class DplDowntimeExporter {
 
     final dateFmt = DateFormat('dd MMM yyyy');
 
-    sheet.appendRow([TextCellValue('Downtime — Date-wise with Reasons')]);
-    sheet.appendRow([TextCellValue(_rangeLabel(from, to))]);
-    sheet.appendRow([
+    appendStyledRow(sheet,[TextCellValue('Downtime — Date-wise with Reasons')]);
+    appendStyledRow(sheet,[TextCellValue(_rangeLabel(from, to))]);
+    appendStyledRow(sheet,[
       TextCellValue(
         'Generated on ${DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.now())}',
       ),
     ]);
-    sheet.appendRow(<CellValue?>[]);
+    appendStyledRow(sheet,<CellValue?>[]);
 
     final buckets = DplDowntimeAggregator.bucketByDate(report);
     if (buckets.isEmpty) {
-      sheet.appendRow([
+      appendStyledRow(sheet,[
         TextCellValue('No downtime logged in this range.'),
       ]);
       final encoded = excel.encode();
@@ -159,13 +160,13 @@ class DplDowntimeExporter {
     var grandEvents = 0;
 
     for (final bucket in buckets) {
-      sheet.appendRow([
+      appendStyledRow(sheet,[
         TextCellValue('Date: ${dateFmt.format(bucket.date)}'),
       ]);
-      sheet.appendRow(_headers.map(TextCellValue.new).toList());
+      appendStyledRow(sheet,_headers.map(TextCellValue.new).toList());
 
       for (final r in bucket.reasons) {
-        sheet.appendRow([
+        appendStyledRow(sheet,[
           TextCellValue(dateFmt.format(r.date)),
           TextCellValue(r.reason),
           TextCellValue(r.isPlanned ? 'Planned' : 'Unplanned'),
@@ -175,7 +176,7 @@ class DplDowntimeExporter {
         ]);
       }
 
-      sheet.appendRow([
+      appendStyledRow(sheet,[
         TextCellValue('Day total'),
         TextCellValue(''),
         TextCellValue(''),
@@ -183,13 +184,13 @@ class DplDowntimeExporter {
         TextCellValue(bucket.totalMinutes.toString()),
         TextCellValue(_formatHrsMin(bucket.totalMinutes)),
       ]);
-      sheet.appendRow(<CellValue?>[]);
+      appendStyledRow(sheet,<CellValue?>[]);
 
       grandMinutes += bucket.totalMinutes;
       grandEvents += bucket.totalEvents;
     }
 
-    sheet.appendRow([
+    appendStyledRow(sheet,[
       TextCellValue('Grand total'),
       TextCellValue(''),
       TextCellValue(''),

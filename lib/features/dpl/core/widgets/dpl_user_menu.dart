@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../auth/auth_provider.dart';
 import '../../../auth/change_password_dialog.dart';
+import '../dpl_organization_provider.dart';
 
 /// Shared profile button + popup used in every DPL AppBar.
 ///
@@ -81,6 +82,8 @@ class DplUserMenu extends ConsumerWidget {
         : (user?.username ?? 'User');
     final roleLabel = AppConstants.roleLabel(user?.role ?? '');
     final email = user?.username ?? '';
+    final orgLabel =
+        ref.read(dplActiveOrganizationProvider)?.displayLabel ?? '';
 
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final button = context.findRenderObject() as RenderBox;
@@ -107,8 +110,13 @@ class DplUserMenu extends ConsumerWidget {
         PopupMenuItem<_Action>(
           enabled: false,
           padding: EdgeInsets.zero,
-          height: 96,
-          child: _Header(name: name, role: roleLabel, email: email),
+          height: orgLabel.isEmpty ? 96 : 112,
+          child: _Header(
+            name: name,
+            role: roleLabel,
+            email: email,
+            org: orgLabel,
+          ),
         ),
         const PopupMenuItem<_Action>(
           enabled: false,
@@ -196,8 +204,14 @@ class _Header extends StatelessWidget {
   final String name;
   final String role;
   final String email;
+  final String org;
 
-  const _Header({required this.name, required this.role, required this.email});
+  const _Header({
+    required this.name,
+    required this.role,
+    required this.email,
+    this.org = '',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -278,6 +292,32 @@ class _Header extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (org.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.business_rounded,
+                        size: 11,
+                        color: DplUserMenu._textMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          org,
+                          style: const TextStyle(
+                            color: DplUserMenu._textMuted,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 11,
+                            height: 1.1,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

@@ -11,6 +11,7 @@ import '../models/dpl_downtime_reason.dart';
 import '../models/dpl_excel_preview.dart';
 import '../models/dpl_machine.dart';
 import '../models/dpl_manpower_log.dart';
+import '../models/dpl_organization.dart';
 import '../models/dpl_monthly_chart.dart';
 import '../models/dpl_part.dart';
 import '../models/dpl_production_plan.dart';
@@ -1958,19 +1959,36 @@ class DplUserProfile {
   final String email;
   final String role;
 
+  /// Backend now bundles the user's active organization on every
+  /// `/auth/login` and `/auth/me` response. `organizationId` is the FK
+  /// the JWT carries; `organization` is the resolved tenant record we
+  /// render in the AppBar / profile drawer. Both may be null if the
+  /// user record is misconfigured server-side — code handling that
+  /// case should treat it as the `NO_ORGANIZATION` error path.
+  final int? organizationId;
+  final DplOrganization? organization;
+
   const DplUserProfile({
     required this.id,
     required this.name,
     required this.email,
     required this.role,
+    this.organizationId,
+    this.organization,
   });
 
   factory DplUserProfile.fromJson(Map<String, dynamic> json) {
+    final rawOrg = json['organization'];
     return DplUserProfile(
       id: json['id'] is int ? json['id'] as int : 0,
       name: json['name']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
       role: json['role']?.toString() ?? '',
+      organizationId:
+          json['organization_id'] is int ? json['organization_id'] as int : null,
+      organization: rawOrg is Map
+          ? DplOrganization.fromJson(Map<String, dynamic>.from(rawOrg))
+          : null,
     );
   }
 }

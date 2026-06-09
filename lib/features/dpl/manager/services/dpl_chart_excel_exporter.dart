@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../models/dpl_monthly_chart.dart';
 import 'dpl_chart_style_tokens.dart';
+import 'dpl_excel_style.dart';
 
 /// Client-side Excel exporter that reproduces the company's
 /// "Daily Production Loading Chart" layout from a live
@@ -937,7 +938,8 @@ class _Styles {
     required ExcelColor bg,
     ExcelColor? fg,
     bool bold = false,
-    int? fontSize,
+    int fontSize = dplExcelFontSize,
+    String fontFamily = dplExcelFontFamily,
     HorizontalAlign h = HorizontalAlign.Center,
     VerticalAlign v = VerticalAlign.Center,
     TextWrapping? wrap,
@@ -948,6 +950,7 @@ class _Styles {
       fontColorHex: fg ?? ExcelColor.black,
       bold: bold,
       fontSize: fontSize,
+      fontFamily: fontFamily,
       horizontalAlign: h,
       verticalAlign: v,
       textWrapping: wrap,
