@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/widgets/shimmer_skeleton.dart';
+import '../dpl/core/dpl_api_service.dart';
+import 'auth_provider.dart';
 import 'auth_repository.dart';
 
 Future<void> showChangePasswordDialog(BuildContext context, WidgetRef ref) async {
@@ -52,7 +55,8 @@ class _ChangePasswordDialogState extends ConsumerState<_ChangePasswordDialog> {
   String? _validateNew(String? value) {
     final text = (value ?? '').trim();
     if (text.isEmpty) return 'New password is required.';
-    if (text.length < 6) return 'New password must be at least 6 characters.';
+    if (text.length < 8) return 'New password must be at least 8 characters.';
+    if (text.length > 128) return 'New password must be at most 128 characters.';
     if (text == _oldCtrl.text.trim()) return 'New password must be different.';
     return null;
   }
@@ -73,10 +77,23 @@ class _ChangePasswordDialogState extends ConsumerState<_ChangePasswordDialog> {
     });
 
     try {
-      await ref.read(authRepositoryProvider).changePassword(
-            oldPassword: _oldCtrl.text.trim(),
-            newPassword: _newCtrl.text.trim(),
-          );
+      final role = ref.read(authControllerProvider).asData?.value?.role ?? '';
+      if (AppConstants.isDplRole(role)) {
+        // DPL backend: POST /api/v1/dpl/auth/change-password with
+        // snake_case body. Distinct from the productivity endpoint,
+        // which is PATCH /auth/change-password with camelCase.
+        final res = await ref
+            .read(dplApiServiceProvider)
+            .changePassword(_oldCtrl.text.trim(), _newCtrl.text.trim());
+        if (res.isError) {
+          throw AuthException(_mapDplChangePasswordError(res.code, res.error));
+        }
+      } else {
+        await ref.read(authRepositoryProvider).changePassword(
+              oldPassword: _oldCtrl.text.trim(),
+              newPassword: _newCtrl.text.trim(),
+            );
+      }
 
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -89,6 +106,28 @@ class _ChangePasswordDialogState extends ConsumerState<_ChangePasswordDialog> {
         setState(() => _isSubmitting = false);
       }
     }
+  }
+
+  /// Map the DPL backend's documented `code` values to friendlier copy.
+  /// Falls back to the server-supplied message (or a generic line) when
+  /// the code is missing or unrecognised.
+  String _mapDplChangePasswordError(String? code, String? serverMessage) {
+    switch ((code ?? '').trim().toUpperCase()) {
+      case 'OLD_PASSWORD_MISMATCH':
+        return 'Old password is incorrect.';
+      case 'VALIDATION_ERROR':
+        return serverMessage?.trim().isNotEmpty == true
+            ? serverMessage!
+            : 'Please check your passwords and try again.';
+      case 'NO_TOKEN':
+      case 'TOKEN_EXPIRED':
+      case 'INVALID_TOKEN':
+      case 'INVALID_USER':
+      case 'ORG_MISMATCH':
+        return 'Your session has expired. Please log in again.';
+    }
+    final msg = serverMessage?.trim() ?? '';
+    return msg.isEmpty ? 'Failed to change password. Please try again.' : msg;
   }
 
   @override
@@ -145,7 +184,7 @@ class _ChangePasswordDialogState extends ConsumerState<_ChangePasswordDialog> {
                   enabled: !_isSubmitting,
                   decoration: InputDecoration(
                     labelText: 'New Password',
-                    helperText: 'Minimum 6 characters',
+                    helperText: 'Minimum 8 characters',
                     prefixIcon: const Icon(Icons.lock_reset_outlined),
                     suffixIcon: IconButton(
                       onPressed: () => setState(() => _newObscure = !_newObscure),
