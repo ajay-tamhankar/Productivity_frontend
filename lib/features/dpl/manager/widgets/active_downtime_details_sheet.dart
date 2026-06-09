@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/dpl_api_service.dart';
+import '../../core/dpl_organization_provider.dart';
 import '../../models/dpl_supervisor_today.dart';
 import '../../supervisor/widgets/live_timer_text.dart';
 import '../../supervisor/widgets/supervisor_error_helper.dart';
@@ -51,9 +52,15 @@ class _ManagerActiveDowntimeDetailsSheetState
     if (reason == null || !mounted) return;
 
     setState(() => _isStopping = true);
-    final res = await ref
-        .read(dplApiServiceProvider)
-        .managerCloseDowntime(widget.downtime.id, reason: reason);
+    // Backend's audit-log writer can't pull `organization_id` from the
+    // JWT on this route, so we pass the active org explicitly to avoid
+    // a 500 (`notNull Violation: DplAuditLog.organization_id`).
+    final orgId = ref.read(dplActiveOrganizationProvider)?.id;
+    final res = await ref.read(dplApiServiceProvider).managerCloseDowntime(
+          widget.downtime.id,
+          reason: reason,
+          organizationId: orgId,
+        );
     if (!mounted) return;
     setState(() => _isStopping = false);
 

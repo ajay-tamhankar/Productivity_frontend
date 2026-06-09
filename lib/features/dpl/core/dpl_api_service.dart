@@ -1785,11 +1785,15 @@ class DplApiService {
   /// recovery action that force-closes an orphaned active downtime
   /// (e.g. a supervisor logged off without resuming, leaving the red
   /// banner stuck). [reason] is optional context that gets persisted on
-  /// the closed event. Returns the now-closed event so callers can
-  /// double-check `end_time` / `status` if they need to.
+  /// the closed event. [organizationId] is sent in the body because the
+  /// backend's audit-log writer can't derive it from the JWT here and
+  /// otherwise 500s with `DplAuditLog.organization_id cannot be null`.
+  /// Returns the now-closed event so callers can double-check
+  /// `end_time` / `status` if they need to.
   Future<DplApiResponse<DplDowntimeEvent>> managerCloseDowntime(
     int downtimeId, {
     String? reason,
+    int? organizationId,
   }) {
     return _send<DplDowntimeEvent>(
       () => _dio.post(
@@ -1797,6 +1801,7 @@ class DplApiService {
         data: {
           if (reason != null && reason.trim().isNotEmpty)
             'reason': reason.trim(),
+          'organization_id': ?organizationId,
         },
       ),
       fallback: 'Failed to close downtime.',
