@@ -1,7 +1,14 @@
 # productivity_tracker
 
 A new Flutter project.
+login details 
+Role	        Email	                   Password	         
+dpl_dispatch	dispatch@vistarlogitek.com	ChangeMe@123 
+dpl_qa	        qa@vistarlogitek.com	    ChangeMe@123	
+dpl_pdi	        pdi@vistarlogitek.com	    ChangeMe@123	
 
+
+A "bucket" = one unique (organization, machine, part)
 ## Getting Started
 
 This project is a starting point for a Flutter application.

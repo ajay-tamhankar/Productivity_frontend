@@ -34,6 +34,13 @@ class AppConstants {
   /// cannot create / edit / delete anything.
   static const String roleDplCustomer = 'DPL_CUSTOMER';
 
+  /// Downstream "production summary" viewers — Dispatch / QA / PDI.
+  /// They share a single Production Summary screen and have no other
+  /// access into the DPL module.
+  static const String roleDplDispatch = 'DPL_DISPATCH';
+  static const String roleDplQa = 'DPL_QA';
+  static const String roleDplPdi = 'DPL_PDI';
+
   static const List<String> assignableRoles = <String>[
     roleAdmin,
     roleSupervisor,
@@ -59,6 +66,12 @@ class AppConstants {
         return 'DPL Supervisor';
       case roleDplCustomer:
         return 'DPL Customer';
+      case roleDplDispatch:
+        return 'DPL Dispatch';
+      case roleDplQa:
+        return 'DPL QA';
+      case roleDplPdi:
+        return 'DPL PDI';
       default:
         return normalizeRole(role);
     }
@@ -83,8 +96,21 @@ class AppConstants {
   static bool isDplCustomerRole(String role) =>
       normalizeRole(role) == roleDplCustomer;
 
+  static bool isDplDispatchRole(String role) =>
+      normalizeRole(role) == roleDplDispatch;
+
+  static bool isDplQaRole(String role) => normalizeRole(role) == roleDplQa;
+
+  static bool isDplPdiRole(String role) => normalizeRole(role) == roleDplPdi;
+
+  /// Any of the three downstream "summary-only" roles. These users land
+  /// on the Production Summary screen and have no other DPL access.
+  static bool isDplSummaryViewerRole(String role) =>
+      isDplDispatchRole(role) || isDplQaRole(role) || isDplPdiRole(role);
+
   static bool isDplRole(String role) =>
       isDplManagerRole(role) ||
       isDplSupervisorRole(role) ||
-      isDplCustomerRole(role);
+      isDplCustomerRole(role) ||
+      isDplSummaryViewerRole(role);
 }

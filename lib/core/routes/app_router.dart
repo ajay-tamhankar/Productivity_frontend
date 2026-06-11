@@ -16,6 +16,7 @@ import '../../features/dpl/manager/screens/identity_audit_screen.dart';
 import '../../features/dpl/manager/screens/masters/shifts_master_screen.dart';
 import '../../features/dpl/manager/screens/plan_detail_screen.dart';
 import '../../features/dpl/manager/screens/upload_plan_screen.dart';
+import '../../features/dpl/summary/summary_shell.dart';
 import '../../features/dpl/supervisor/screens/machine_plan_screen.dart';
 import '../../features/dpl/supervisor/screens/plan_execution_screen.dart';
 import '../../features/dpl/supervisor/screens/supervisor_shell.dart';
@@ -41,6 +42,7 @@ GoRouter appRouter(Ref ref) {
       const newEntryPath = '/new-entry';
       const dplManagerPath = '/dpl/manager';
       const dplSupervisorPath = '/dpl/supervisor';
+      const dplSummaryPath = '/dpl/summary';
 
       final isAuth = authState.value != null;
       final isLoggingIn = state.matchedLocation == loginPath;
@@ -50,6 +52,8 @@ GoRouter appRouter(Ref ref) {
       final isDplManagerRole = AppConstants.isDplManagerRole(role);
       final isDplSupervisorRole = AppConstants.isDplSupervisorRole(role);
       final isDplCustomerRole = AppConstants.isDplCustomerRole(role);
+      final isDplSummaryViewerRole =
+          AppConstants.isDplSummaryViewerRole(role);
 
       final defaultDashboardPath = isDplManagerRole
           ? dplManagerPath
@@ -57,11 +61,13 @@ GoRouter appRouter(Ref ref) {
               ? dplSupervisorPath
               : isDplCustomerRole
                   ? dplManagerPath
-                  : isAdminRole
-                      ? adminDashboardPath
-                      : isBrinRole
-                          ? brinDashboardPath
-                          : operatorDashboardPath;
+                  : isDplSummaryViewerRole
+                      ? dplSummaryPath
+                      : isAdminRole
+                          ? adminDashboardPath
+                          : isBrinRole
+                              ? brinDashboardPath
+                              : operatorDashboardPath;
 
       // If still loading init state, don't redirect aggressively
       if (authState.isLoading && !isAuth) return null;
@@ -86,7 +92,8 @@ GoRouter appRouter(Ref ref) {
               isBrinRole ||
               isDplManagerRole ||
               isDplSupervisorRole ||
-              isDplCustomerRole)) {
+              isDplCustomerRole ||
+              isDplSummaryViewerRole)) {
         return defaultDashboardPath;
       }
       if (state.matchedLocation == newEntryPath && isBrinRole) {
@@ -111,6 +118,13 @@ GoRouter appRouter(Ref ref) {
       }
       if (state.matchedLocation.startsWith('/dpl/supervisor') &&
           !isDplSupervisorRole) {
+        return defaultDashboardPath;
+      }
+      // Sandbox the Production Summary shell to the three summary-only
+      // roles. Manager / Supervisor / Customer have their own shells —
+      // they should never end up under /dpl/summary.
+      if (state.matchedLocation.startsWith('/dpl/summary') &&
+          !isDplSummaryViewerRole) {
         return defaultDashboardPath;
       }
 
@@ -180,6 +194,13 @@ GoRouter appRouter(Ref ref) {
             builder: (context, state) => const DplIdentityAuditScreen(),
           ),
         ],
+      ),
+      // DPL Production Summary — single-tab shell shared by the
+      // Dispatch / QA / PDI roles. AppBar title is picked from the
+      // authenticated user's role inside the shell.
+      GoRoute(
+        path: '/dpl/summary',
+        builder: (context, state) => const DplSummaryShell(),
       ),
       // DPL Supervisor — Phase 2 shell with bottom nav.
       GoRoute(

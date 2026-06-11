@@ -126,11 +126,37 @@ class DplPaths {
   // Manager — live banner (active downtimes across all plans/machines).
   static const String managerActiveDowntimes = '/manager/active-downtimes';
 
+  // Production summary — aggregate of total actual qty produced per
+  // (machine, part) bucket. Same endpoint is consumed by the Manager
+  // and by the downstream Dispatch / QA / PDI viewers; backend gates
+  // access by JWT role.
+  static const String productionSummary =
+      '/manager/production-summary';
+  static const String productionSummaryOne =
+      '/manager/production-summary/one';
+
   // Manager — force-close a stuck/orphaned active downtime. Manager-
   // scoped recovery route; differs from the supervisor `resume` route
   // in that it doesn't require the original supervisor to be online.
   static String managerDowntimeClose(int downtimeId) =>
       '/manager/downtime/$downtimeId/close';
+
+  // Dispatch slip workflow — Dispatch → QA → PDI three-step approval
+  // pipeline with an HMAC-signed QR payload printed on the slip. Roles
+  // are gated server-side; the verify endpoint is public.
+  static const String dispatchSlips = '/dispatch/slips';
+  static String dispatchSlipById(int id) => '/dispatch/slips/$id';
+  static String dispatchSlipQaApprove(int id) =>
+      '/dispatch/slips/$id/qa-approve';
+  static String dispatchSlipQaReject(int id) =>
+      '/dispatch/slips/$id/qa-reject';
+  static String dispatchSlipPdiApprove(int id) =>
+      '/dispatch/slips/$id/pdi-approve';
+  static String dispatchSlipPdiReject(int id) =>
+      '/dispatch/slips/$id/pdi-reject';
+  static String dispatchSlipMarkDispatched(int id) =>
+      '/dispatch/slips/$id/mark-dispatched';
+  static const String dispatchSlipVerify = '/dispatch/slips/verify';
 }
 
 /// Allowed `context` values for the identity-verify endpoint.
@@ -214,6 +240,57 @@ class DplReportFormat {
   static const String xlsx = 'xlsx';
   static const String pdf = 'pdf';
   static const String csv = 'csv';
+}
+
+/// Lifecycle status values for `dpl.dpl_dispatch_slips`.
+///
+/// Status machine:
+///   pending_qa → pending_pdi → approved → dispatched
+///              ↘ rejected ↙
+class DplDispatchSlipStatus {
+  static const String pendingQa = 'pending_qa';
+  static const String pendingPdi = 'pending_pdi';
+  static const String approved = 'approved';
+  static const String dispatched = 'dispatched';
+  static const String rejected = 'rejected';
+
+  static const List<String> all = <String>[
+    pendingQa,
+    pendingPdi,
+    approved,
+    dispatched,
+    rejected,
+  ];
+
+  /// Short, user-facing label.
+  static String label(String status) {
+    switch (status) {
+      case pendingQa:
+        return 'Pending QA';
+      case pendingPdi:
+        return 'Pending PDI';
+      case approved:
+        return 'Approved';
+      case dispatched:
+        return 'Dispatched';
+      case rejected:
+        return 'Rejected';
+      default:
+        if (status.isEmpty) return '-';
+        return status[0].toUpperCase() + status.substring(1);
+    }
+  }
+
+  /// True while the slip is still moving through the approval pipeline.
+  static bool isOpen(String status) =>
+      status == pendingQa || status == pendingPdi;
+
+  /// True once both quality gates have signed off (QR is populated).
+  static bool isApproved(String status) => status == approved;
+
+  /// True once stock has physically left the plant.
+  static bool isClosed(String status) =>
+      status == dispatched || status == rejected;
 }
 
 /// Default copy used in the upload-plan form.

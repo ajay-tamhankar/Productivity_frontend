@@ -15,6 +15,7 @@ import '../models/dpl_organization.dart';
 import '../models/dpl_monthly_chart.dart';
 import '../models/dpl_part.dart';
 import '../models/dpl_production_plan.dart';
+import '../models/dpl_production_summary.dart';
 import '../models/dpl_production_plan_item.dart';
 import '../models/dpl_reports.dart';
 import '../models/dpl_shift.dart';
@@ -23,6 +24,7 @@ import '../models/dpl_start_stop.dart';
 import '../models/dpl_supervisor.dart';
 import '../models/dpl_supervisor_plan_detail.dart';
 import '../models/dpl_carry_candidate.dart';
+import '../models/dpl_dispatch_slip.dart';
 import '../models/dpl_identity.dart';
 import '../models/dpl_item_pause.dart';
 import '../models/dpl_supervisor_today.dart';
@@ -1816,6 +1818,312 @@ class DplApiService {
         );
       },
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Production summary — aggregate of `total_actual_qty` per (machine,
+  // part) bucket. Shared between Manager and the downstream Dispatch /
+  // QA / PDI viewers; the backend gates access by JWT role.
+  // ---------------------------------------------------------------------------
+
+  /// `GET /manager/production-summary` — paginated, searchable,
+  /// filterable rollup of every (machine, part) bucket the active
+  /// organization has ever planned for.
+  ///
+  /// All filter / sort args are optional; passing none returns the
+  /// first page of every bucket sorted by `last_produced_at desc`.
+  Future<DplApiResponse<DplProductionSummaryPage>> listProductionSummary({
+    int? machineId,
+    int? partId,
+    String? q,
+    DateTime? from,
+    DateTime? to,
+    bool? onlyProduced,
+    String? sort,
+    String? order,
+    int? page,
+    int? limit,
+  }) {
+    return _send<DplProductionSummaryPage>(
+      () => _dio.get(
+        DplPaths.productionSummary,
+        queryParameters: _cleanQuery({
+          'machine_id': ?machineId,
+          'part_id': ?partId,
+          if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+          if (from != null) 'from': _ymd(from),
+          if (to != null) 'to': _ymd(to),
+          if (onlyProduced == true) 'only_produced': 'true',
+          if (sort != null && sort.isNotEmpty) 'sort': sort,
+          if (order != null && order.isNotEmpty) 'order': order,
+          'page': ?page,
+          'limit': ?limit,
+        }),
+      ),
+      fallback: 'Failed to load production summary.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DplProductionSummaryPage.fromJson(
+            Map<String, dynamic>.from(data),
+          );
+        }
+        if (data is List) {
+          // Bare-array shape — no pagination / totals envelope.
+          final items = data
+              .whereType<Map>()
+              .map((e) => DplProductionSummary.fromJson(
+                    Map<String, dynamic>.from(e),
+                  ))
+              .toList();
+          return DplProductionSummaryPage(
+            items: items,
+            page: 1,
+            limit: items.length,
+            total: items.length,
+            totalPages: items.isEmpty ? 0 : 1,
+            totals: const DplProductionSummaryTotals(),
+          );
+        }
+        return DplProductionSummaryPage.empty();
+      },
+    );
+  }
+
+  /// `GET /manager/production-summary/one?machine_id=&part_id=` —
+  /// fetches a single bucket for a (machine, part) pair the user picked
+  /// from a dropdown. Returns `null` when the backend responds 404.
+  Future<DplApiResponse<DplProductionSummary?>> getProductionSummaryOne({
+    required int machineId,
+    required int partId,
+  }) {
+    return _send<DplProductionSummary?>(
+      () => _dio.get(
+        DplPaths.productionSummaryOne,
+        queryParameters: _cleanQuery({
+          'machine_id': machineId,
+          'part_id': partId,
+        }),
+      ),
+      fallback: 'Failed to load production summary entry.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DplProductionSummary.fromJson(
+            Map<String, dynamic>.from(data),
+          );
+        }
+        return null;
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dispatch slips — Dispatch → QA → PDI three-step approval pipeline.
+  // The slip carries an HMAC-signed QR payload on PDI approval that gate
+  // staff can scan from the printed paper. Role gating is server-side.
+  // ---------------------------------------------------------------------------
+
+  /// `POST /dispatch/slips` — Dispatch creates a new slip request for
+  /// [qty] units of [partId] off [machineId]. Backend enforces
+  /// `qty <= total_actual − sum(non-rejected slips)` and returns
+  /// `INSUFFICIENT_QTY` if violated.
+  Future<DplApiResponse<DplDispatchSlip>> createDispatchSlip({
+    required int machineId,
+    required int partId,
+    required int qty,
+    String? notes,
+  }) {
+    return _send<DplDispatchSlip>(
+      () => _dio.post(
+        DplPaths.dispatchSlips,
+        data: {
+          'machine_id': machineId,
+          'part_id': partId,
+          'qty': qty,
+          if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        },
+      ),
+      fallback: 'Failed to create dispatch slip.',
+      fromJson: _oneDispatchSlip,
+    );
+  }
+
+  /// `GET /dispatch/slips` — paginated list, server-side role-filtered.
+  /// QA inbox: `?status=pending_qa`. PDI inbox: `?status=pending_pdi`.
+  /// Dispatch defaults to their own slips across every status.
+  Future<DplApiResponse<DplDispatchSlipPage>> listDispatchSlips({
+    String? status,
+    int? machineId,
+    int? partId,
+    String? q,
+    DateTime? from,
+    DateTime? to,
+    int? page,
+    int? limit,
+  }) {
+    return _send<DplDispatchSlipPage>(
+      () => _dio.get(
+        DplPaths.dispatchSlips,
+        queryParameters: _cleanQuery({
+          if (status != null && status.isNotEmpty) 'status': status,
+          'machine_id': ?machineId,
+          'part_id': ?partId,
+          if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+          if (from != null) 'from': _ymd(from),
+          if (to != null) 'to': _ymd(to),
+          'page': ?page,
+          'limit': ?limit,
+        }),
+      ),
+      fallback: 'Failed to load dispatch slips.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DplDispatchSlipPage.fromJson(Map<String, dynamic>.from(data));
+        }
+        if (data is List) {
+          final items = data
+              .whereType<Map>()
+              .map((e) => DplDispatchSlip.fromJson(Map<String, dynamic>.from(e)))
+              .toList();
+          return DplDispatchSlipPage(
+            items: items,
+            page: 1,
+            limit: items.length,
+            total: items.length,
+            totalPages: items.isEmpty ? 0 : 1,
+            totals: const DplDispatchSlipTotals(),
+          );
+        }
+        return DplDispatchSlipPage.empty();
+      },
+    );
+  }
+
+  /// `GET /dispatch/slips/:id` — full slip, used by the printable detail
+  /// screen so it can render the QR + signatures fresh.
+  Future<DplApiResponse<DplDispatchSlip>> getDispatchSlip(int id) {
+    return _send<DplDispatchSlip>(
+      () => _dio.get(DplPaths.dispatchSlipById(id)),
+      fallback: 'Failed to load dispatch slip.',
+      fromJson: _oneDispatchSlip,
+    );
+  }
+
+  /// `POST /dispatch/slips/:id/qa-approve` — QA signs off; status moves
+  /// to `pending_pdi`. Server rejects with `INVALID_STATUS` if the slip
+  /// isn't currently `pending_qa`.
+  Future<DplApiResponse<DplDispatchSlip>> qaApproveDispatchSlip(
+    int id, {
+    String? remarks,
+  }) {
+    return _send<DplDispatchSlip>(
+      () => _dio.post(
+        DplPaths.dispatchSlipQaApprove(id),
+        data: {
+          if (remarks != null && remarks.trim().isNotEmpty)
+            'remarks': remarks.trim(),
+        },
+      ),
+      fallback: 'Failed to QA-approve slip.',
+      fromJson: _oneDispatchSlip,
+    );
+  }
+
+  Future<DplApiResponse<DplDispatchSlip>> qaRejectDispatchSlip(
+    int id, {
+    required String reason,
+  }) {
+    return _send<DplDispatchSlip>(
+      () => _dio.post(
+        DplPaths.dispatchSlipQaReject(id),
+        data: {'reason': reason.trim()},
+      ),
+      fallback: 'Failed to reject slip.',
+      fromJson: _oneDispatchSlip,
+    );
+  }
+
+  /// `POST /dispatch/slips/:id/pdi-approve` — final gate; response carries
+  /// the populated `qr_payload`. Backend will return `SAME_USER_FORBIDDEN`
+  /// if the same user QA-approved this slip.
+  Future<DplApiResponse<DplDispatchSlip>> pdiApproveDispatchSlip(
+    int id, {
+    String? remarks,
+  }) {
+    return _send<DplDispatchSlip>(
+      () => _dio.post(
+        DplPaths.dispatchSlipPdiApprove(id),
+        data: {
+          if (remarks != null && remarks.trim().isNotEmpty)
+            'remarks': remarks.trim(),
+        },
+      ),
+      fallback: 'Failed to PDI-approve slip.',
+      fromJson: _oneDispatchSlip,
+    );
+  }
+
+  Future<DplApiResponse<DplDispatchSlip>> pdiRejectDispatchSlip(
+    int id, {
+    required String reason,
+  }) {
+    return _send<DplDispatchSlip>(
+      () => _dio.post(
+        DplPaths.dispatchSlipPdiReject(id),
+        data: {'reason': reason.trim()},
+      ),
+      fallback: 'Failed to reject slip.',
+      fromJson: _oneDispatchSlip,
+    );
+  }
+
+  /// `POST /dispatch/slips/:id/mark-dispatched` — Dispatch (or Manager)
+  /// confirms the goods have physically left. Permanently decreases the
+  /// available-for-dispatch qty on the parent (machine, part) bucket.
+  Future<DplApiResponse<DplDispatchSlip>> markDispatchSlipDispatched(int id) {
+    return _send<DplDispatchSlip>(
+      () => _dio.post(DplPaths.dispatchSlipMarkDispatched(id)),
+      fallback: 'Failed to mark slip dispatched.',
+      fromJson: _oneDispatchSlip,
+    );
+  }
+
+  /// `GET /dispatch/slips/verify?token=…` — public verifier consumed by
+  /// gate staff scanning the printed QR. No Authorization header is
+  /// required by the backend, but we send the JWT anyway when present;
+  /// the route ignores it.
+  Future<DplApiResponse<DplDispatchSlipVerification>> verifyDispatchSlip(
+    String token,
+  ) {
+    return _send<DplDispatchSlipVerification>(
+      () => _dio.get(
+        DplPaths.dispatchSlipVerify,
+        queryParameters: {'token': token},
+      ),
+      fallback: 'Failed to verify slip.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DplDispatchSlipVerification.fromJson(
+            Map<String, dynamic>.from(data),
+          );
+        }
+        return const DplDispatchSlipVerification(verified: false);
+      },
+    );
+  }
+
+  /// Shared fromJson for every single-slip endpoint. Tolerates both the
+  /// envelope-stripped shape (`{ id: ... }`) and a `{ slip: { id: ... } }`
+  /// wrapper.
+  DplDispatchSlip _oneDispatchSlip(dynamic data) {
+    if (data is Map) {
+      final map = Map<String, dynamic>.from(data);
+      final inner = map['slip'];
+      if (inner is Map) {
+        return DplDispatchSlip.fromJson(Map<String, dynamic>.from(inner));
+      }
+      return DplDispatchSlip.fromJson(map);
+    }
+    throw const FormatException('Expected object response for dispatch slip.');
   }
 
   /// `GET /manager/trolley-photos/:id/image` — manager view of the

@@ -46,7 +46,13 @@ class _StopConfirmDialogState extends State<StopConfirmDialog> {
 
   void _onQtyChanged(String v) {
     final n = int.tryParse(v.trim()) ?? 0;
-    setState(() => _actualQty = n < 0 ? 0 : n);
+    final clamped = n < 0 ? 0 : (n > widget.planQty ? widget.planQty : n);
+    if (clamped != n) {
+      _qtyCtrl.text = clamped.toString();
+      _qtyCtrl.selection =
+          TextSelection.collapsed(offset: _qtyCtrl.text.length);
+    }
+    setState(() => _actualQty = clamped);
   }
 
   @override
@@ -65,7 +71,9 @@ class _StopConfirmDialogState extends State<StopConfirmDialog> {
     // corrupts the day's report. Supervisor should either enter the
     // real qty, keep the item running, or carry the leftover forward
     // via the manager.
-    final blocked = _actualQty <= 0;
+    final zeroBlocked = _actualQty <= 0;
+    final overPlanBlocked = _actualQty > widget.planQty;
+    final blocked = zeroBlocked || overPlanBlocked;
 
     return AlertDialog(
       title: const Text('Complete production?'),
@@ -83,9 +91,11 @@ class _StopConfirmDialogState extends State<StopConfirmDialog> {
                 labelText: 'Actual Qty',
                 prefixIcon:
                     const Icon(Icons.confirmation_number_outlined),
-                errorText: blocked
-                    ? 'Actual qty must be at least 1 to complete.'
-                    : null,
+                errorText: overPlanBlocked
+                    ? 'Actual qty cannot exceed Plan qty (${widget.planQty}).'
+                    : (zeroBlocked
+                        ? 'Actual qty must be at least 1 to complete.'
+                        : null),
               ),
             ),
             const SizedBox(height: 10),
@@ -124,7 +134,7 @@ class _StopConfirmDialogState extends State<StopConfirmDialog> {
                 ],
               ),
             ),
-            if (blocked) ...[
+            if (zeroBlocked) ...[
               const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.all(10),
@@ -150,6 +160,40 @@ class _StopConfirmDialogState extends State<StopConfirmDialog> {
                         'next shift.',
                         style: TextStyle(
                           color: Color(0xFF92400E),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (overPlanBlocked) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEE2E2),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFCA5A5)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      color: Color(0xFFB3261E),
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Actual qty ($_actualQty) cannot exceed Plan qty '
+                        '(${widget.planQty}). Please enter a value less than '
+                        'or equal to the planned quantity.',
+                        style: const TextStyle(
+                          color: Color(0xFFB3261E),
                           fontWeight: FontWeight.w600,
                           fontSize: 12,
                         ),

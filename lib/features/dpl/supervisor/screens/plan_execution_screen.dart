@@ -358,7 +358,12 @@ class _PlanExecutionScreenState extends ConsumerState<PlanExecutionScreen> {
             isResumingPause: _isResumingPause,
             onStart: () => _start(item),
             onStop: () => _stop(item),
-            onLocalQtyChange: _onLocalQtyChange,
+            onLocalQtyChange: (q) {
+              // Enforce: actual qty cannot exceed plan qty.
+              final capped =
+                  q > item.planQty ? item.planQty : (q < 0 ? 0 : q);
+              _onLocalQtyChange(capped);
+            },
             onOpenDowntime: () => _openDowntime(detail, item),
             onResume: () =>
                 _resume(activeDowntime?.id ?? detail.activeDowntime!.id),
@@ -773,28 +778,6 @@ class _InProgressView extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 48,
-          child: OutlinedButton.icon(
-            onPressed: isPausing ? null : onPause,
-            icon: isPausing
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.pause_circle_outline),
-            label: Text(isPausing ? 'Pausing…' : 'Pause Item'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFFB45309),
-              side: const BorderSide(
-                color: Color(0xFFB45309),
-                width: 1.4,
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -1143,6 +1126,7 @@ class _ActualQtyStepper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final atCap = localActualQty >= planQty;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
@@ -1197,7 +1181,8 @@ class _ActualQtyStepper extends StatelessWidget {
               ),
               _stepBtn(
                 icon: Icons.add,
-                onTap: () => onChange(localActualQty + 1),
+                onTap: atCap ? null : () => onChange(localActualQty + 1),
+                disabled: atCap,
               ),
             ],
           ),
@@ -1209,26 +1194,49 @@ class _ActualQtyStepper extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
+          if (atCap) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Actual qty cannot exceed Plan qty ($planQty).',
+              style: const TextStyle(
+                color: Color(0xFFB3261E),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _stepBtn({required IconData icon, required VoidCallback onTap}) {
+  Widget _stepBtn({
+    required IconData icon,
+    required VoidCallback? onTap,
+    bool disabled = false,
+  }) {
     return Material(
-      color: const Color(0xFFEFF3FB),
+      color: disabled ? const Color(0xFFF1F4F9) : const Color(0xFFEFF3FB),
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () {
-          HapticFeedback.lightImpact();
-          onTap();
-        },
+        onTap: onTap == null
+            ? null
+            : () {
+                HapticFeedback.lightImpact();
+                onTap();
+              },
         child: Container(
           width: 56,
           height: 56,
           alignment: Alignment.center,
-          child: Icon(icon, color: const Color(0xFF1D4ED8), size: 26),
+          child: Icon(
+            icon,
+            color: disabled
+                ? const Color(0xFFB6C0CE)
+                : const Color(0xFF1D4ED8),
+            size: 26,
+          ),
         ),
       ),
     );

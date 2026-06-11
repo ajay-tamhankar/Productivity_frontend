@@ -62,6 +62,18 @@ dependencies:
   google_fonts: ^6.2.1
   # Loading skeletons on DPL screens.
   shimmer: ^3.0.0
+  # QR code rendering on the dispatch slip (Dispatch → QA → PDI flow).
+  # The payload is an HMAC-signed JWT-style token the backend generates
+  # on PDI approval; we just render it as a scannable square.
+  qr_flutter: ^4.1.0
+  # System print dialog for the printable dispatch slip — wraps a `pdf`
+  # document and hands it to Android/iOS/web's native print sheet.
+  printing: ^5.13.4
+  # Camera-based QR scanning for the in-app dispatch-slip verifier.
+  # Hits the backend's public `/dispatch/slips/verify` endpoint with the
+  # scanned token and renders the verified slip in human-readable form
+  # (names, not IDs).
+  mobile_scanner: ^6.0.10
 
 dev_dependencies:
   flutter_test:
