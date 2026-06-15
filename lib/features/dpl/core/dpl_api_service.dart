@@ -26,6 +26,7 @@ import '../models/dpl_supervisor_plan_detail.dart';
 import '../models/dpl_carry_candidate.dart';
 import '../models/dpl_dispatch_slip.dart';
 import '../models/dpl_identity.dart';
+import '../models/dpl_plant.dart';
 import '../models/dpl_item_pause.dart';
 import '../models/dpl_supervisor_today.dart';
 import '../models/dpl_trolley_photo.dart';
@@ -1833,6 +1834,7 @@ class DplApiService {
   /// All filter / sort args are optional; passing none returns the
   /// first page of every bucket sorted by `last_produced_at desc`.
   Future<DplApiResponse<DplProductionSummaryPage>> listProductionSummary({
+    String? plantCode,
     int? machineId,
     int? partId,
     String? q,
@@ -1848,6 +1850,8 @@ class DplApiService {
       () => _dio.get(
         DplPaths.productionSummary,
         queryParameters: _cleanQuery({
+          if (plantCode != null && plantCode.isNotEmpty)
+            'plant_code': plantCode,
           'machine_id': ?machineId,
           'part_id': ?partId,
           if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
@@ -1917,6 +1921,31 @@ class DplApiService {
   }
 
   // ---------------------------------------------------------------------------
+  // Plants — hardcoded 3-plant mapping (Nexon EV / TML PV / MG Motors).
+  // Backend serves a fixed array from a config file; promote to a DB
+  // table later if admins ever need to edit the mapping.
+  // ---------------------------------------------------------------------------
+
+  /// `GET /plants` — returns the three plants with the machines each
+  /// owns. Cached on the FE side because the list is effectively
+  /// static for v1.
+  Future<DplApiResponse<List<DplPlant>>> listPlants() {
+    return _send<List<DplPlant>>(
+      () => _dio.get(DplPaths.plants),
+      fallback: 'Failed to load plants.',
+      fromJson: (data) {
+        if (data is List) {
+          return data
+              .whereType<Map>()
+              .map((e) => DplPlant.fromJson(Map<String, dynamic>.from(e)))
+              .toList(growable: false);
+        }
+        return const <DplPlant>[];
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Dispatch slips — Dispatch → QA → PDI three-step approval pipeline.
   // The slip carries an HMAC-signed QR payload on PDI approval that gate
   // staff can scan from the printed paper. Role gating is server-side.
@@ -1926,20 +1955,36 @@ class DplApiService {
   /// [qty] units of [partId] off [machineId]. Backend enforces
   /// `qty <= total_actual − sum(non-rejected slips)` and returns
   /// `INSUFFICIENT_QTY` if violated.
+  /// `POST /dispatch/slips` — multi-item slip creation.
+  ///
+  /// As of PR 3 the slip body carries `plant_code`, optional
+  /// `vehicle_no`, and a non-empty `items[]` array of
+  /// `(machine_id, part_id, qty)` triplets. Server validates that every
+  /// item's machine belongs to the chosen plant, sums duplicate
+  /// (machine, part) entries before the availability check, signs the
+  /// QR payload at insert time, and returns the hydrated slip.
+  ///
+  /// Errors:
+  ///   * 400 `INVALID_PLANT_CODE` — unknown plant
+  ///   * 400 `INVALID_PLANT_MACHINE` — item's machine isn't in plant
+  ///   * 400 `EMPTY_ITEMS` — items[] is empty
+  ///   * 409 `INSUFFICIENT_QTY` — item.qty > bucket.available
   Future<DplApiResponse<DplDispatchSlip>> createDispatchSlip({
-    required int machineId,
-    required int partId,
-    required int qty,
+    required String plantCode,
+    required List<DispatchSlipItemRequest> items,
+    String? vehicleNo,
     String? notes,
   }) {
     return _send<DplDispatchSlip>(
       () => _dio.post(
         DplPaths.dispatchSlips,
         data: {
-          'machine_id': machineId,
-          'part_id': partId,
-          'qty': qty,
-          if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+          'plant_code': plantCode,
+          if (vehicleNo != null && vehicleNo.trim().isNotEmpty)
+            'vehicle_no': vehicleNo.trim(),
+          if (notes != null && notes.trim().isNotEmpty)
+            'notes': notes.trim(),
+          'items': items.map((i) => i.toJson()).toList(growable: false),
         },
       ),
       fallback: 'Failed to create dispatch slip.',

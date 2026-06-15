@@ -7,8 +7,10 @@ import '../../core/design/dpl_theme.dart';
 import '../../core/dpl_api_service.dart';
 import '../../core/widgets/dpl_snack.dart';
 import '../../models/dpl_dispatch_slip.dart';
+import '../../models/dpl_plant.dart';
 import '../../models/dpl_production_summary.dart';
 import '../providers/dispatch_slips_provider.dart';
+import '../providers/plants_provider.dart';
 import '../providers/production_summary_provider.dart';
 
 /// Bottom sheet shown when Dispatch taps "Request Dispatch Slip" on a
@@ -45,6 +47,7 @@ class _RequestDispatchSlipSheetState
     extends ConsumerState<RequestDispatchSlipSheet> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _qtyCtrl;
+  late final TextEditingController _vehicleCtrl;
   late final TextEditingController _notesCtrl;
   bool _submitting = false;
   String? _serverError;
@@ -55,14 +58,29 @@ class _RequestDispatchSlipSheetState
   void initState() {
     super.initState();
     _qtyCtrl = TextEditingController();
+    _vehicleCtrl = TextEditingController();
     _notesCtrl = TextEditingController();
   }
 
   @override
   void dispose() {
     _qtyCtrl.dispose();
+    _vehicleCtrl.dispose();
     _notesCtrl.dispose();
     super.dispose();
+  }
+
+  /// Look up the bucket's plant by matching its `machineId` against the
+  /// plants endpoint's machine map. Returns null if plants haven't
+  /// loaded yet or the machine isn't in any plant (shouldn't happen
+  /// given server-side invariants, but defensive).
+  DplPlant? _plantForBucket() {
+    final plants = ref.read(dplPlantsProvider).asData?.value.data;
+    if (plants == null) return null;
+    for (final p in plants) {
+      if (p.machineIds.contains(widget.bucket.machineId)) return p;
+    }
+    return null;
   }
 
   String? _validateQty(String? raw) {
@@ -86,18 +104,37 @@ class _RequestDispatchSlipSheetState
       return;
     }
 
+    // Resolve the plant for this bucket before going any further so we
+    // can surface a clean error if the plants list hasn't loaded yet
+    // instead of letting the backend return `INVALID_PLANT_CODE`.
+    final plant = _plantForBucket();
+    if (plant == null || plant.code.isEmpty) {
+      setState(() {
+        _serverError = "Couldn't determine the plant for this bucket. "
+            'Try again in a moment.';
+      });
+      return;
+    }
+
     setState(() {
       _submitting = true;
       _serverError = null;
     });
 
     final qty = int.parse(_qtyCtrl.text.trim());
+    final vehicleNo = _vehicleCtrl.text.trim();
     final notes = _notesCtrl.text.trim();
     final svc = ref.read(dplApiServiceProvider);
     final res = await svc.createDispatchSlip(
-      machineId: widget.bucket.machineId,
-      partId: widget.bucket.partId,
-      qty: qty,
+      plantCode: plant.code,
+      items: [
+        DispatchSlipItemRequest(
+          machineId: widget.bucket.machineId,
+          partId: widget.bucket.partId,
+          qty: qty,
+        ),
+      ],
+      vehicleNo: vehicleNo.isEmpty ? null : vehicleNo,
       notes: notes.isEmpty ? null : notes,
     );
 
@@ -259,13 +296,36 @@ class _RequestDispatchSlipSheetState
                     validator: _validateQty,
                   ),
                   const SizedBox(height: 12),
+                  // Vehicle number — optional. Backend trims +
+                  // uppercases server-side; we also force uppercase on
+                  // the FE so the user sees what's persisted while
+                  // they type. Length capped to 32 chars (matches the
+                  // `vehicle_no VARCHAR(32)` column).
+                  TextFormField(
+                    controller: _vehicleCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: [
+                      LengthLimitingTextInputFormatter(32),
+                      _UpperCaseFormatter(),
+                    ],
+                    decoration: InputDecoration(
+                      labelText: 'Vehicle no (optional)',
+                      hintText: 'e.g. GJ-01-AB-1234',
+                      prefixIcon:
+                          const Icon(Icons.local_shipping_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   TextFormField(
                     controller: _notesCtrl,
                     maxLines: 2,
                     maxLength: 240,
                     decoration: InputDecoration(
                       labelText: 'Notes (optional)',
-                      hintText: 'Truck #, customer ref, etc.',
+                      hintText: 'Customer ref, special instructions, etc.',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -392,6 +452,25 @@ class _LabelValue extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Force-uppercase TextInputFormatter for the vehicle-number field —
+/// keeps the on-screen text matching the value backend persists
+/// (server-side `vehicle_no` is trimmed + uppercased).
+class _UpperCaseFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final upper = newValue.text.toUpperCase();
+    if (upper == newValue.text) return newValue;
+    return TextEditingValue(
+      text: upper,
+      selection: newValue.selection,
+      composing: TextRange.empty,
     );
   }
 }

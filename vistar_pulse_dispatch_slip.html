@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dispatch Slip · NEXON_EV/NEXON_PR/2026-06-15/1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Saira+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+  :root{
+    --brand:#A3238E;
+    --brand-deep:#6B1F8C;
+    --ink:#1A161D;
+    --muted:#78727F;
+    --faint:#A39DAB;
+    --line:#E9E6EC;
+    --line-soft:#F1EFF3;
+    --surface:#FAF9FB;
+    --paper:#FFFFFF;
+
+    --amber-ink:#9A5B00;
+    --amber-bg:#FEF4E0;
+    --amber-line:#F2D49A;
+
+    --emerald-ink:#0A7A52;
+    --emerald-bg:#E6F6EE;
+    --emerald-line:#AEE3CA;
+
+    --font-display:'Saira Condensed', system-ui, sans-serif;
+    --font-ui:'Inter', system-ui, sans-serif;
+    --font-mono:'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    font-family:var(--font-ui);
+    color:var(--ink);
+    background:#ECE9EF;
+    -webkit-font-smoothing:antialiased;
+    padding:28px 16px 60px;
+  }
+
+  /* ---------- screen toolbar (hidden in print) ---------- */
+  .toolbar{
+    max-width:1080px;
+    margin:0 auto 18px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  .toolbar .hint{
+    font-size:12.5px;
+    color:#6c6675;
+    margin-right:auto;
+    letter-spacing:.01em;
+  }
+  .btn{
+    font-family:var(--font-ui);
+    font-size:13px;
+    font-weight:600;
+    letter-spacing:.01em;
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--ink);
+    padding:9px 14px;
+    border-radius:9px;
+    cursor:pointer;
+    transition:.15s ease;
+  }
+  .btn:hover{border-color:#cfc8d6;}
+  .btn.primary{
+    background:var(--brand);
+    border-color:var(--brand);
+    color:#fff;
+    box-shadow:0 1px 0 rgba(0,0,0,.04);
+  }
+  .btn.primary:hover{background:#8f1f7d;border-color:#8f1f7d;}
+
+  /* ---------- the slip ---------- */
+  .slip{
+    width:1080px;
+    max-width:100%;
+    margin:0 auto;
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:16px;
+    overflow:hidden;
+    box-shadow:0 24px 60px -28px rgba(40,20,55,.35);
+  }
+
+  /* header band */
+  .band{
+    background:linear-gradient(110deg,var(--brand-deep) 0%, var(--brand) 62%, #B83AA3 100%);
+    color:#fff;
+    padding:22px 30px 20px;
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:24px;
+    position:relative;
+  }
+  .band::after{
+    content:"";
+    position:absolute;left:0;right:0;bottom:0;height:3px;
+    background:repeating-linear-gradient(90deg,rgba(255,255,255,.85) 0 14px,transparent 14px 26px);
+    opacity:.5;
+  }
+  .brand{display:flex;align-items:center;gap:13px;}
+  .brand .mark{
+    width:42px;height:42px;border-radius:11px;
+    background:rgba(255,255,255,.16);
+    border:1px solid rgba(255,255,255,.32);
+    display:grid;place-items:center;
+    font-family:var(--font-display);
+    font-weight:700;font-size:23px;line-height:1;
+    letter-spacing:.02em;
+  }
+  .brand .wordmark{font-family:var(--font-display);font-weight:700;font-size:25px;letter-spacing:.06em;line-height:1;}
+  .brand .sub{font-size:11px;letter-spacing:.26em;text-transform:uppercase;opacity:.82;margin-top:5px;font-weight:600;}
+
+  .doc-meta{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:9px;}
+  .doc-title{font-family:var(--font-display);font-weight:600;font-size:21px;letter-spacing:.16em;text-transform:uppercase;line-height:1;}
+  .slip-no{
+    font-family:var(--font-mono);font-size:12.5px;font-weight:500;
+    background:rgba(255,255,255,.14);
+    border:1px solid rgba(255,255,255,.28);
+    padding:5px 10px;border-radius:7px;letter-spacing:.01em;
+  }
+
+  /* identity strip */
+  .identity{
+    display:grid;
+    grid-template-columns:minmax(280px,1.4fr) repeat(4,1fr);
+    border-bottom:1px solid var(--line);
+  }
+  .id-cell{padding:18px 24px;border-left:1px solid var(--line-soft);}
+  .id-cell:first-child{border-left:0;}
+  .lbl{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);font-weight:700;}
+  .id-cell .val{font-size:15px;font-weight:600;margin-top:7px;color:var(--ink);}
+  .id-cell .val.mono{font-family:var(--font-mono);font-size:13.5px;font-weight:500;}
+
+  .plate-cell{background:var(--surface);}
+  .plate{
+    font-family:var(--font-display);font-weight:700;
+    font-size:42px;line-height:.95;letter-spacing:.04em;
+    margin-top:6px;color:var(--ink);
+  }
+  .plate-note{font-size:12px;color:var(--muted);margin-top:8px;}
+  .plate-note b{color:var(--ink);font-weight:600;}
+
+  /* parts table */
+  table{width:100%;border-collapse:collapse;}
+  thead th{
+    text-align:left;
+    font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);font-weight:700;
+    padding:13px 24px;background:var(--surface);border-bottom:1px solid var(--line);
+  }
+  th.num,td.num{text-align:right;font-variant-numeric:tabular-nums;}
+  th.idx,td.idx{width:46px;text-align:center;color:var(--faint);}
+  tbody td{padding:15px 24px;border-bottom:1px solid var(--line-soft);vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:1px solid var(--line);}
+  .idx-num{font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--faint);}
+  .part-name{font-size:14.5px;font-weight:600;color:var(--ink);letter-spacing:.005em;}
+  .part-sub{font-family:var(--font-mono);font-size:11px;color:var(--brand);font-weight:500;margin-top:4px;letter-spacing:.02em;}
+  .pn{font-family:var(--font-mono);font-size:13px;font-weight:500;color:#3a3440;}
+  .qty{font-family:var(--font-display);font-size:21px;font-weight:600;color:var(--ink);}
+  .qty .unit{font-family:var(--font-ui);font-size:11px;font-weight:600;color:var(--muted);margin-left:4px;letter-spacing:.04em;}
+
+  /* total row */
+  .total-row td{background:var(--surface);border-bottom:0;border-top:2px solid var(--ink);padding:16px 24px;}
+  .total-label{font-family:var(--font-display);font-size:18px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;}
+  .total-meta{font-size:11.5px;color:var(--muted);margin-top:3px;font-weight:500;letter-spacing:.02em;}
+  .total-qty{font-family:var(--font-display);font-size:30px;font-weight:700;color:var(--brand);}
+  .total-qty .unit{font-family:var(--font-ui);font-size:12px;font-weight:600;color:var(--muted);margin-left:5px;}
+
+  /* sign-off checkpoints */
+  .signoff{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line);}
+  .check{
+    padding:20px 24px;display:flex;gap:16px;align-items:flex-start;
+    border-left:1px solid var(--line-soft);position:relative;
+  }
+  .check:first-child{border-left:0;}
+  .check::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--amber-line);}
+  .check.passed::before{background:var(--emerald-line);}
+  .check .tick{
+    width:40px;height:40px;border-radius:10px;flex:0 0 auto;display:grid;place-items:center;
+    background:var(--amber-bg);border:1px solid var(--amber-line);color:var(--amber-ink);
+  }
+  .check.passed .tick{background:var(--emerald-bg);border-color:var(--emerald-line);color:var(--emerald-ink);}
+  .check .tick svg{width:20px;height:20px;}
+  .check .body{flex:1;min-width:0;}
+  .check .name{font-size:13px;font-weight:700;letter-spacing:.02em;}
+  .check .desc{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .check .row2{display:flex;align-items:center;gap:14px;margin-top:11px;flex-wrap:wrap;}
+  .chip{
+    font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    padding:5px 11px;border-radius:999px;
+    background:var(--amber-bg);color:var(--amber-ink);border:1px solid var(--amber-line);
+  }
+  .check.passed .chip{background:var(--emerald-bg);color:var(--emerald-ink);border-color:var(--emerald-line);}
+  .signline{flex:1;min-width:130px;}
+  .signline .ln{border-bottom:1px solid var(--line);height:18px;}
+  .signline .cap{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);font-weight:700;margin-top:5px;}
+  .signed{font-family:var(--font-ui);font-weight:600;font-size:13px;color:var(--ink);}
+  .signed small{display:block;font-weight:500;color:var(--muted);font-size:11px;margin-top:2px;}
+
+  /* verification */
+  .verify{
+    display:grid;grid-template-columns:auto 1fr;gap:24px;
+    padding:22px 24px;border-top:1px solid var(--line);background:var(--surface);
+    align-items:start;
+  }
+  .qr-wrap{
+    width:128px;height:128px;background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:10px;display:grid;place-items:center;
+  }
+  #qr{width:108px;height:108px;}
+  #qr img,#qr canvas{width:108px !important;height:108px !important;display:block;image-rendering:pixelated;}
+  .vmeta{display:flex;flex-direction:column;gap:10px;}
+  .vmeta .lbl{margin-bottom:2px;}
+  .kv{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px 28px;}
+  .kv .k{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);font-weight:600;}
+  .kv .v{font-size:13px;font-weight:600;color:var(--ink);margin-top:2px;}
+  .kv .v.mono{font-family:var(--font-mono);font-weight:500;font-size:12px;}
+  .trust{
+    display:flex;align-items:center;gap:8px;
+    font-size:11.5px;color:#4f7a64;background:var(--emerald-bg);
+    border:1px solid var(--emerald-line);border-radius:9px;padding:9px 12px;margin-top:2px;
+  }
+  .trust svg{width:15px;height:15px;flex:0 0 auto;color:var(--emerald-ink);}
+
+  /* footer */
+  .foot{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:13px 24px;border-top:1px solid var(--line);
+    font-size:11px;color:var(--muted);
+  }
+  .foot .id{font-family:var(--font-mono);font-size:11px;color:#4f4a57;}
+  .foot .gen{letter-spacing:.04em;}
+
+  @media (max-width:900px){
+    .identity{grid-template-columns:1fr 1fr;}
+    .id-cell{border-left:0;border-top:1px solid var(--line-soft);}
+    .plate-cell{grid-column:1 / -1;}
+    .signoff{grid-template-columns:1fr;}
+    .check{border-left:0;border-top:1px solid var(--line-soft);}
+    .check:first-child{border-top:0;}
+    .kv{grid-template-columns:1fr 1fr;}
+  }
+  @media (max-width:560px){
+    .band{flex-direction:column;}
+    .doc-meta{align-items:flex-start;text-align:left;}
+    .verify{grid-template-columns:1fr;justify-items:start;}
+    .kv{grid-template-columns:1fr;}
+  }
+
+  /* print */
+  @media print{
+    @page{size:A4 landscape;margin:10mm;}
+    body{background:#fff;padding:0;}
+    .toolbar{display:none !important;}
+    .slip{width:100%;border:none;border-radius:0;box-shadow:none;}
+    .band{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  }
+</style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <span class="hint">Tip: click a checkpoint to toggle Pending → Passed. Use Print to save as PDF.</span>
+    <button class="btn" id="qaBtn">Mark QA passed</button>
+    <button class="btn" id="pdiBtn">Mark PDI passed</button>
+    <button class="btn primary" onclick="window.print()">Print / Save PDF</button>
+  </div>
+
+  <div class="slip">
+
+    <!-- header -->
+    <header class="band">
+      <div class="brand">
+        <div class="mark">VP</div>
+        <div>
+          <div class="wordmark">VISTAR&nbsp;PULSE</div>
+          <div class="sub">Production · Dispatch</div>
+        </div>
+      </div>
+      <div class="doc-meta">
+        <div class="doc-title">Dispatch Slip</div>
+        <div class="slip-no">NEXON_EV / NEXON_PR / 2026-06-15 / 1</div>
+      </div>
+    </header>
+
+    <!-- identity -->
+    <section class="identity">
+      <div class="id-cell plate-cell">
+        <div class="lbl">Vehicle</div>
+        <div class="plate">MH14 HV 3731</div>
+        <div class="plate-note">Dispatch note &middot; <b>MH14 HV 3731</b></div>
+      </div>
+      <div class="id-cell">
+        <div class="lbl">Plant</div>
+        <div class="val">Nexon EV</div>
+      </div>
+      <div class="id-cell">
+        <div class="lbl">Machine</div>
+        <div class="val">Nexon PR</div>
+      </div>
+      <div class="id-cell">
+        <div class="lbl">Line items</div>
+        <div class="val">4 parts</div>
+      </div>
+      <div class="id-cell">
+        <div class="lbl">Dispatched</div>
+        <div class="val">15 Jun 2026</div>
+        <div class="val mono" style="margin-top:2px;font-size:12px;color:var(--muted)">13:44 IST</div>
+      </div>
+    </section>
+
+    <!-- parts -->
+    <table>
+      <thead>
+        <tr>
+          <th class="idx">#</th>
+          <th>Part description</th>
+          <th>Customer P/N</th>
+          <th class="num">Quantity</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="idx"><span class="idx-num">01</span></td>
+          <td><div class="part-name">NEXON MCE2 PR HDL ASY WITH RLS C/O LLG, F</div><div class="part-sub">120ZY</div></td>
+          <td><span class="pn">546469500120ZY</span></td>
+          <td class="num"><span class="qty">94<span class="unit">NOS</span></span></td>
+        </tr>
+        <tr>
+          <td class="idx"><span class="idx-num">02</span></td>
+          <td><div class="part-name">NEXON PR HDL ASSY W BIG RLS C/O GB, F</div><div class="part-sub">114ZZ</div></td>
+          <td><span class="pn">546469500114Z</span></td>
+          <td class="num"><span class="qty">83<span class="unit">NOS</span></span></td>
+        </tr>
+        <tr>
+          <td class="idx"><span class="idx-num">03</span></td>
+          <td><div class="part-name">NEXON PR HDL ASSY W BIG RLS C/O LLG, F</div><div class="part-sub">114ZY</div></td>
+          <td><span class="pn">546469500114Z</span></td>
+          <td class="num"><span class="qty">98<span class="unit">NOS</span></span></td>
+        </tr>
+        <tr>
+          <td class="idx"><span class="idx-num">04</span></td>
+          <td><div class="part-name">NEXON MCE2 PR HDL ASY WITH RLS C/O GB, F</div><div class="part-sub">120ZZ</div></td>
+          <td><span class="pn">546469500120ZZ</span></td>
+          <td class="num"><span class="qty">55<span class="unit">NOS</span></span></td>
+        </tr>
+        <tr class="total-row">
+          <td class="idx"></td>
+          <td>
+            <div class="total-label">Total dispatched</div>
+            <div class="total-meta">4 line items · all quantities verified at loading</div>
+          </td>
+          <td></td>
+          <td class="num"><span class="total-qty">330<span class="unit">NOS</span></span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- sign-off -->
+    <section class="signoff">
+      <div class="check" id="qa">
+        <div class="tick">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <div class="body">
+          <div class="name">Quality Assurance · QA</div>
+          <div class="desc">Confirm part conformity and quantity before release.</div>
+          <div class="row2">
+            <span class="chip" data-chip>Pending</span>
+            <div class="signline" data-signline>
+              <div class="ln"></div>
+              <div class="cap">Inspector signature &amp; time</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="check" id="pdi">
+        <div class="tick">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <div class="body">
+          <div class="name">Pre-Dispatch Inspection · PDI</div>
+          <div class="desc">Final loading check against this manifest.</div>
+          <div class="row2">
+            <span class="chip" data-chip>Pending</span>
+            <div class="signline" data-signline>
+              <div class="ln"></div>
+              <div class="cap">Inspector signature &amp; time</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- verification -->
+    <section class="verify">
+      <div class="qr-wrap"><div id="qr"></div></div>
+      <div class="vmeta">
+        <div class="lbl">Slip contents · verification</div>
+        <div class="kv">
+          <div><div class="k">Slip no</div><div class="v mono">NEXON_EV/NEXON_PR/2026-06-15/1</div></div>
+          <div><div class="k">Plant</div><div class="v">Nexon EV</div></div>
+          <div><div class="k">Machine</div><div class="v">Nexon PR</div></div>
+          <div><div class="k">Vehicle</div><div class="v">MH14 HV 3731</div></div>
+          <div><div class="k">Items</div><div class="v">4</div></div>
+          <div><div class="k">Total qty</div><div class="v">330 NOS</div></div>
+        </div>
+        <div class="trust">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+          <span>Scan to verify against the Vistar Pulse server. The code is HMAC-signed — tampered slips fail verification.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- footer -->
+    <footer class="foot">
+      <span class="id">NEXON_EV/NEXON_PR/2026-06-15/1</span>
+      <span class="gen">Generated by Vistar Pulse · Page 1 of 1</span>
+    </footer>
+
+  </div>
+
+<script>
+  // ---- real QR encoding the verification payload ----
+  (function(){
+    var el = document.getElementById('qr');
+    var payload = 'https://verify.vistarpulse.app/d/NEXON_EV-NEXON_PR-2026-06-15-1';
+    try{
+      var qr = qrcode(0, 'M');
+      qr.addData(payload);
+      qr.make();
+      el.innerHTML = qr.createImgTag(4, 0);
+      var img = el.querySelector('img');
+      if(img){ img.style.width='108px'; img.style.height='108px'; }
+    }catch(e){
+      el.innerHTML = '<div style="font-size:10px;color:#999;text-align:center;padding:8px">QR renders when opened in a browser</div>';
+    }
+  })();
+
+  // ---- checkpoint toggle (Pending -> Passed) ----
+  function fmtNow(){
+    var d = new Date();
+    var dd = String(d.getDate()).padStart(2,'0');
+    var mm = d.toLocaleString('en-GB',{month:'short'});
+    var hh = String(d.getHours()).padStart(2,'0');
+    var mi = String(d.getMinutes()).padStart(2,'0');
+    return dd+' '+mm+' · '+hh+':'+mi;
+  }
+  function toggle(id, name){
+    var c = document.getElementById(id);
+    var chip = c.querySelector('[data-chip]');
+    var line = c.querySelector('[data-signline]');
+    var passed = c.classList.toggle('passed');
+    if(passed){
+      chip.textContent = 'Passed';
+      line.innerHTML = '<div class="signed">'+name+'<small>'+fmtNow()+' IST</small></div>';
+    }else{
+      chip.textContent = 'Pending';
+      line.innerHTML = '<div class="ln"></div><div class="cap">Inspector signature &amp; time</div>';
+    }
+  }
+  document.getElementById('qaBtn').addEventListener('click', function(){ toggle('qa','S. Sasane'); });
+  document.getElementById('pdiBtn').addEventListener('click', function(){ toggle('pdi','P. Tamhankar'); });
+</script>
+</body>
+</html>

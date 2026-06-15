@@ -141,6 +141,10 @@ class DplPaths {
   static String managerDowntimeClose(int downtimeId) =>
       '/manager/downtime/$downtimeId/close';
 
+  // Plants — hardcoded 3-plant mapping (Nexon EV / TML PV / MG Motors)
+  // served from a backend config file. Any DPL role can read the list.
+  static const String plants = '/plants';
+
   // Dispatch slip workflow — Dispatch → QA → PDI three-step approval
   // pipeline with an HMAC-signed QR payload printed on the slip. Roles
   // are gated server-side; the verify endpoint is public.

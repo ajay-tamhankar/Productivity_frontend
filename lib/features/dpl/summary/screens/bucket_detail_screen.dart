@@ -120,7 +120,11 @@ class BucketDetailScreen extends ConsumerWidget {
                 return Column(
                   children: [
                     for (final s in items) ...[
-                      _BucketSlipTile(slip: s),
+                      _BucketSlipTile(
+                        slip: s,
+                        bucketMachineId: bucket.machineId,
+                        bucketPartId: bucket.partId,
+                      ),
                       const SizedBox(height: 10),
                     ],
                   ],
@@ -544,9 +548,44 @@ class _SectionLabel extends StatelessWidget {
 
 /// One slip row inside the bucket's "all slips" list. Tap → opens the
 /// printable slip detail screen for that slip.
+///
+/// With multi-item slips the backend's filter (`machine_id=...&
+/// part_id=...`) returns any slip whose items[] contains the bucket —
+/// but the slip can carry additional items for other buckets too. The
+/// tile shows **only the portion of qty that belongs to this bucket**
+/// so the user sees an accurate per-bucket number, plus a
+/// `+N more items` chip when the slip spans other buckets too.
 class _BucketSlipTile extends StatelessWidget {
   final DplDispatchSlip slip;
-  const _BucketSlipTile({required this.slip});
+  final int bucketMachineId;
+  final int bucketPartId;
+
+  const _BucketSlipTile({
+    required this.slip,
+    required this.bucketMachineId,
+    required this.bucketPartId,
+  });
+
+  /// Sum of qty across the slip's items that match this bucket. If the
+  /// slip predates the multi-item refactor and falls back to the
+  /// single-item shape, `slip.qty` ends up driving the same number via
+  /// the model's compat getter.
+  int get _qtyForThisBucket {
+    return slip.items
+        .where((it) =>
+            it.machineId == bucketMachineId && it.partId == bucketPartId)
+        .fold<int>(0, (sum, it) => sum + it.qty);
+  }
+
+  /// Count of items on the slip that belong to OTHER buckets. Used
+  /// to surface a tiny "+2 more" hint so the user understands the
+  /// slip's qty here is just a slice of a bigger multi-item dispatch.
+  int get _otherItemCount {
+    return slip.items
+        .where((it) =>
+            it.machineId != bucketMachineId || it.partId != bucketPartId)
+        .length;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -596,8 +635,33 @@ class _BucketSlipTile extends StatelessWidget {
                   _MiniStat(
                     icon: Icons.inventory_2_outlined,
                     label: 'Qty',
-                    value: '${fmt.format(slip.qty)} NOS',
+                    value: '${fmt.format(_qtyForThisBucket)} NOS',
                   ),
+                  if (_otherItemCount > 0) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: DplColors.primary.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: DplColors.primary.withValues(alpha: 0.25),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        '+$_otherItemCount more',
+                        style: const TextStyle(
+                          color: DplColors.primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10.5,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 12),
                   Expanded(
                     child: Row(

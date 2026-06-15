@@ -470,8 +470,14 @@ class _SlipRowCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
+              // Multi-item slips compress to "Machine · N items · X NOS"
+              // so the tile stays one-line scannable. Single-item slips
+              // keep the original "Machine · Qty X" + part label below.
               Text(
-                '${slip.machineLabel} • Qty ${fmt.format(slip.qty)}',
+                slip.isSingleItem
+                    ? '${slip.machineLabel} • Qty ${fmt.format(slip.qty)}'
+                    : '${slip.machineLabel} • ${slip.items.length} items '
+                        '• ${fmt.format(slip.totalQty)} NOS',
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
@@ -490,7 +496,11 @@ class _SlipRowCard extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              if (slip.customerPartNo.isNotEmpty) ...[
+              // Customer P/N is only meaningful on single-item slips.
+              // Multi-item slips render multiple P/Ns in the items
+              // list — surfacing just the first one here would be
+              // misleading, so hide.
+              if (slip.isSingleItem && slip.customerPartNo.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(
                   slip.customerPartNo,

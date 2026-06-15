@@ -13,6 +13,7 @@ import '../../core/widgets/dpl_app_bar.dart';
 import '../../manager/providers/dpl_masters_provider.dart';
 import '../../manager/widgets/empty_state.dart';
 import '../../manager/widgets/error_retry.dart';
+import '../../models/dpl_plant.dart';
 import '../../models/dpl_production_summary.dart';
 import '../providers/dispatch_slips_provider.dart';
 import '../providers/production_summary_provider.dart';
@@ -35,10 +36,18 @@ class ProductionSummaryScreen extends ConsumerStatefulWidget {
   final String title;
   final bool showAppBar;
 
+  /// Optional plant context — when set, the screen renders a plant
+  /// header strip at the top and (once backend PR 2 lands) the
+  /// production-summary provider will filter results to this plant's
+  /// machines. Until PR 2 ships, all buckets show through but the
+  /// plant header still indicates which lens the user is in.
+  final DplPlant? plant;
+
   const ProductionSummaryScreen({
     super.key,
     this.title = 'Production Summary',
     this.showAppBar = true,
+    this.plant,
   });
 
   @override
@@ -57,12 +66,38 @@ class _ProductionSummaryScreenState
     final initialQuery =
         ref.read(dplProductionSummaryFiltersProvider).query;
     _searchCtrl = TextEditingController(text: initialQuery);
+
+    // Sync the route's plant context into the global filter so the
+    // backend's `?plant_code=` query param matches what we're showing.
+    // Notifier mutations have to be deferred a microtask so we don't
+    // touch provider state mid-build.
+    Future.microtask(() {
+      if (!mounted) return;
+      ref
+          .read(dplProductionSummaryFiltersProvider.notifier)
+          .setPlantCode(widget.plant?.code);
+    });
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
     _searchCtrl.dispose();
+    // Clear plant scope on the way out so a subsequent non-plant
+    // entry point doesn't inherit a stale "?plant_code=NEXON_EV" from
+    // the route we're leaving.
+    if (widget.plant != null) {
+      Future.microtask(() {
+        try {
+          ref
+              .read(dplProductionSummaryFiltersProvider.notifier)
+              .setPlantCode(null);
+        } catch (_) {
+          // Provider may already be disposed if the whole shell
+          // unmounted. Safe to ignore.
+        }
+      });
+    }
     super.dispose();
   }
 
@@ -82,6 +117,7 @@ class _ProductionSummaryScreenState
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.plant != null) _PlantHeaderStrip(plant: widget.plant!),
         _SearchBar(
           controller: _searchCtrl,
           onChanged: _onSearchChanged,
@@ -93,7 +129,7 @@ class _ProductionSummaryScreenState
           },
         ),
         _ActiveFilterChips(filters: filters),
-        const _TotalsBanner(),
+        const ProductionTotalsBanner(),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async {
@@ -157,7 +193,7 @@ class _ProductionSummaryScreenState
                             .setPage(p),
                       );
                     }
-                    return _SummaryRowCard(item: page.items[i]);
+                    return SummaryBucketCard(item: page.items[i]);
                   },
                 );
               },
@@ -172,7 +208,9 @@ class _ProductionSummaryScreenState
     return Scaffold(
       backgroundColor: DplColors.pageBg,
       appBar: DplAppBar(
-        title: widget.title,
+        title: widget.plant != null
+            ? '${widget.plant!.name} — Production'
+            : widget.title,
         actions: [
           IconButton(
             tooltip: 'Sort',
@@ -562,6 +600,76 @@ class _ActiveFilterChips extends ConsumerWidget {
   }
 }
 
+/// Slim header strip shown at the top of the screen when the user
+/// entered via the plant landing — gives them an unambiguous "you're
+/// looking at plant X" signal that survives every scroll. Stays out of
+/// the way (small, single-line) so the search bar + totals banner are
+/// still the dominant surfaces.
+class _PlantHeaderStrip extends StatelessWidget {
+  final DplPlant plant;
+  const _PlantHeaderStrip({required this.plant});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        decoration: BoxDecoration(
+          color: DplColors.primaryTint,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: DplColors.primary.withValues(alpha: 0.18),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.factory_outlined,
+              size: 16,
+              color: DplColors.primaryDark,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                plant.name,
+                style: const TextStyle(
+                  color: DplColors.primaryDark,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  letterSpacing: 0.2,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: DplColors.primary.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Text(
+                plant.code,
+                style: const TextStyle(
+                  color: DplColors.primaryDark,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 10.5,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Two stacked banners summarising both the production-summary totals
 /// and the dispatch-slip pipeline totals.
 ///
@@ -573,8 +681,8 @@ class _ActiveFilterChips extends ConsumerWidget {
 /// Slips inbox tab already watches, so this also pre-warms its cache.
 /// Both totals blocks are scoped server-side so the banner numbers
 /// stay stable as the user filters / paginates either screen.
-class _TotalsBanner extends ConsumerWidget {
-  const _TotalsBanner();
+class ProductionTotalsBanner extends ConsumerWidget {
+  const ProductionTotalsBanner({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -739,9 +847,13 @@ class _Cell extends StatelessWidget {
   }
 }
 
-class _SummaryRowCard extends ConsumerWidget {
+/// Public bucket card used by the Production Summary screen AND the
+/// Plant Landing screen (so the dashboard shows plant cards + bucket
+/// cards stacked, restoring the at-a-glance production data the user
+/// expects to see on the dashboard).
+class SummaryBucketCard extends ConsumerWidget {
   final DplProductionSummary item;
-  const _SummaryRowCard({required this.item});
+  const SummaryBucketCard({super.key, required this.item});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

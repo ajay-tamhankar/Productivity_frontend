@@ -20,6 +20,11 @@ class DplProductionSummaryFilters {
   final int page;
   final int limit;
 
+  /// Plant scope (e.g. `NEXON_EV`). Set when the user drills into a
+  /// plant from the landing screen; cleared when leaving plant scope.
+  /// Backend rejects unknown codes with `INVALID_PLANT_CODE`.
+  final String? plantCode;
+
   const DplProductionSummaryFilters({
     this.machineId,
     this.partId,
@@ -31,6 +36,7 @@ class DplProductionSummaryFilters {
     this.order = 'desc',
     this.page = 1,
     this.limit = 50,
+    this.plantCode,
   });
 
   static const Object _sentinel = Object();
@@ -46,6 +52,7 @@ class DplProductionSummaryFilters {
     String? order,
     int? page,
     int? limit,
+    Object? plantCode = _sentinel,
   }) {
     return DplProductionSummaryFilters(
       machineId:
@@ -59,16 +66,22 @@ class DplProductionSummaryFilters {
       order: order ?? this.order,
       page: page ?? this.page,
       limit: limit ?? this.limit,
+      plantCode: identical(plantCode, _sentinel)
+          ? this.plantCode
+          : plantCode as String?,
     );
   }
 
-  /// Reset everything *except* sort + paging — used by the "Clear" CTA
-  /// in the filter sheet so the user keeps their sort preference.
+  /// Reset everything *except* sort + paging + plant scope — used by
+  /// the "Clear" CTA in the filter sheet so the user keeps their sort
+  /// preference. Plant stays sticky because the user is *in* that
+  /// plant's view; the clear is just for the in-plant filters.
   DplProductionSummaryFilters clearedFilters() {
     return DplProductionSummaryFilters(
       sort: sort,
       order: order,
       limit: limit,
+      plantCode: plantCode,
     );
   }
 
@@ -118,6 +131,12 @@ class DplProductionSummaryFiltersController
     state = state.copyWith(page: page);
   }
 
+  /// Pass `null` to leave the plant scope (e.g. on the landing screen
+  /// or any non-plant-aware entry point).
+  void setPlantCode(String? code) {
+    state = state.copyWith(plantCode: code, page: 1);
+  }
+
   void update(DplProductionSummaryFilters next) {
     state = next;
   }
@@ -136,6 +155,7 @@ final dplProductionSummaryProvider = FutureProvider.autoDispose<
     DplApiResponse<DplProductionSummaryPage>>((ref) async {
   final f = ref.watch(dplProductionSummaryFiltersProvider);
   return ref.watch(dplApiServiceProvider).listProductionSummary(
+        plantCode: f.plantCode,
         machineId: f.machineId,
         partId: f.partId,
         q: f.query,
@@ -148,3 +168,23 @@ final dplProductionSummaryProvider = FutureProvider.autoDispose<
         limit: f.limit,
       );
 });
+
+/// Production summary scoped to one plant, family-keyed by plant code.
+///
+/// Each plant card on the landing screen reads its own bucket list
+/// from this provider so it can populate the per-card machine /
+/// description dropdowns. `limit: 200` is generous enough that all
+/// produced buckets land in a single page (current Sanand JIT data
+/// has ~10 buckets total). `autoDispose` so the cache drops when the
+/// landing screen unmounts — buckets move on every START/STOP and
+/// we never want to render a stale snapshot.
+final dplProductionSummaryByPlantProvider = FutureProvider.autoDispose
+    .family<DplApiResponse<DplProductionSummaryPage>, String>(
+  (ref, plantCode) async {
+    return ref.watch(dplApiServiceProvider).listProductionSummary(
+          plantCode: plantCode,
+          onlyProduced: true,
+          limit: 200,
+        );
+  },
+);

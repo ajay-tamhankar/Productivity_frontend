@@ -330,37 +330,59 @@ class _VerifiedResultView extends StatelessWidget {
                 value: _statusLabel(slip.status),
                 valueColor: _statusColor(slip.status),
               ),
-              _Kv(label: 'Quantity', value: '${fmt.format(slip.qty)} NOS'),
+              if (slip.plant.name.isNotEmpty)
+                _Kv(label: 'Plant', value: slip.plant.name),
+              if (slip.vehicleNo.isNotEmpty)
+                _Kv(label: 'Vehicle no', value: slip.vehicleNo),
+              if (slip.isSingleItem)
+                _Kv(label: 'Quantity', value: '${fmt.format(slip.qty)} NOS')
+              else ...[
+                _Kv(label: 'Items', value: '${slip.items.length}'),
+                _Kv(
+                  label: 'Total qty',
+                  value: '${fmt.format(slip.totalQty)} NOS',
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
-          _SectionCard(
-            title: 'Machine',
-            children: [
-              _Kv(label: 'Name', value: slip.machineName.isEmpty ? '-' : slip.machineName),
-              if (slip.machineCode.isNotEmpty)
-                _Kv(label: 'Code', value: slip.machineCode),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _SectionCard(
-            title: 'Part details',
-            children: [
-              _Kv(
-                label: 'Name',
-                value: slip.partName.isEmpty ? '-' : slip.partName,
-              ),
-              if (slip.customerPartNo.isNotEmpty)
-                _Kv(label: 'Customer P/N', value: slip.customerPartNo),
-              if (slip.substratePartNo.isNotEmpty)
-                _Kv(label: 'Substrate P/N', value: slip.substratePartNo),
-              if (slip.materialCode.isNotEmpty)
-                _Kv(label: 'Material code', value: slip.materialCode),
-              if (slip.description.isNotEmpty &&
-                  slip.description != slip.partName)
-                _Kv(label: 'Description', value: slip.description),
-            ],
-          ),
+          if (slip.isSingleItem) ...[
+            _SectionCard(
+              title: 'Machine',
+              children: [
+                _Kv(
+                  label: 'Name',
+                  value:
+                      slip.machineName.isEmpty ? '-' : slip.machineName,
+                ),
+                if (slip.machineCode.isNotEmpty)
+                  _Kv(label: 'Code', value: slip.machineCode),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _SectionCard(
+              title: 'Part details',
+              children: [
+                _Kv(
+                  label: 'Name',
+                  value: slip.partName.isEmpty ? '-' : slip.partName,
+                ),
+                if (slip.customerPartNo.isNotEmpty)
+                  _Kv(label: 'Customer P/N', value: slip.customerPartNo),
+                if (slip.substratePartNo.isNotEmpty)
+                  _Kv(
+                    label: 'Substrate P/N',
+                    value: slip.substratePartNo,
+                  ),
+                if (slip.materialCode.isNotEmpty)
+                  _Kv(label: 'Material code', value: slip.materialCode),
+                if (slip.description.isNotEmpty &&
+                    slip.description != slip.partName)
+                  _Kv(label: 'Description', value: slip.description),
+              ],
+            ),
+          ] else
+            _ItemsCard(slip: slip, fmt: fmt),
           const SizedBox(height: 12),
           _SectionCard(
             title: 'Approval',
@@ -624,6 +646,161 @@ class _Kv extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Renders the full items list for a multi-item dispatch slip. Each row
+/// shows the machine/part name, optional customer P/N + description, and
+/// the per-item qty. A footer row totals the qty so the verifier can
+/// reconcile against the printed slip at a glance.
+class _ItemsCard extends StatelessWidget {
+  final DplDispatchSlip slip;
+  final NumberFormat fmt;
+  const _ItemsCard({required this.slip, required this.fmt});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: DplColors.cardBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: DplColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'ITEMS (${slip.items.length})',
+            style: const TextStyle(
+              color: DplColors.textSecondary,
+              fontWeight: FontWeight.w800,
+              fontSize: 10.5,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (var i = 0; i < slip.items.length; i++) ...[
+            if (i > 0)
+              const Divider(height: 14, color: DplColors.divider),
+            _ItemRow(item: slip.items[i], fmt: fmt, index: i + 1),
+          ],
+          const SizedBox(height: 8),
+          const Divider(height: 1, color: DplColors.divider),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Total qty',
+                style: TextStyle(
+                  color: DplColors.textSecondary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12.5,
+                ),
+              ),
+              Text(
+                '${fmt.format(slip.totalQty)} NOS',
+                style: const TextStyle(
+                  color: DplColors.textPrimary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13.5,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ItemRow extends StatelessWidget {
+  final DplDispatchSlipItem item;
+  final NumberFormat fmt;
+  final int index;
+  const _ItemRow({
+    required this.item,
+    required this.fmt,
+    required this.index,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 22,
+          child: Text(
+            '$index.',
+            style: const TextStyle(
+              color: DplColors.textSecondary,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item.machineName.isEmpty ? '-' : item.machineName,
+                style: const TextStyle(
+                  color: DplColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11.5,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                item.partName.isEmpty ? '-' : item.partName,
+                style: const TextStyle(
+                  color: DplColors.textPrimary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+              if (item.customerPartNo.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'Customer P/N: ${item.customerPartNo}',
+                    style: const TextStyle(
+                      color: DplColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11.5,
+                    ),
+                  ),
+                ),
+              if (item.description.isNotEmpty &&
+                  item.description != item.partName)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    item.description,
+                    style: const TextStyle(
+                      color: DplColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11.5,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '${fmt.format(item.qty)} NOS',
+          style: const TextStyle(
+            color: DplColors.textPrimary,
+            fontWeight: FontWeight.w800,
+            fontSize: 13,
+          ),
+        ),
+      ],
     );
   }
 }

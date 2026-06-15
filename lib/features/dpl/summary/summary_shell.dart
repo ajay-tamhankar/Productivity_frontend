@@ -8,11 +8,11 @@ import '../core/widgets/dpl_app_bar.dart';
 import '../core/widgets/dpl_bottom_nav.dart';
 import '../core/widgets/dpl_refresh_icon_button.dart';
 import 'providers/dispatch_slips_provider.dart';
-import 'providers/production_summary_provider.dart';
+import 'providers/plants_provider.dart';
 import 'providers/summary_tab_provider.dart';
 import 'screens/dispatch_slip_verifier_screen.dart';
 import 'screens/dispatch_slips_inbox_screen.dart';
-import 'screens/production_summary_screen.dart';
+import 'screens/plant_landing_screen.dart';
 
 /// Two-tab shell for the Dispatch / QA / PDI roles.
 ///
@@ -39,8 +39,11 @@ class DplSummaryShell extends ConsumerWidget {
     final summaryTitle = _summaryTitleForRole(role);
     final slipsTitle = _slipsTitleForRole(role);
 
+    // Tab 0 — Plant landing replaces the old direct-to-buckets view.
+    // The user picks a plant, then drills into that plant's production
+    // summary on a pushed route. Tab 1 stays as the slips inbox.
     final pages = const <Widget>[
-      ProductionSummaryScreen(showAppBar: false),
+      PlantLandingScreen(showAppBar: false),
       DispatchSlipsInboxScreen(showAppBar: false),
     ];
 
@@ -69,9 +72,12 @@ class DplSummaryShell extends ConsumerWidget {
           DplRefreshIconButton(
             onRefresh: () async {
               if (tabIndex == 0) {
-                ref.invalidate(dplProductionSummaryProvider);
+                // Plant landing — refresh the plant list (cheap, since
+                // the mapping is effectively static; useful if backend
+                // ever flips a plant on/off).
+                ref.invalidate(dplPlantsProvider);
                 try {
-                  await ref.read(dplProductionSummaryProvider.future);
+                  await ref.read(dplPlantsProvider.future);
                 } catch (_) {}
               } else {
                 ref.invalidate(dplDispatchSlipsProvider);
@@ -88,9 +94,9 @@ class DplSummaryShell extends ConsumerWidget {
         currentIndex: tabIndex,
         items: [
           const DplNavItem(
-            icon: Icons.summarize_outlined,
-            selectedIcon: Icons.summarize,
-            label: 'Production',
+            icon: Icons.factory_outlined,
+            selectedIcon: Icons.factory,
+            label: 'Plants',
           ),
           DplNavItem(
             icon: pendingCount > 0
@@ -105,9 +111,11 @@ class DplSummaryShell extends ConsumerWidget {
         onTap: (i) {
           ref.read(dplSummaryTabProvider.notifier).set(i);
           // Re-tapping the active tab refreshes the live data, same
-          // pattern the manager shell uses.
+          // pattern the manager shell uses. Tab 0 is now the plant
+          // landing — production-summary data only matters once the
+          // user drills into a plant, so we don't preempt that here.
           if (i == 0) {
-            ref.invalidate(dplProductionSummaryProvider);
+            ref.invalidate(dplPlantsProvider);
           } else {
             ref.invalidate(dplDispatchSlipsProvider);
           }
@@ -116,19 +124,21 @@ class DplSummaryShell extends ConsumerWidget {
     );
   }
 
-  /// Title for the Production Summary tab, prefixed by role so the user
-  /// always knows which "lens" they're in.
+  /// Title for tab 0, prefixed by role so the user always knows which
+  /// "lens" they're in. Tab 0 is now the plant landing, so the title
+  /// reflects that — the per-plant production summary screen sets its
+  /// own AppBar when the user drills in.
   String _summaryTitleForRole(String role) {
     if (AppConstants.isDplDispatchRole(role)) {
-      return 'Dispatch — Production Summary';
+      return 'Dispatch — Select Plant';
     }
     if (AppConstants.isDplQaRole(role)) {
-      return 'QA — Production Summary';
+      return 'QA — Select Plant';
     }
     if (AppConstants.isDplPdiRole(role)) {
-      return 'PDI — Production Summary';
+      return 'PDI — Select Plant';
     }
-    return 'Production Summary';
+    return 'Select Plant';
   }
 
   String _slipsTitleForRole(String role) {
@@ -141,14 +151,14 @@ class DplSummaryShell extends ConsumerWidget {
   /// Count to show on the Slips nav-bar badge. Reads from the slips
   /// provider's `totals` block (which ignores the active filter), so the
   /// badge reflects the role's queue depth even when the user is
-  /// filtered to a different status.
+  /// filtered to a different status. Defensive against every level of
+  /// the chain being null — slips request may still be in flight, may
+  /// have errored, or may have returned a response without totals.
   int _pendingCountForRole(WidgetRef ref, String role) {
-    final totals = ref
-            .watch(dplDispatchSlipsProvider)
-            .asData
-            ?.value
-            .data
-            ?.totals;
+    final asyncSlips = ref.watch(dplDispatchSlipsProvider);
+    final response = asyncSlips.asData?.value;
+    if (response == null || !response.isOk) return 0;
+    final totals = response.data?.totals;
     if (totals == null) return 0;
     if (AppConstants.isDplQaRole(role)) return totals.pendingQa;
     if (AppConstants.isDplPdiRole(role)) return totals.pendingPdi;

@@ -1,5 +1,6 @@
 import '../core/dpl_constants.dart';
 import '_json_helpers.dart';
+import 'dpl_plant.dart';
 
 /// One actor's signature on a slip (Dispatch creator, QA approver, or
 /// PDI approver). Mirrors the `{ user_id, name, at, remarks }` shape
@@ -64,30 +65,140 @@ class DplDispatchSlipRejection {
   bool get isPdi => role.toLowerCase() == 'pdi';
 }
 
-/// A single dispatch slip — the digital twin of the printed paper slip
-/// in the user's photo (TIAGO 6AB HL ASSY…, qty, datetime, QA / PDI
-/// signatures, QR code).
-///
-/// Goes through Dispatch → QA → PDI → optional mark-dispatched. The
-/// `qrPayload` is populated by the backend on PDI approval and is what
-/// the slip detail screen renders as a scannable square.
-class DplDispatchSlip {
-  final int id;
-  final String slipNo;
-  final int organizationId;
+/// Write-side payload for a single slip item, sent inside the `items[]`
+/// array of `POST /dispatch/slips`. Only the bare ids + qty — the
+/// server hydrates the machine/part display fields and returns them in
+/// the response.
+class DispatchSlipItemRequest {
+  final int machineId;
+  final int partId;
+  final int qty;
 
+  const DispatchSlipItemRequest({
+    required this.machineId,
+    required this.partId,
+    required this.qty,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'machine_id': machineId,
+        'part_id': partId,
+        'qty': qty,
+      };
+}
+
+/// One line on a multi-item dispatch slip — a `(machine, part, qty)`
+/// triplet hydrated server-side with display fields. As of PR 3 the
+/// backend returns one of these for every machine/part combination in
+/// the slip's items table.
+class DplDispatchSlipItem {
   final int machineId;
   final String machineCode;
   final String machineName;
 
   final int partId;
+  final String partName;
   final String customerPartNo;
   final String substratePartNo;
   final String materialCode;
-  final String partName;
   final String description;
 
   final int qty;
+
+  const DplDispatchSlipItem({
+    required this.machineId,
+    required this.partId,
+    required this.qty,
+    this.machineCode = '',
+    this.machineName = '',
+    this.partName = '',
+    this.customerPartNo = '',
+    this.substratePartNo = '',
+    this.materialCode = '',
+    this.description = '',
+  });
+
+  factory DplDispatchSlipItem.fromJson(Map<String, dynamic> json) {
+    return DplDispatchSlipItem(
+      machineId: parseIntOr(json['machine_id'] ?? json['machineId']),
+      machineCode:
+          parseStringOr(json['machine_code'] ?? json['machineCode']),
+      machineName:
+          parseStringOr(json['machine_name'] ?? json['machineName']),
+      partId: parseIntOr(json['part_id'] ?? json['partId']),
+      partName: parseStringOr(json['part_name'] ?? json['partName']),
+      customerPartNo: parseStringOr(
+        json['customer_part_no'] ?? json['customerPartNo'],
+      ),
+      substratePartNo: parseStringOr(
+        json['substrate_part_no'] ?? json['substratePartNo'],
+      ),
+      materialCode:
+          parseStringOr(json['material_code'] ?? json['materialCode']),
+      description: parseStringOr(json['description']),
+      qty: parseIntOr(json['qty']),
+    );
+  }
+
+  /// Friendly machine label — falls back through code → id.
+  String get machineLabel {
+    final n = machineName.trim();
+    if (n.isNotEmpty) return n;
+    final c = machineCode.trim();
+    if (c.isNotEmpty) return c;
+    return 'Machine #$machineId';
+  }
+
+  /// Friendly part label — prefers name, then description, then P/N.
+  String get partLabel {
+    final n = partName.trim();
+    if (n.isNotEmpty) return n;
+    final d = description.trim();
+    if (d.isNotEmpty) return d;
+    final c = customerPartNo.trim();
+    if (c.isNotEmpty) return c;
+    return 'Part #$partId';
+  }
+}
+
+/// A multi-item dispatch slip — the digital twin of the printed paper
+/// slip but now able to carry multiple `(machine, part, qty)` lines
+/// under one plant + vehicle context. Goes through
+/// Dispatch → QA → PDI → optional mark-dispatched.
+///
+/// As of the PR 3 backend refactor:
+///   * Slip is scoped to a single plant via `plant.code`
+///   * `vehicleNo` is captured at creation, uppercase-normalised
+///   * Every line lives in `items[]`; `totalQty` is the server-computed
+///     sum across them
+///   * `qrPayload` is signed **at creation** (not at PDI approve) — the
+///     QR is a stable handle to the slip; the verify endpoint always
+///     returns the current DB state
+///
+/// Legacy single-item convenience getters (`machineLabel`, `partLabel`,
+/// `qty`, `customerPartNo`, …) are preserved and derived from the
+/// items list so consumers that haven't been refactored yet still
+/// compile and render something sensible — they'll be updated in
+/// follow-up commits.
+class DplDispatchSlip {
+  final int id;
+  final String slipNo;
+  final int organizationId;
+
+  /// Plant the slip belongs to — `{code, name}` only on the slip; the
+  /// full `machines[] / stats` payload lives on `GET /plants`.
+  final DplPlant plant;
+
+  /// Vehicle number captured at slip creation. Backend trims +
+  /// uppercases server-side. Empty string when not provided.
+  final String vehicleNo;
+
+  /// Every line on the slip — at least one. Server validates non-empty.
+  final List<DplDispatchSlipItem> items;
+
+  /// Server-computed `SUM(items[].qty)`.
+  final int totalQty;
+
   final String status;
 
   final DplDispatchSlipActor? requestedBy;
@@ -101,14 +212,12 @@ class DplDispatchSlip {
   final DplDispatchSlipActor? dispatchedBy;
 
   /// HMAC-signed JWT-style token rendered as the QR code on the printed
-  /// slip. Set the moment PDI approves.
+  /// slip. **Signed at creation** as of PR 3 — the same token is valid
+  /// through every state transition; the verify endpoint reads live
+  /// state from the DB.
   final String? qrPayload;
 
   final String notes;
-
-  /// Only present on the create-slip response — qty still available
-  /// after this slip is reserved.
-  final int? availableQtyAfter;
 
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -117,16 +226,10 @@ class DplDispatchSlip {
     required this.id,
     required this.slipNo,
     required this.organizationId,
-    required this.machineId,
-    required this.partId,
-    this.machineCode = '',
-    this.machineName = '',
-    this.customerPartNo = '',
-    this.substratePartNo = '',
-    this.materialCode = '',
-    this.partName = '',
-    this.description = '',
-    this.qty = 0,
+    required this.plant,
+    this.vehicleNo = '',
+    this.items = const [],
+    this.totalQty = 0,
     this.status = DplDispatchSlipStatus.pendingQa,
     this.requestedBy,
     this.requestedAt,
@@ -137,32 +240,49 @@ class DplDispatchSlip {
     this.dispatchedBy,
     this.qrPayload,
     this.notes = '',
-    this.availableQtyAfter,
     this.createdAt,
     this.updatedAt,
   });
 
   factory DplDispatchSlip.fromJson(Map<String, dynamic> json) {
+    // Items — preferred new shape. Fall back to synthesising a single
+    // item from legacy flat fields if the response predates PR 3 (e.g.
+    // a slip that was created before the migration ran).
+    final rawItems = json['items'];
+    List<DplDispatchSlipItem> parsedItems;
+    if (rawItems is List) {
+      parsedItems = rawItems
+          .whereType<Map>()
+          .map((e) =>
+              DplDispatchSlipItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList(growable: false);
+    } else if (json['machine_id'] != null || json['machineId'] != null) {
+      // Legacy single-item slip — wrap it in a one-element items list
+      // so the rest of the FE doesn't have to special-case the shape.
+      parsedItems = [DplDispatchSlipItem.fromJson(json)];
+    } else {
+      parsedItems = const [];
+    }
+
+    final rawPlant = json['plant'];
+    final parsedPlant = rawPlant is Map
+        ? DplPlant.fromJson(Map<String, dynamic>.from(rawPlant))
+        : const DplPlant(code: '', name: '');
+
+    final declaredTotal =
+        parseIntOrNull(json['total_qty'] ?? json['totalQty']);
+    final summedTotal =
+        parsedItems.fold<int>(0, (sum, it) => sum + it.qty);
+
     return DplDispatchSlip(
       id: parseIntOr(json['id']),
       slipNo: parseStringOr(json['slip_no'] ?? json['slipNo']),
       organizationId:
           parseIntOr(json['organization_id'] ?? json['organizationId']),
-      machineId: parseIntOr(json['machine_id'] ?? json['machineId']),
-      machineCode: parseStringOr(json['machine_code'] ?? json['machineCode']),
-      machineName: parseStringOr(json['machine_name'] ?? json['machineName']),
-      partId: parseIntOr(json['part_id'] ?? json['partId']),
-      customerPartNo: parseStringOr(
-        json['customer_part_no'] ?? json['customerPartNo'],
-      ),
-      substratePartNo: parseStringOr(
-        json['substrate_part_no'] ?? json['substratePartNo'],
-      ),
-      materialCode:
-          parseStringOr(json['material_code'] ?? json['materialCode']),
-      partName: parseStringOr(json['part_name'] ?? json['partName']),
-      description: parseStringOr(json['description']),
-      qty: parseIntOr(json['qty']),
+      plant: parsedPlant,
+      vehicleNo: parseStringOr(json['vehicle_no'] ?? json['vehicleNo']),
+      items: parsedItems,
+      totalQty: declaredTotal ?? summedTotal,
       status: parseStringOr(json['status'], DplDispatchSlipStatus.pendingQa),
       requestedBy:
           DplDispatchSlipActor.fromJson(json['requested_by'] ?? json['requestedBy']),
@@ -190,32 +310,62 @@ class DplDispatchSlip {
                   : json['qrPayload'] as String
               : null,
       notes: parseStringOr(json['notes']),
-      availableQtyAfter: parseIntOrNull(
-        json['available_qty_after'] ?? json['availableQtyAfter'],
-      ),
       createdAt: parseDateTimeOrNull(json['created_at'] ?? json['createdAt']),
       updatedAt: parseDateTimeOrNull(json['updated_at'] ?? json['updatedAt']),
     );
   }
 
-  /// Friendly machine label — falls back through code → id.
+  /// True when the slip is single-item — used by legacy UI paths that
+  /// render the slip as a single bordered row (the existing PDF,
+  /// printable detail screen, request sheet). When false, those paths
+  /// should switch to the items-table render (follow-up commits).
+  bool get isSingleItem => items.length == 1;
+
+  /// First item or null when the slip has no items. Convenience for the
+  /// legacy single-item code paths.
+  DplDispatchSlipItem? get firstItem =>
+      items.isNotEmpty ? items.first : null;
+
+  // ---------------------------------------------------------------------------
+  // Legacy single-item convenience getters
+  // ---------------------------------------------------------------------------
+  // These derive from `items[].first` (or a sensible multi-item summary
+  // when the slip spans multiple lines). They keep the long tail of
+  // consumers compiling while we refactor each one to read from items[]
+  // directly. Anything reading these getters today renders a "good
+  // enough" view; the per-item table comes in the slip-presentation
+  // commit.
+
+  int get machineId => firstItem?.machineId ?? 0;
+  String get machineCode => firstItem?.machineCode ?? '';
+  String get machineName => firstItem?.machineName ?? '';
+  int get partId => firstItem?.partId ?? 0;
+  String get partName => firstItem?.partName ?? '';
+  String get customerPartNo => firstItem?.customerPartNo ?? '';
+  String get substratePartNo => firstItem?.substratePartNo ?? '';
+  String get materialCode => firstItem?.materialCode ?? '';
+  String get description => firstItem?.description ?? '';
+
+  /// Alias for `totalQty` so legacy consumers reading `slip.qty` still
+  /// get the right number.
+  int get qty => totalQty;
+
+  /// Machine label — first item's label, or a summary when multi-item.
   String get machineLabel {
-    final n = machineName.trim();
-    if (n.isNotEmpty) return n;
-    final c = machineCode.trim();
-    if (c.isNotEmpty) return c;
-    return 'Machine #$machineId';
+    if (items.isEmpty) return 'Machine #$machineId';
+    if (items.length == 1) return items.first.machineLabel;
+    // Multi-item slip across distinct machines.
+    final distinctMachines =
+        items.map((i) => i.machineId).toSet().length;
+    if (distinctMachines == 1) return items.first.machineLabel;
+    return '$distinctMachines machines';
   }
 
-  /// Friendly part label — prefers name, then description, then P/N.
+  /// Part label — first item's, or a summary like "3 items" when multi.
   String get partLabel {
-    final n = partName.trim();
-    if (n.isNotEmpty) return n;
-    final d = description.trim();
-    if (d.isNotEmpty) return d;
-    final c = customerPartNo.trim();
-    if (c.isNotEmpty) return c;
-    return 'Part #$partId';
+    if (items.isEmpty) return 'Part #$partId';
+    if (items.length == 1) return items.first.partLabel;
+    return '${items.length} items';
   }
 
   /// True when the slip is ready to print: PDI has approved and the
