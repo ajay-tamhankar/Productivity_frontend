@@ -19,11 +19,9 @@ class DispatchSlipPdfBuilder {
 
   // ── Palette — lifted verbatim from the HTML / on-screen palette ──
   static const _brand = PdfColor.fromInt(0xFFA3238E);
-  static const _brandDeep = PdfColor.fromInt(0xFF6B1F8C);
-  static const _brandHilite = PdfColor.fromInt(0xFFB83AA3);
   static const _ink = PdfColor.fromInt(0xFF1A161D);
   static const _muted = PdfColor.fromInt(0xFF78727F);
-  static const _faint = PdfColor.fromInt(0xFFA39DAB);
+  static const _faint = PdfColor.fromInt(0xFF1A161D);
   static const _line = PdfColor.fromInt(0xFFE9E6EC);
   static const _lineSoft = PdfColor.fromInt(0xFFF1EFF3);
   static const _surface = PdfColor.fromInt(0xFFFAF9FB);
@@ -41,13 +39,19 @@ class DispatchSlipPdfBuilder {
   static const _rejectedLine = PdfColor.fromInt(0xFFFECACA);
 
   static const _trustText = PdfColor.fromInt(0xFF4F7A64);
-  static const _pnInk = PdfColor.fromInt(0xFF3A3440);
   static const _footId = PdfColor.fromInt(0xFF4F4A57);
+
+  // Darker band gradient — operator asked for a heavier header so the
+  // white text reads clearly even after print rasterisation. Goes from
+  // near-black plum on the left through a deep purple to the existing
+  // brand purple on the right.
+  static const _bandDark = PdfColor.fromInt(0xFF2A0A36);
+  static const _bandMid = PdfColor.fromInt(0xFF4A1163);
+  static const _bandLight = PdfColor.fromInt(0xFF6B1F8C);
 
   // Pre-blended overlay colors for the header band — solid (no alpha)
   // so they always render in print previews / printers that drop alpha
-  // channels. Computed by alpha-blending the listed white with the
-  // band's mid-gradient brand purple.
+  // channels.
   static const _bandChipBg = PdfColor.fromInt(0xFFB958AB);
   static const _bandChipBorder = PdfColor.fromInt(0xFFCC8AC4);
   static const _bandTextSoft = PdfColor.fromInt(0xFFF1DDEC);
@@ -76,11 +80,8 @@ class DispatchSlipPdfBuilder {
 
     final doc = pw.Document(
       title: 'Dispatch Slip ${slip.slipNo}',
-      author: 'Vistar Pulse',
-      theme: pw.ThemeData.withFont(
-        base: fonts.uiRegular,
-        bold: fonts.uiBold,
-      ),
+      author: 'Grupo Antolin India Private Limited',
+      theme: pw.ThemeData.withFont(base: fonts.uiRegular, bold: fonts.uiBold),
     );
 
     // Single A4-landscape page. We avoid `pw.MultiPage` here because
@@ -98,6 +99,13 @@ class DispatchSlipPdfBuilder {
         pageFormat: PdfPageFormat.a4.landscape,
         orientation: pw.PageOrientation.landscape,
         margin: const pw.EdgeInsets.fromLTRB(16, 14, 16, 14),
+        // Natural content height. We tried wrapping the body in
+        // Expanded + pw.Spacer() to claim the whole page, but pdf's
+        // Flex layout can't bound the height through a Table cell —
+        // it threw "Flex children have non-zero flex but incoming
+        // height constraints are unbounded" at print time. So we
+        // accept some bottom whitespace on short slips and let the
+        // content size itself.
         build: (context) => pw.Container(
           decoration: pw.BoxDecoration(
             color: PdfColors.white,
@@ -110,11 +118,6 @@ class DispatchSlipPdfBuilder {
             children: [
               _band(slip, fonts),
               _identity(slip, fonts, dateFmt, timeFmt, referenceTime),
-              // Two-column body — QR sidebar on the left, parts +
-              // signoff on the right. The sidebar is fixed-width and
-              // always visible regardless of how many parts the slip
-              // carries; the right column grows vertically with the
-              // parts table.
               _bodyRow(slip, fonts, fmt, signDateFmt),
               _foot(slip, fonts),
             ],
@@ -133,13 +136,13 @@ class DispatchSlipPdfBuilder {
   static pw.Widget _band(DplDispatchSlip slip, _SlipFonts fonts) {
     return pw.Container(
       decoration: const pw.BoxDecoration(
-        // Standard left-to-right gradient. Earlier we used out-of-range
-        // alignment offsets to angle it slightly — some PDF print
-        // previews dropped the gradient entirely when fed those, so
-        // we use clean centerLeft → centerRight here.
+        // Darker gradient — near-black plum on the left, deep brand
+        // purple on the right. Heavier than the original tri-stop
+        // gradient so white text + the chip read cleanly even after
+        // print rasterisation.
         gradient: pw.LinearGradient(
-          colors: [_brandDeep, _brand, _brandHilite],
-          stops: [0.0, 0.62, 1.0],
+          colors: [_bandDark, _bandMid, _bandLight],
+          stops: [0.0, 0.5, 1.0],
           begin: pw.Alignment.centerLeft,
           end: pw.Alignment.centerRight,
         ),
@@ -149,7 +152,7 @@ class DispatchSlipPdfBuilder {
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
           pw.Expanded(child: _brandBlock(fonts)),
-          pw.SizedBox(width: 18),
+          pw.SizedBox(width: 20),
           _docBlock(slip, fonts),
         ],
       ),
@@ -162,8 +165,8 @@ class DispatchSlipPdfBuilder {
       crossAxisAlignment: pw.CrossAxisAlignment.center,
       children: [
         pw.Container(
-          width: 32,
-          height: 32,
+          width: 44,
+          height: 36,
           alignment: pw.Alignment.center,
           decoration: pw.BoxDecoration(
             // Solid (pre-blended) colors instead of alpha-over-white —
@@ -174,40 +177,48 @@ class DispatchSlipPdfBuilder {
             border: pw.Border.all(color: _bandChipBorder),
           ),
           child: pw.Text(
-            'VP',
+            'GA',
+            // Single-line — without this, the 22pt bold "GA" + 1.0
+            // letter-spacing wrapped each character onto its own
+            // line inside the original 32x32 box.
+            maxLines: 1,
+            overflow: pw.TextOverflow.clip,
+            textAlign: pw.TextAlign.center,
             style: pw.TextStyle(
-              font: fonts.displayBold,
-              fontSize: 16,
+              // Plate-style — Inter Bold + 0.5 letter-spacing, just
+              // in white over the dark band.
+              font: fonts.uiBold,
+              fontSize: 22,
               color: PdfColors.white,
               letterSpacing: 0.5,
               lineSpacing: 0,
             ),
           ),
         ),
-        pw.SizedBox(width: 10),
+        pw.SizedBox(width: 12),
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           mainAxisSize: pw.MainAxisSize.min,
           children: [
             pw.Text(
-              'VISTAR  PULSE',
+              'Grupo Antolin India Private Limited',
               style: pw.TextStyle(
-                font: fonts.displayBold,
-                fontSize: 17,
+                font: fonts.uiBold,
+                fontSize: 22,
                 color: PdfColors.white,
-                letterSpacing: 1.2,
+                letterSpacing: 1.0,
               ),
             ),
             pw.SizedBox(height: 3),
-            pw.Text(
-              'PRODUCTION  ·  DISPATCH',
-              style: pw.TextStyle(
-                font: fonts.uiSemiBold,
-                fontSize: 7,
-                color: _bandTextSoft,
-                letterSpacing: 2.0,
-              ),
-            ),
+            // pw.Text(
+            //   'DISPATCH SLIP',
+            //   style: pw.TextStyle(
+            //     font: fonts.uiBold,
+            //     fontSize: 8.5,
+            //     color: _bandTextSoft,
+            //     letterSpacing: 2.0,
+            //   ),
+            // ),
           ],
         ),
       ],
@@ -222,28 +233,28 @@ class DispatchSlipPdfBuilder {
         pw.Text(
           'DISPATCH SLIP',
           style: pw.TextStyle(
-            font: fonts.displaySemiBold,
-            fontSize: 15,
+            font: fonts.uiBold,
+            fontSize: 21,
             color: PdfColors.white,
-            letterSpacing: 2.4,
+            letterSpacing: 2.2,
           ),
         ),
-        pw.SizedBox(height: 6),
+        pw.SizedBox(height: 7),
         pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: pw.BoxDecoration(
             // Solid pre-blended colors — see _band header comment.
             color: _bandChipBg,
-            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(7)),
             border: pw.Border.all(color: _bandChipBorder),
           ),
           child: pw.Text(
             slip.slipNo,
             style: pw.TextStyle(
-              font: fonts.monoMedium,
-              fontSize: 9,
+              font: fonts.uiBold,
+              fontSize: 14,
               color: PdfColors.white,
-              letterSpacing: 0.1,
+              letterSpacing: 0.8,
             ),
           ),
         ),
@@ -263,8 +274,20 @@ class DispatchSlipPdfBuilder {
     DateTime? referenceTime,
   ) {
     final machineLabel = _machineLabel(slip);
-    final itemsLabel =
-        slip.items.length == 1 ? '1 part' : '${slip.items.length} parts';
+    // Headline part description — short `description` code only
+    // (e.g. "114ZY"), styled like a vehicle plate so the gate can
+    // read it at a glance. For multi-item slips we still show the
+    // first item's code with "+ N more" so the gate knows the slip
+    // carries other parts; the full per-item table is below.
+    final firstItem = slip.firstItem;
+    final partDescription = firstItem == null
+        ? '-'
+        : (firstItem.description.trim().isNotEmpty
+              ? firstItem.description.trim()
+              : '-');
+    final partSub = firstItem == null
+        ? null
+        : (slip.items.length > 1 ? '+ ${slip.items.length - 1} more' : null);
     final dateStr = referenceTime == null
         ? '-'
         : dateFmt.format(referenceTime.toLocal());
@@ -296,20 +319,21 @@ class DispatchSlipPdfBuilder {
           pw.Expanded(
             flex: 10,
             child: _idCell(
-              child: _labelValue(fonts, 'PLANT',
-                  slip.plant.name.isEmpty ? '-' : slip.plant.name),
+              child: _labelValue(
+                fonts,
+                'PLANT',
+                slip.plant.name.isEmpty ? '-' : slip.plant.name,
+              ),
             ),
           ),
           pw.Expanded(
             flex: 10,
-            child: _idCell(
-              child: _labelValue(fonts, 'MACHINE', machineLabel),
-            ),
+            child: _idCell(child: _labelValue(fonts, 'MACHINE', machineLabel)),
           ),
           pw.Expanded(
             flex: 10,
             child: _idCell(
-              child: _labelValue(fonts, 'LINE ITEMS', itemsLabel),
+              child: _platePartCell(fonts, partDescription, partSub),
             ),
           ),
           pw.Expanded(
@@ -334,7 +358,7 @@ class DispatchSlipPdfBuilder {
     bool leftBorder = true,
   }) {
     return pw.Container(
-      padding: const pw.EdgeInsets.fromLTRB(14, 10, 14, 10),
+      padding: const pw.EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: pw.BoxDecoration(
         color: background,
         border: pw.Border(
@@ -361,30 +385,35 @@ class DispatchSlipPdfBuilder {
           label,
           style: pw.TextStyle(
             font: fonts.uiBold,
-            fontSize: 6.5,
+            fontSize: 11,
             color: _faint,
-            letterSpacing: 1.0,
+            letterSpacing: 1.2,
           ),
         ),
-        pw.SizedBox(height: 4),
+        pw.SizedBox(height: 6),
+        // Plate-style — same font + ink + letter-spacing pattern as
+        // the VEHICLE plate so PLANT / MACHINE / DISPATCHED read as
+        // matching "plates" across the identity strip.
         pw.Text(
           value,
           style: pw.TextStyle(
-            font: fonts.uiSemiBold,
-            fontSize: 9.5,
+            font: fonts.uiBold,
+            fontSize: 22,
             color: _ink,
+            letterSpacing: 0.8,
           ),
           maxLines: 2,
           overflow: pw.TextOverflow.clip,
         ),
         if (subValue != null) ...[
-          pw.SizedBox(height: 1),
+          pw.SizedBox(height: 4),
           pw.Text(
             subValue,
             style: pw.TextStyle(
-              font: fonts.monoMedium,
-              fontSize: 7.5,
+              font: fonts.uiBold,
+              fontSize: 13,
               color: _muted,
+              letterSpacing: 0.4,
             ),
           ),
         ],
@@ -403,19 +432,19 @@ class DispatchSlipPdfBuilder {
           'VEHICLE',
           style: pw.TextStyle(
             font: fonts.uiBold,
-            fontSize: 6.5,
+            fontSize: 11,
             color: _faint,
-            letterSpacing: 1.0,
+            letterSpacing: 1.2,
           ),
         ),
-        pw.SizedBox(height: 3),
+        pw.SizedBox(height: 5),
         pw.Text(
           plate,
           style: pw.TextStyle(
-            font: fonts.displayBold,
-            fontSize: 22,
+            font: fonts.uiBold,
+            fontSize: 30,
             color: _ink,
-            letterSpacing: 1.0,
+            letterSpacing: 1.2,
           ),
           maxLines: 1,
           overflow: pw.TextOverflow.clip,
@@ -425,8 +454,8 @@ class DispatchSlipPdfBuilder {
           pw.RichText(
             text: pw.TextSpan(
               style: pw.TextStyle(
-                font: fonts.uiRegular,
-                fontSize: 7.5,
+                font: fonts.uiMedium,
+                fontSize: 11,
                 color: _muted,
               ),
               children: [
@@ -434,12 +463,62 @@ class DispatchSlipPdfBuilder {
                 pw.TextSpan(
                   text: notes,
                   style: pw.TextStyle(
-                    font: fonts.uiSemiBold,
-                    fontSize: 7.5,
+                    font: fonts.uiBold,
+                    fontSize: 11,
                     color: _ink,
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Plate-style cell for the headline part-description code (e.g.
+  /// "114ZY"). Mirrors `_plateCell`'s typography on purpose so the
+  /// gate sees two big bold "plates" side by side — VEHICLE on the
+  /// left, PART DESCRIPTION further along the strip.
+  static pw.Widget _platePartCell(
+    _SlipFonts fonts,
+    String code,
+    String? subValue,
+  ) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      mainAxisSize: pw.MainAxisSize.min,
+      children: [
+        pw.Text(
+          'PART DESCRIPTION',
+          style: pw.TextStyle(
+            font: fonts.uiBold,
+            fontSize: 11,
+            color: _faint,
+            letterSpacing: 1.2,
+          ),
+        ),
+        pw.SizedBox(height: 5),
+        pw.Text(
+          code,
+          style: pw.TextStyle(
+            font: fonts.uiBold,
+            fontSize: 30,
+            color: _ink,
+            letterSpacing: 1.2,
+          ),
+          maxLines: 1,
+          overflow: pw.TextOverflow.clip,
+        ),
+        if (subValue != null) ...[
+          pw.SizedBox(height: 5),
+          pw.Text(
+            subValue,
+            style: pw.TextStyle(
+              font: fonts.uiBold,
+              fontSize: 12,
+              color: _muted,
+              letterSpacing: 0.3,
             ),
           ),
         ],
@@ -468,7 +547,9 @@ class DispatchSlipPdfBuilder {
             item: slip.items[i],
             isLast: i == slip.items.length - 1,
           ),
-        _totalRow(slip, fonts, fmt),
+        // TOTAL DISPATCHED row — intentionally hidden. Re-enable by
+        // uncommenting the call below; the helper itself is kept.
+        // _totalRow(slip, fonts, fmt),
       ],
     );
   }
@@ -476,32 +557,29 @@ class DispatchSlipPdfBuilder {
   static pw.Widget _partsHeader(_SlipFonts fonts) {
     final style = pw.TextStyle(
       font: fonts.uiBold,
-      fontSize: 6.5,
+      fontSize: 11,
       color: _faint,
-      letterSpacing: 1.0,
+      letterSpacing: 1.2,
     );
     return pw.Container(
       decoration: const pw.BoxDecoration(
         color: _surface,
         border: pw.Border(bottom: pw.BorderSide(color: _line)),
       ),
-      padding: const pw.EdgeInsets.fromLTRB(14, 6, 14, 6),
+      padding: const pw.EdgeInsets.fromLTRB(16, 9, 16, 9),
       child: pw.Row(
         children: [
           pw.SizedBox(
-            width: 28,
+            width: 32,
             child: pw.Text('#', textAlign: pw.TextAlign.center, style: style),
           ),
           pw.Expanded(
             flex: 11,
             child: pw.Text('PART DESCRIPTION', style: style),
           ),
-          pw.Expanded(
-            flex: 6,
-            child: pw.Text('CUSTOMER P/N', style: style),
-          ),
+          pw.Expanded(flex: 6, child: pw.Text('CUSTOMER P/N', style: style)),
           pw.SizedBox(
-            width: 90,
+            width: 130,
             child: pw.Text(
               'QUANTITY',
               textAlign: pw.TextAlign.right,
@@ -524,13 +602,14 @@ class DispatchSlipPdfBuilder {
     final partName = item.partName.trim().isNotEmpty
         ? item.partName
         : (item.description.trim().isNotEmpty
-            ? item.description
-            : item.partLabel);
-    final hasSub = item.description.trim().isNotEmpty &&
+              ? item.description
+              : item.partLabel);
+    final hasSub =
+        item.description.trim().isNotEmpty &&
         item.description.trim() != partName.trim();
 
     return pw.Container(
-      padding: const pw.EdgeInsets.fromLTRB(14, 7, 14, 7),
+      padding: const pw.EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: pw.BoxDecoration(
         border: pw.Border(
           bottom: pw.BorderSide(color: isLast ? _line : _lineSoft),
@@ -540,14 +619,14 @@ class DispatchSlipPdfBuilder {
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
           pw.SizedBox(
-            width: 28,
+            width: 32,
             child: pw.Text(
               idxStr,
               textAlign: pw.TextAlign.center,
               style: pw.TextStyle(
                 font: fonts.monoMedium,
-                fontSize: 8,
-                color: _faint,
+                fontSize: 13,
+                color: _muted,
               ),
             ),
           ),
@@ -557,26 +636,28 @@ class DispatchSlipPdfBuilder {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               mainAxisSize: pw.MainAxisSize.min,
               children: [
+                // Plate-style — Inter Bold ink, matches the VEHICLE
+                // plate's pattern at a smaller table-friendly size.
                 pw.Text(
                   partName,
                   style: pw.TextStyle(
-                    font: fonts.uiSemiBold,
-                    fontSize: 9.5,
+                    font: fonts.uiBold,
+                    fontSize: 18,
                     color: _ink,
-                    letterSpacing: 0.05,
+                    letterSpacing: 0.6,
                   ),
                   maxLines: 2,
                   overflow: pw.TextOverflow.clip,
                 ),
                 if (hasSub) ...[
-                  pw.SizedBox(height: 2),
+                  pw.SizedBox(height: 4),
                   pw.Text(
                     item.description.trim(),
                     style: pw.TextStyle(
-                      font: fonts.monoMedium,
-                      fontSize: 7,
+                      font: fonts.uiBold,
+                      fontSize: 14,
                       color: _brand,
-                      letterSpacing: 0.18,
+                      letterSpacing: 0.5,
                     ),
                     maxLines: 1,
                     overflow: pw.TextOverflow.clip,
@@ -590,33 +671,35 @@ class DispatchSlipPdfBuilder {
             child: pw.Text(
               item.customerPartNo.isEmpty ? '-' : item.customerPartNo,
               style: pw.TextStyle(
-                font: fonts.monoMedium,
-                fontSize: 8.5,
-                color: _pnInk,
+                font: fonts.uiBold,
+                fontSize: 18,
+                color: _ink,
+                letterSpacing: 0.6,
               ),
               maxLines: 1,
               overflow: pw.TextOverflow.clip,
             ),
           ),
           pw.SizedBox(
-            width: 90,
+            width: 130,
             child: pw.RichText(
               textAlign: pw.TextAlign.right,
               text: pw.TextSpan(
                 style: pw.TextStyle(
-                  font: fonts.displaySemiBold,
-                  fontSize: 14,
+                  font: fonts.uiBold,
+                  fontSize: 23,
                   color: _ink,
+                  letterSpacing: 0.8,
                 ),
                 children: [
                   pw.TextSpan(text: fmt.format(item.qty)),
                   pw.TextSpan(
                     text: '  NOS',
                     style: pw.TextStyle(
-                      font: fonts.uiSemiBold,
-                      fontSize: 7,
+                      font: fonts.uiBold,
+                      fontSize: 13,
                       color: _muted,
-                      letterSpacing: 0.35,
+                      letterSpacing: 0.4,
                     ),
                   ),
                 ],
@@ -628,6 +711,9 @@ class DispatchSlipPdfBuilder {
     );
   }
 
+  // Kept for re-enabling the TOTAL DISPATCHED row by uncommenting
+  // the `_totalRow(...)` call inside `_parts(...)`.
+  // ignore: unused_element
   static pw.Widget _totalRow(
     DplDispatchSlip slip,
     _SlipFonts fonts,
@@ -654,7 +740,7 @@ class DispatchSlipPdfBuilder {
                   'TOTAL DISPATCHED',
                   style: pw.TextStyle(
                     font: fonts.displayBold,
-                    fontSize: 12,
+                    fontSize: 15.5,
                     color: _ink,
                     letterSpacing: 1.8,
                   ),
@@ -665,8 +751,8 @@ class DispatchSlipPdfBuilder {
                       ? '1 line item  ·  quantity verified at loading'
                       : '$count line items  ·  all quantities verified at loading',
                   style: pw.TextStyle(
-                    font: fonts.uiMedium,
-                    fontSize: 7,
+                    font: fonts.uiSemiBold,
+                    fontSize: 10,
                     color: _muted,
                     letterSpacing: 0.18,
                   ),
@@ -682,7 +768,7 @@ class DispatchSlipPdfBuilder {
               text: pw.TextSpan(
                 style: pw.TextStyle(
                   font: fonts.displayBold,
-                  fontSize: 19,
+                  fontSize: 23,
                   color: _brand,
                 ),
                 children: [
@@ -690,8 +776,8 @@ class DispatchSlipPdfBuilder {
                   pw.TextSpan(
                     text: '  NOS',
                     style: pw.TextStyle(
-                      font: fonts.uiSemiBold,
-                      fontSize: 8,
+                      font: fonts.uiBold,
+                      fontSize: 11,
                       color: _muted,
                     ),
                   ),
@@ -705,7 +791,8 @@ class DispatchSlipPdfBuilder {
   }
 
   // ───────────────────────────────────────────────────────────────────
-  // Sign-off strip — QA + PDI checkpoint cards side by side.
+  // Sign-off strip — PDI checkpoint only. QA was removed at the
+  // operator's request; PDI now takes the full slip width.
   // ───────────────────────────────────────────────────────────────────
   static pw.Widget _signoff(
     DplDispatchSlip slip,
@@ -716,40 +803,15 @@ class DispatchSlipPdfBuilder {
       decoration: const pw.BoxDecoration(
         border: pw.Border(top: pw.BorderSide(color: _line)),
       ),
-      // `stretch` would push infinite-height constraints onto the
-      // Expanded checkpoint cards (Row sits inside an unbounded
-      // Column) — same trap as `_identity`. Default start alignment
-      // keeps the cards rendering at their natural intrinsic height.
-      child: pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Expanded(
-            child: _checkpoint(
-              fonts: fonts,
-              dateFmt: dateFmt,
-              title: 'Quality Assurance  ·  QA',
-              description:
-                  'Confirm part conformity and quantity before release.',
-              state: slip.qaState,
-              approver: slip.qaApproval,
-              rejection: slip.rejection?.isQa == true ? slip.rejection : null,
-              leftBorder: false,
-            ),
-          ),
-          pw.Expanded(
-            child: _checkpoint(
-              fonts: fonts,
-              dateFmt: dateFmt,
-              title: 'Pre-Dispatch Inspection  ·  PDI',
-              description: 'Final loading check against this manifest.',
-              state: slip.pdiState,
-              approver: slip.pdiApproval,
-              rejection:
-                  slip.rejection?.isPdi == true ? slip.rejection : null,
-              leftBorder: true,
-            ),
-          ),
-        ],
+      child: _checkpoint(
+        fonts: fonts,
+        dateFmt: dateFmt,
+        title: 'Pre-Dispatch Inspection  ·  PDI',
+        description: 'Final loading check against this manifest.',
+        state: slip.pdiState,
+        approver: slip.pdiApproval,
+        rejection: slip.rejection?.isPdi == true ? slip.rejection : null,
+        leftBorder: false,
       ),
     );
   }
@@ -797,17 +859,17 @@ class DispatchSlipPdfBuilder {
                         title,
                         style: pw.TextStyle(
                           font: fonts.uiBold,
-                          fontSize: 8.5,
+                          fontSize: 11.5,
                           color: _ink,
-                          letterSpacing: 0.18,
+                          letterSpacing: 0.2,
                         ),
                       ),
-                      pw.SizedBox(height: 1),
+                      pw.SizedBox(height: 2),
                       pw.Text(
                         description,
                         style: pw.TextStyle(
-                          font: fonts.uiMedium,
-                          fontSize: 7,
+                          font: fonts.uiSemiBold,
+                          fontSize: 10,
                           color: _muted,
                         ),
                         maxLines: 2,
@@ -855,10 +917,7 @@ class DispatchSlipPdfBuilder {
         width: 12,
         height: 12,
         child: pw.SvgImage(
-          svg: _tickSvg.replaceAll(
-            'currentColor',
-            _rgbHex(palette.ink),
-          ),
+          svg: _tickSvg.replaceAll('currentColor', _rgbHex(palette.ink)),
         ),
       ),
     );
@@ -880,9 +939,9 @@ class DispatchSlipPdfBuilder {
         label.toUpperCase(),
         style: pw.TextStyle(
           font: fonts.uiBold,
-          fontSize: 6.5,
+          fontSize: 12,
           color: palette.ink,
-          letterSpacing: 0.8,
+          letterSpacing: 0.9,
         ),
       ),
     );
@@ -923,9 +982,7 @@ class DispatchSlipPdfBuilder {
             pw.Container(
               height: 12,
               decoration: const pw.BoxDecoration(
-                border: pw.Border(
-                  bottom: pw.BorderSide(color: _line),
-                ),
+                border: pw.Border(bottom: pw.BorderSide(color: _line)),
               ),
             ),
             pw.SizedBox(height: 3),
@@ -933,9 +990,9 @@ class DispatchSlipPdfBuilder {
               'INSPECTOR SIGNATURE & TIME',
               style: pw.TextStyle(
                 font: fonts.uiBold,
-                fontSize: 6,
+                fontSize: 7.5,
                 color: _faint,
-                letterSpacing: 0.9,
+                letterSpacing: 1.0,
               ),
             ),
           ],
@@ -956,21 +1013,17 @@ class DispatchSlipPdfBuilder {
       children: [
         pw.Text(
           name,
-          style: pw.TextStyle(
-            font: fonts.uiSemiBold,
-            fontSize: 8.5,
-            color: _ink,
-          ),
+          style: pw.TextStyle(font: fonts.uiBold, fontSize: 10, color: _ink),
           maxLines: 1,
           overflow: pw.TextOverflow.clip,
         ),
         if (at != null) ...[
-          pw.SizedBox(height: 1),
+          pw.SizedBox(height: 2),
           pw.Text(
             '${dateFmt.format(at.toLocal())} IST',
             style: pw.TextStyle(
-              font: fonts.uiMedium,
-              fontSize: 7,
+              font: fonts.uiSemiBold,
+              fontSize: 8.5,
               color: _muted,
             ),
           ),
@@ -980,8 +1033,8 @@ class DispatchSlipPdfBuilder {
           pw.Text(
             '"${reason.trim()}"',
             style: pw.TextStyle(
-              font: fonts.uiMedium,
-              fontSize: 6.5,
+              font: fonts.uiSemiBold,
+              fontSize: 8,
               color: _rejectedInk,
               fontStyle: pw.FontStyle.italic,
             ),
@@ -1009,9 +1062,9 @@ class DispatchSlipPdfBuilder {
     DateFormat signDateFmt,
   ) {
     return pw.Table(
-      defaultVerticalAlignment: pw.TableCellVerticalAlignment.full,
+      defaultVerticalAlignment: pw.TableCellVerticalAlignment.top,
       columnWidths: const {
-        0: pw.FixedColumnWidth(170),
+        0: pw.FixedColumnWidth(190),
         1: pw.FlexColumnWidth(1),
       },
       children: [
@@ -1043,7 +1096,7 @@ class DispatchSlipPdfBuilder {
         color: _surface,
         border: pw.Border(right: pw.BorderSide(color: _line)),
       ),
-      padding: const pw.EdgeInsets.fromLTRB(12, 14, 12, 14),
+      padding: const pw.EdgeInsets.fromLTRB(14, 18, 14, 18),
       child: pw.Column(
         mainAxisSize: pw.MainAxisSize.min,
         crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -1052,28 +1105,28 @@ class DispatchSlipPdfBuilder {
             'SCAN TO VERIFY',
             style: pw.TextStyle(
               font: fonts.uiBold,
-              fontSize: 7.5,
+              fontSize: 11,
               color: _faint,
-              letterSpacing: 1.3,
+              letterSpacing: 1.5,
             ),
           ),
-          pw.SizedBox(height: 8),
+          pw.SizedBox(height: 12),
           pw.Container(
-            width: 140,
-            height: 140,
-            padding: const pw.EdgeInsets.all(7),
+            width: 160,
+            height: 160,
+            padding: const pw.EdgeInsets.all(8),
             decoration: pw.BoxDecoration(
               color: PdfColors.white,
-              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(10)),
               border: pw.Border.all(color: _line),
             ),
             child: hasQr
                 ? pw.SizedBox(
-                    width: 126,
-                    height: 126,
+                    width: 144,
+                    height: 144,
                     child: pw.BarcodeWidget(
-                      width: 126,
-                      height: 126,
+                      width: 144,
+                      height: 144,
                       barcode: pw.Barcode.qrCode(
                         errorCorrectLevel: pw.BarcodeQRCorrectionLevel.medium,
                       ),
@@ -1087,21 +1140,21 @@ class DispatchSlipPdfBuilder {
                       'QR appears after\nPDI approval',
                       textAlign: pw.TextAlign.center,
                       style: pw.TextStyle(
-                        font: fonts.uiSemiBold,
-                        fontSize: 8,
+                        font: fonts.uiBold,
+                        fontSize: 11,
                         color: _muted,
                         lineSpacing: 2,
                       ),
                     ),
                   ),
           ),
-          pw.SizedBox(height: 8),
+          pw.SizedBox(height: 12),
           pw.Text(
             'Scan to verify against the Vistar Pulse server  ·  HMAC-signed',
             textAlign: pw.TextAlign.center,
             style: pw.TextStyle(
-              font: fonts.uiMedium,
-              fontSize: 7,
+              font: fonts.uiBold,
+              fontSize: 10,
               color: _trustText,
             ),
           ),
@@ -1126,15 +1179,15 @@ class DispatchSlipPdfBuilder {
             slip.slipNo,
             style: pw.TextStyle(
               font: fonts.monoMedium,
-              fontSize: 7,
+              fontSize: 8.5,
               color: _footId,
             ),
           ),
           pw.Text(
             'Generated by Vistar Pulse  ·  Page 1 of 1',
             style: pw.TextStyle(
-              font: fonts.uiMedium,
-              fontSize: 7,
+              font: fonts.uiSemiBold,
+              fontSize: 8,
               color: _muted,
               letterSpacing: 0.3,
             ),

@@ -549,3 +549,62 @@ class DplDispatchSlipVerification {
     );
   }
 }
+
+/// Result returned by `POST /dispatch/slips/:id/email`. The backend
+/// either dispatched the email (`sent = true`, `messageId` populated)
+/// or **silently skipped** when SMTP isn't configured on the deploy
+/// (`skipped = true`). The UI surfaces these as success / warning so
+/// the user knows whether the email actually went out.
+class DplDispatchSlipEmailResult {
+  /// True when the backend handed the message to SMTP and the
+  /// provider accepted it.
+  final bool sent;
+
+  /// True when the deploy hasn't been wired with SMTP yet. The slip
+  /// is still created server-side; only the email step was no-op'd.
+  final bool skipped;
+
+  /// SMTP provider's message id when [sent] — useful in error reports.
+  final String? messageId;
+
+  /// Reason text the server attached to a skip / partial failure
+  /// (e.g. "SMTP not configured"). Nullable.
+  final String? reason;
+
+  /// Resolved recipient addresses the backend actually sent to.
+  /// Useful for the success toast ("Slip sent to dispatch.san@…").
+  final List<String> to;
+  final List<String> cc;
+
+  const DplDispatchSlipEmailResult({
+    required this.sent,
+    required this.skipped,
+    this.messageId,
+    this.reason,
+    this.to = const [],
+    this.cc = const [],
+  });
+
+  factory DplDispatchSlipEmailResult.fromJson(Map<String, dynamic> json) {
+    List<String> readList(dynamic raw) {
+      if (raw is List) {
+        return raw
+            .map((e) => e?.toString().trim() ?? '')
+            .where((s) => s.isNotEmpty)
+            .toList(growable: false);
+      }
+      return const [];
+    }
+
+    return DplDispatchSlipEmailResult(
+      sent: json['sent'] == true,
+      skipped: json['skipped'] == true,
+      messageId: json['message_id'] is String
+          ? json['message_id'] as String
+          : (json['messageId'] is String ? json['messageId'] as String : null),
+      reason: json['reason'] is String ? json['reason'] as String : null,
+      to: readList(json['to']),
+      cc: readList(json['cc']),
+    );
+  }
+}

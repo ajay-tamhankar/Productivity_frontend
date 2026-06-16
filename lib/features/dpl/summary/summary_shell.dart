@@ -132,10 +132,9 @@ class DplSummaryShell extends ConsumerWidget {
     if (AppConstants.isDplDispatchRole(role)) {
       return 'Dispatch — Select Plant';
     }
-    if (AppConstants.isDplQaRole(role)) {
-      return 'QA — Select Plant';
-    }
-    if (AppConstants.isDplPdiRole(role)) {
+    // QA approval step removed from the workflow — QA users land on
+    // the PDI-style screen.
+    if (AppConstants.isDplQaRole(role) || AppConstants.isDplPdiRole(role)) {
       return 'PDI — Select Plant';
     }
     return 'Select Plant';
@@ -143,8 +142,10 @@ class DplSummaryShell extends ConsumerWidget {
 
   String _slipsTitleForRole(String role) {
     if (AppConstants.isDplDispatchRole(role)) return 'My Dispatch Slips';
-    if (AppConstants.isDplQaRole(role)) return 'QA — Dispatch Slips';
-    if (AppConstants.isDplPdiRole(role)) return 'PDI — Dispatch Slips';
+    // QA users see the PDI inbox view.
+    if (AppConstants.isDplQaRole(role) || AppConstants.isDplPdiRole(role)) {
+      return 'PDI — Dispatch Slips';
+    }
     return 'Dispatch Slips';
   }
 
@@ -160,8 +161,11 @@ class DplSummaryShell extends ConsumerWidget {
     if (response == null || !response.isOk) return 0;
     final totals = response.data?.totals;
     if (totals == null) return 0;
-    if (AppConstants.isDplQaRole(role)) return totals.pendingQa;
-    if (AppConstants.isDplPdiRole(role)) return totals.pendingPdi;
+    // QA approval step removed — QA users see the PDI pending count.
+    if (AppConstants.isDplQaRole(role) ||
+        AppConstants.isDplPdiRole(role)) {
+      return totals.pendingPdi;
+    }
     if (AppConstants.isDplDispatchRole(role)) {
       // Dispatch cares about both queues since they're the requester.
       return totals.pendingQa + totals.pendingPdi;

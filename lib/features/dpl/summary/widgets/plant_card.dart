@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/design/dpl_theme.dart';
+import '../../core/dpl_api_response.dart';
 import '../../core/dpl_api_service.dart';
 import '../../core/widgets/dpl_snack.dart';
 import '../../models/dpl_dispatch_slip.dart';
@@ -11,6 +12,7 @@ import '../../models/dpl_plant.dart';
 import '../../models/dpl_production_summary.dart';
 import '../providers/dispatch_slips_provider.dart';
 import '../providers/production_summary_provider.dart';
+import '../services/dispatch_slip_pdf.dart';
 
 /// Accent palette for a plant card. Lets the landing screen cycle
 /// three distinct accents across the three plant cards so the eye can
@@ -44,7 +46,7 @@ class PlantCardPalette {
 ///   │ ▌  [ Qty ____ ]                                    │
 ///   │ ▌  [ Vehicle no (optional) _______ ]               │
 ///   │ ▌  [ Notes (optional) ______________ ]             │
-///   │ ▌  [ Reset ]                 [ ✈ Send to QA ]      │
+///   │ ▌  [ Reset ]                 [ ✈ Send for PDI ]      │
 ///   └─────────────────────────────────────────────────────┘
 ///
 /// Holds its own form state so three cards on the landing screen
@@ -65,7 +67,7 @@ class PlantCard extends ConsumerStatefulWidget {
 
 /// One line in the in-progress slip — a chosen bucket + the qty the
 /// user has reserved against it. Multiple cart items get sent as a
-/// single multi-item slip when the user hits "Send to QA".
+/// single multi-item slip when the user hits "Send for PDI".
 class _CartItem {
   final DplProductionSummary bucket;
   final int qty;
@@ -77,7 +79,11 @@ class _PlantCardState extends ConsumerState<PlantCard> {
   late final TextEditingController _vehicleCtrl;
   late final TextEditingController _notesCtrl;
 
-  int? _selectedMachineId;
+  /// Machines the user has ticked in the multi-select picker. Empty
+  /// while nothing has been chosen yet. Parts dropdown shows buckets
+  /// across every selected machine so the user can queue one slip
+  /// that spans, say, both Nexon SR and Nexon PR.
+  final Set<int> _selectedMachineIds = {};
   bool _submitting = false;
   String? _serverError;
 
@@ -96,9 +102,9 @@ class _PlantCardState extends ConsumerState<PlantCard> {
     _notesCtrl = TextEditingController();
     // Single-machine plants auto-select to skip a click.
     if (widget.plant.machines.length == 1) {
-      _selectedMachineId = widget.plant.machines.first.id;
+      _selectedMachineIds.add(widget.plant.machines.first.id);
     } else if (widget.plant.machineIds.length == 1) {
-      _selectedMachineId = widget.plant.machineIds.first;
+      _selectedMachineIds.add(widget.plant.machineIds.first);
     }
   }
 
@@ -110,55 +116,57 @@ class _PlantCardState extends ConsumerState<PlantCard> {
   }
 
   /// Sum of qty across every row currently in the cart. Drives the
-  /// "Send to QA · N NOS" button label.
+  /// "Send for PDI · N NOS" button label.
   int get _cartTotalQty =>
       _cartItems.fold<int>(0, (sum, it) => sum + it.qty);
 
-  /// Cart commitments keyed by `partId` for the **currently selected
-  /// machine**. Passed to the picker so its per-row "available" can
-  /// subtract what's already queued — keeps the user from over-
-  /// allocating one bucket across multiple cart entries before the
-  /// request even hits the backend.
-  Map<int, int> _cartCommitmentsForCurrentMachine() {
+  /// Cart commitments keyed by `partId` for buckets that belong to
+  /// **any of the currently selected machines**. Passed to the picker
+  /// so its per-row "available" can subtract what's already queued —
+  /// keeps the user from over-allocating one bucket across multiple
+  /// cart entries before the request even hits the backend.
+  Map<int, int> _cartCommitmentsForSelectedMachines() {
     final out = <int, int>{};
     for (final it in _cartItems) {
-      if (it.bucket.machineId != _selectedMachineId) continue;
+      if (!_selectedMachineIds.contains(it.bucket.machineId)) continue;
       out[it.bucket.partId] = (out[it.bucket.partId] ?? 0) + it.qty;
     }
     return out;
   }
 
-  /// Buckets in the current plant filtered to the selected machine.
-  /// Returns null while the provider is still loading or errored.
-  List<DplProductionSummary>? _bucketsForSelectedMachine() {
-    if (_selectedMachineId == null) return const [];
+  /// Buckets in the current plant filtered to the set of selected
+  /// machines. Returns null while the provider is still loading or
+  /// errored.
+  List<DplProductionSummary>? _bucketsForSelectedMachines() {
+    if (_selectedMachineIds.isEmpty) return const [];
     final async = ref.read(
       dplProductionSummaryByPlantProvider(widget.plant.code),
     );
     final page = async.asData?.value.data;
     if (page == null) return null;
     return page.items
-        .where((b) => b.machineId == _selectedMachineId)
+        .where((b) => _selectedMachineIds.contains(b.machineId))
         .toList(growable: false);
   }
 
-  void _onMachineChanged(int? newId) {
-    // The cart can span multiple machines for the same plant (one
-    // slip can have items from machine A and machine B). So we don't
-    // clear the cart on machine change — we just rebuild which
-    // buckets the picker shows.
+  void _onMachinesChanged(Set<int> next) {
+    // The cart already supports multi-machine slips (one slip can
+    // carry items from machine A and machine B), so we don't clear
+    // the cart when the user re-ticks machines — we just rebuild
+    // which buckets the picker shows. Cart commitments for machines
+    // that are no longer selected remain valid; the user can still
+    // see them in the cart list and remove if needed.
     setState(() {
-      _selectedMachineId = newId;
+      _selectedMachineIds
+        ..clear()
+        ..addAll(next);
       _serverError = null;
     });
   }
 
-  void _onPartsAdded(List<PickedPart> picks) {
-    if (picks.isEmpty) return;
+  void _onPartAdded(PickedPart pick) {
     setState(() {
-      for (final p in picks) {
-        _cartItems.add(_CartItem(bucket: p.bucket, qty: p.qty));
-      }
+      _cartItems.add(_CartItem(bucket: pick.bucket, qty: pick.qty));
       _serverError = null;
     });
   }
@@ -172,11 +180,12 @@ class _PlantCardState extends ConsumerState<PlantCard> {
 
   void _resetForm() {
     setState(() {
-      _selectedMachineId = widget.plant.machines.length == 1
-          ? widget.plant.machines.first.id
-          : (widget.plant.machineIds.length == 1
-              ? widget.plant.machineIds.first
-              : null);
+      _selectedMachineIds.clear();
+      if (widget.plant.machines.length == 1) {
+        _selectedMachineIds.add(widget.plant.machines.first.id);
+      } else if (widget.plant.machineIds.length == 1) {
+        _selectedMachineIds.add(widget.plant.machineIds.first);
+      }
       _cartItems.clear();
       _vehicleCtrl.clear();
       _notesCtrl.clear();
@@ -187,7 +196,7 @@ class _PlantCardState extends ConsumerState<PlantCard> {
   Future<void> _submit() async {
     if (_cartItems.isEmpty) {
       setState(() => _serverError =
-          'Add at least one item to the slip before sending.');
+          'Add at least one description before sending.');
       return;
     }
 
@@ -199,49 +208,156 @@ class _PlantCardState extends ConsumerState<PlantCard> {
     final vehicleNo = _vehicleCtrl.text.trim();
     final notes = _notesCtrl.text.trim();
     final items = List<_CartItem>.from(_cartItems);
+    final api = ref.read(dplApiServiceProvider);
 
-    final res = await ref.read(dplApiServiceProvider).createDispatchSlip(
-      plantCode: widget.plant.code,
-      items: [
-        for (final it in items)
+    // Fire one slip per cart item — N descriptions in the cart =
+    // N separate slips at the backend. Send them sequentially so
+    // any per-row failure can be surfaced cleanly to the user
+    // (slips that succeeded are already persisted; we leave the
+    // failing + remaining rows in the cart so the user can retry).
+    final created = <DplDispatchSlip>[];
+    DplApiResponse<DplDispatchSlip>? failureRes;
+    int failedAtIndex = -1;
+    for (var i = 0; i < items.length; i++) {
+      final it = items[i];
+      final res = await api.createDispatchSlip(
+        plantCode: widget.plant.code,
+        items: [
           DispatchSlipItemRequest(
             machineId: it.bucket.machineId,
             partId: it.bucket.partId,
             qty: it.qty,
           ),
-      ],
-      vehicleNo: vehicleNo.isEmpty ? null : vehicleNo,
-      notes: notes.isEmpty ? null : notes,
-    );
+        ],
+        vehicleNo: vehicleNo.isEmpty ? null : vehicleNo,
+        notes: notes.isEmpty ? null : notes,
+      );
+      if (!mounted) return;
+      if (res.isError) {
+        failureRes = res;
+        failedAtIndex = i;
+        break;
+      }
+      if (res.data != null) created.add(res.data!);
+    }
 
     if (!mounted) return;
 
-    if (res.isError) {
+    // Invalidate everything that displays slip / bucket / pipeline
+    // data so the page reflects new slips without a manual refresh.
+    if (created.isNotEmpty) {
+      ref.invalidate(dplProductionSummaryProvider);
+      ref.invalidate(dplDispatchSlipsProvider);
+      ref.invalidate(dplBucketSlipCountsProvider);
+      ref.invalidate(
+        dplProductionSummaryByPlantProvider(widget.plant.code),
+      );
+    }
+
+    if (failureRes != null) {
+      // Drop the cart rows that already went out; keep the failed
+      // row + any remaining rows so the user can fix qty and retry.
       setState(() {
+        if (failedAtIndex > 0) {
+          _cartItems.removeRange(0, failedAtIndex);
+        }
         _submitting = false;
-        _serverError = res.error ?? 'Failed to create dispatch slip.';
+        final base =
+            failureRes!.error ?? 'Failed to create dispatch slip.';
+        _serverError = created.isEmpty
+            ? base
+            : '$base  ·  ${created.length} slip'
+                '${created.length == 1 ? "" : "s"} already sent for PDI, '
+                '${_cartItems.length} remaining.';
       });
       return;
     }
 
-    // Invalidate everything that displays slip / bucket / pipeline
-    // data so the page reflects the new slip without a manual refresh.
-    ref.invalidate(dplProductionSummaryProvider);
-    ref.invalidate(dplDispatchSlipsProvider);
-    ref.invalidate(dplBucketSlipCountsProvider);
-    ref.invalidate(
-      dplProductionSummaryByPlantProvider(widget.plant.code),
-    );
+    // Email each newly-created slip its rendered PDF. We render the
+    // SAME PDF the user prints in-app (DispatchSlipPdfBuilder) and
+    // upload it as the `pdf` multipart field to
+    // `POST /dispatch/slips/:id/email`. Result counts feed into the
+    // success toast so the user knows whether SMTP actually went.
+    int emailedCount = 0;
+    int skippedCount = 0;
+    final emailErrors = <String>[];
+    for (final slip in created) {
+      Uint8List? pdfBytes;
+      try {
+        pdfBytes = await DispatchSlipPdfBuilder.build(slip);
+      } catch (e) {
+        emailErrors.add('${slip.slipNo}: PDF render failed');
+        continue;
+      }
+      final emailRes = await api.sendDispatchSlipEmail(
+        slip.id,
+        pdfBytes: pdfBytes,
+        filename: '${slip.slipNo}.pdf',
+      );
+      if (!mounted) return;
+      if (emailRes.isError) {
+        emailErrors.add(
+          '${slip.slipNo}: ${emailRes.error ?? "email failed"}',
+        );
+        continue;
+      }
+      final data = emailRes.data;
+      if (data == null) {
+        emailErrors.add('${slip.slipNo}: empty email response');
+        continue;
+      }
+      if (data.sent) {
+        emailedCount++;
+      } else if (data.skipped) {
+        skippedCount++;
+      } else {
+        emailErrors.add(
+          '${slip.slipNo}: ${data.reason ?? "email not sent"}',
+        );
+      }
+    }
 
-    final slip = res.data;
+    if (!mounted) return;
+
     final fmt = NumberFormat.decimalPattern();
     final totalQty = items.fold<int>(0, (sum, it) => sum + it.qty);
-    DplSnacks.success(
-      context,
-      'Slip ${slip?.slipNo ?? "created"} sent to QA · '
-      '${items.length} item${items.length == 1 ? "" : "s"} · '
-      '${fmt.format(totalQty)} NOS.',
-    );
+    final slipSummary = created.length == 1
+        ? 'Slip ${created.first.slipNo} sent for PDI  ·  '
+            '${fmt.format(totalQty)} NOS'
+        : '${created.length} slips sent for PDI  ·  '
+            '${fmt.format(totalQty)} NOS total';
+    DplSnacks.success(context, '$slipSummary.');
+
+    // Surface email status as a follow-up snack so the slip-creation
+    // toast stays clean. Order of precedence:
+    //   1. errors → red error snack
+    //   2. all skipped (SMTP off) → amber/warn message-style snack
+    //   3. all emailed → quiet success snack
+    if (emailErrors.isNotEmpty) {
+      DplSnacks.error(
+        context,
+        emailedCount > 0
+            ? 'Emailed $emailedCount of ${created.length} slip'
+                '${created.length == 1 ? "" : "s"}; '
+                '${emailErrors.length} failed: '
+                '${emailErrors.first}'
+            : 'Email failed: ${emailErrors.first}',
+      );
+    } else if (skippedCount == created.length) {
+      DplSnacks.warning(
+        context,
+        'Slip${created.length == 1 ? "" : "s"} not emailed — '
+        'SMTP is not configured on this deploy.',
+      );
+    } else if (emailedCount == created.length) {
+      DplSnacks.success(
+        context,
+        emailedCount == 1
+            ? 'Slip emailed to Dispatch.'
+            : '$emailedCount slips emailed to Dispatch.',
+      );
+    }
+
     _resetForm();
     setState(() => _submitting = false);
   }
@@ -311,26 +427,15 @@ class _PlantCardState extends ConsumerState<PlantCard> {
                     if (_hasNoMachines)
                       _NoMachinesAssignedState(palette: widget.palette)
                     else ...[
-                      _MachineDropdown(
+                      _MachineMultiPicker(
                         plant: widget.plant,
-                        selectedId: _selectedMachineId,
-                        onChanged: _onMachineChanged,
+                        selectedIds: _selectedMachineIds,
+                        onChanged: _onMachinesChanged,
                       ),
-                      const SizedBox(height: 10),
-                      // Description field — tap to open the multi-
-                      // select picker bottom sheet. Each row in the
-                      // sheet has its own qty input so the user can
-                      // queue several parts in one go.
-                      _PartDropdown(
-                        bucketsAsync: bucketsAsync,
-                        selectedMachineId: _selectedMachineId,
-                        buckets: _bucketsForSelectedMachine(),
-                        alreadyInCartByPartId:
-                            _cartCommitmentsForCurrentMachine(),
-                        onPartsAdded: _onPartsAdded,
-                      ),
-                      // Cart of items added via the picker. Renders
-                      // the running total + per-row delete icons.
+                      // Cart of items queued for this slip request.
+                      // Each row will go out as a SEPARATE slip when
+                      // the user hits Send for PDI — five descriptions
+                      // queued = five slips.
                       if (_cartItems.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         _CartList(
@@ -339,6 +444,20 @@ class _PlantCardState extends ConsumerState<PlantCard> {
                           onRemove: _removeFromCart,
                         ),
                       ],
+                      const SizedBox(height: 10),
+                      // "+ Add description" button — opens a compact
+                      // dialog where the user picks ONE part and
+                      // enters its qty, then taps Add. Repeat for
+                      // each description; each becomes its own slip.
+                      _AddPartButton(
+                        bucketsAsync: bucketsAsync,
+                        hasSelectedMachines: _selectedMachineIds.isNotEmpty,
+                        buckets: _bucketsForSelectedMachines(),
+                        alreadyInCartByPartId:
+                            _cartCommitmentsForSelectedMachines(),
+                        onPartAdded: _onPartAdded,
+                        palette: widget.palette,
+                      ),
                       const SizedBox(height: 12),
                       _VehicleField(controller: _vehicleCtrl),
                       const SizedBox(height: 10),
@@ -601,26 +720,25 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-/// Machine dropdown — name + code on the top line, plus a small stats
-/// line below showing per-machine `actual / in-pipeline / pending` qty
-/// so the user can pick the machine that has the production they want
-/// to dispatch without having to drill in first.
+/// Multi-select machine picker — tap-to-open field that shows a
+/// concise summary of which machines are currently ticked, and opens
+/// a bottom sheet with a checkbox per machine so the user can build
+/// one slip across several machines at once (e.g. Nexon SR + Nexon
+/// PR in a single dispatch).
 ///
-/// Stats are derived from the per-plant production-summary buckets:
-///   * actual:      SUM(bucket.totalActualQty)            across the machine's buckets
-///   * in-pipeline: SUM(bucket.totalActualQty − available) across the machine's buckets
-///   * pending:     SUM(bucket.totalPlanQty − bucket.totalActualQty)
-///
-/// Watches the same `dplProductionSummaryByPlantProvider` the part
-/// dropdown reads, so the data is shared (one fetch per plant).
-class _MachineDropdown extends ConsumerWidget {
+/// Each row in the sheet shows the machine name + code plus the same
+/// small `actual / in-pipeline` stats line the old single-select
+/// dropdown carried, so the user can make an informed pick without
+/// drilling into the part picker first. Stats come from the per-plant
+/// production-summary buckets that the part picker already loads.
+class _MachineMultiPicker extends ConsumerWidget {
   final DplPlant plant;
-  final int? selectedId;
-  final ValueChanged<int?> onChanged;
+  final Set<int> selectedIds;
+  final ValueChanged<Set<int>> onChanged;
 
-  const _MachineDropdown({
+  const _MachineMultiPicker({
     required this.plant,
-    required this.selectedId,
+    required this.selectedIds,
     required this.onChanged,
   });
 
@@ -632,65 +750,76 @@ class _MachineDropdown extends ConsumerWidget {
     final statsByMachine = _aggregateStats(
       bucketsAsync.asData?.value.data?.items,
     );
+    final entries = _entries();
 
-    // Build a normalised list of (id, label, code) entries so both
-    // `items` and `selectedItemBuilder` walk the same data in the same
-    // order. Prefer the enriched `machines[]` block; fall back to
-    // `machineIds` so the dropdown never goes empty if master data is
-    // missing.
-    final List<({int id, String label, String code})> entries;
+    return _MachinePickerField(
+      label: 'Machine',
+      summary: _summary(entries),
+      enabled: entries.isNotEmpty,
+      onTap: entries.isEmpty
+          ? null
+          : () => _openPicker(context, entries, statsByMachine),
+    );
+  }
+
+  /// Normalised list of `(id, label, code)` entries — prefers the
+  /// enriched `machines[]` block, falls back to `machineIds` so the
+  /// picker never goes empty if master data is missing.
+  List<({int id, String label, String code})> _entries() {
     if (plant.machines.isNotEmpty) {
-      entries = [
+      return [
         for (final m in plant.machines)
           (id: m.id, label: m.label, code: m.code),
       ];
-    } else {
-      entries = [
-        for (final id in plant.machineIds)
-          (id: id, label: 'Machine #$id', code: ''),
-      ];
     }
+    return [
+      for (final id in plant.machineIds)
+        (id: id, label: 'Machine #$id', code: ''),
+    ];
+  }
 
-    return DropdownButtonFormField<int>(
-      initialValue: selectedId,
-      onChanged: onChanged,
-      isExpanded: true,
-      // null lets the dropdown items size to their intrinsic content
-      // — needed because each entry is two lines tall.
-      itemHeight: null,
-      items: [
-        for (final e in entries)
-          DropdownMenuItem<int>(
-            value: e.id,
-            child: _MachineDropdownEntry(
-              label: e.label,
-              code: e.code,
-              stats: statsByMachine[e.id],
-            ),
-          ),
-      ],
-      // When an item is selected, the field area should only show the
-      // top-line summary (name + code) — the stats line is dropdown-
-      // menu-only context and would visually clutter the input field.
-      selectedItemBuilder: (context) => [
-        for (final e in entries)
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: _MachineRow(label: e.label, code: e.code),
-          ),
-      ],
-      decoration: InputDecoration(
-        labelText: 'Machine',
-        prefixIcon: const Icon(Icons.precision_manufacturing_outlined),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+  /// Short text shown inside the field so the user knows the current
+  /// selection at a glance. Reads either "Select machines", a single
+  /// machine name, or "N selected · Name, Name…" when more than one.
+  String _summary(List<({int id, String label, String code})> entries) {
+    if (selectedIds.isEmpty) return 'Tap to select machines';
+    if (selectedIds.length == 1) {
+      final e = entries.firstWhere(
+        (it) => it.id == selectedIds.first,
+        orElse: () => (id: selectedIds.first, label: 'Machine #${selectedIds.first}', code: ''),
+      );
+      return e.code.isNotEmpty && e.code != e.label
+          ? '${e.label}  ·  ${e.code}'
+          : e.label;
+    }
+    final names = [
+      for (final e in entries)
+        if (selectedIds.contains(e.id)) e.label,
+    ];
+    return '${selectedIds.length} selected  ·  ${names.join(", ")}';
+  }
+
+  Future<void> _openPicker(
+    BuildContext context,
+    List<({int id, String label, String code})> entries,
+    Map<int, _MachineStats> statsByMachine,
+  ) async {
+    final picked = await showModalBottomSheet<Set<int>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MachineMultiPickerSheet(
+        entries: entries,
+        statsByMachine: statsByMachine,
+        initiallySelected: Set<int>.from(selectedIds),
       ),
-      validator: (v) => v == null ? 'Select a machine.' : null,
     );
+    if (picked != null) onChanged(picked);
   }
 
   /// Bucket items grouped by `machineId` → `_MachineStats`.
   /// `null` when the per-plant production-summary fetch hasn't landed
-  /// yet, so the dropdown can fall back to showing the name+code only.
+  /// yet, so the picker can fall back to showing the name+code only.
   Map<int, _MachineStats> _aggregateStats(
     List<DplProductionSummary>? buckets,
   ) {
@@ -701,6 +830,249 @@ class _MachineDropdown extends ConsumerWidget {
       map[b.machineId] = existing.add(b);
     }
     return map;
+  }
+}
+
+/// The on-screen machine "field" — visually mimics a real input so it
+/// lines up with the other form fields, but it's actually a tap
+/// target that opens the multi-select bottom sheet.
+class _MachinePickerField extends StatelessWidget {
+  final String label;
+  final String summary;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  const _MachinePickerField({
+    required this.label,
+    required this.summary,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: const Icon(Icons.precision_manufacturing_outlined),
+          suffixIcon: Icon(
+            Icons.arrow_drop_down_rounded,
+            color: enabled
+                ? DplColors.textSecondary
+                : DplColors.textTertiary,
+          ),
+          enabled: enabled,
+          border:
+              OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        child: Text(
+          summary,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: enabled
+                ? DplColors.textPrimary
+                : DplColors.textTertiary,
+            fontWeight: FontWeight.w600,
+            fontSize: 13.5,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom-sheet for picking multiple machines. Each row carries a
+/// checkbox, the machine name+code, and the stats line. Tapping
+/// anywhere on the row toggles the checkbox. Sticky footer carries
+/// Clear all / Done buttons so the change isn't committed until the
+/// user confirms.
+class _MachineMultiPickerSheet extends StatefulWidget {
+  final List<({int id, String label, String code})> entries;
+  final Map<int, _MachineStats> statsByMachine;
+  final Set<int> initiallySelected;
+
+  const _MachineMultiPickerSheet({
+    required this.entries,
+    required this.statsByMachine,
+    required this.initiallySelected,
+  });
+
+  @override
+  State<_MachineMultiPickerSheet> createState() =>
+      _MachineMultiPickerSheetState();
+}
+
+class _MachineMultiPickerSheetState extends State<_MachineMultiPickerSheet> {
+  late final Set<int> _checked;
+
+  @override
+  void initState() {
+    super.initState();
+    _checked = Set<int>.from(widget.initiallySelected);
+  }
+
+  void _toggle(int id) {
+    setState(() {
+      if (_checked.contains(id)) {
+        _checked.remove(id);
+      } else {
+        _checked.add(id);
+      }
+    });
+  }
+
+  void _toggleAll(bool value) {
+    setState(() {
+      _checked.clear();
+      if (value) {
+        for (final e in widget.entries) {
+          _checked.add(e.id);
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final maxSheetHeight = mediaQuery.size.height * 0.75;
+    final allChecked = _checked.length == widget.entries.length &&
+        widget.entries.isNotEmpty;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxSheetHeight),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: DplColors.cardBg,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: DplShadows.sheet,
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Drag handle
+                Padding(
+                  padding: const EdgeInsets.only(top: 10, bottom: 6),
+                  child: Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: DplColors.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding:
+                      const EdgeInsets.fromLTRB(20, 4, 12, 4),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Select machines',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            color: DplColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _toggleAll(!allChecked),
+                        child: Text(allChecked ? 'Clear all' : 'Select all'),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, color: DplColors.divider),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    itemCount: widget.entries.length,
+                    separatorBuilder: (_, _) => const Divider(
+                      height: 1,
+                      indent: 16,
+                      endIndent: 16,
+                      color: DplColors.divider,
+                    ),
+                    itemBuilder: (context, i) {
+                      final e = widget.entries[i];
+                      final stats = widget.statsByMachine[e.id];
+                      final checked = _checked.contains(e.id);
+                      return InkWell(
+                        onTap: () => _toggle(e.id),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
+                          child: Row(
+                            children: [
+                              Checkbox(
+                                value: checked,
+                                onChanged: (_) => _toggle(e.id),
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: _MachineDropdownEntry(
+                                  label: e.label,
+                                  code: e.code,
+                                  stats: stats,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const Divider(height: 1, color: DplColors.divider),
+                Padding(
+                  padding:
+                      const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  child: Row(
+                    children: [
+                      Text(
+                        _checked.isEmpty
+                            ? 'No machines selected'
+                            : _checked.length == 1
+                                ? '1 machine selected'
+                                : '${_checked.length} machines selected',
+                        style: const TextStyle(
+                          color: DplColors.textSecondary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                      const Spacer(),
+                      OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () =>
+                            Navigator.of(context).pop(_checked),
+                        child: const Text('Done'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -825,182 +1197,169 @@ class _MachineRow extends StatelessWidget {
   }
 }
 
-/// Description picker for the chosen machine. Tapping the field opens
-/// a modal bottom sheet (`_PartPickerSheet`) where the user can enter
-/// qty for any number of parts at once — pick a single part, or
-/// spread one dispatch across multiple parts when no single bucket
-/// has enough stock.
-///
-/// We swapped off Flutter's `Autocomplete<T>` because its overlay
-/// positioning doesn't play well with sliver-based scroll views on
-/// web. A modal sheet sidesteps all of that.
-class _PartDropdown extends StatelessWidget {
+/// "+ Add description" button that opens the single-part picker
+/// sheet (`_AddPartSheet`). Replaces the older "tap a description
+/// field" pattern — the user explicitly wanted a discrete add action
+/// so each description shows up clearly in the cart and goes out as
+/// its own slip when they hit Send for PDI.
+class _AddPartButton extends StatelessWidget {
   final AsyncValue<dynamic> bucketsAsync;
-  final int? selectedMachineId;
+  final bool hasSelectedMachines;
   final List<DplProductionSummary>? buckets;
 
-  /// Qty already committed in the parent cart, keyed by `partId`.
-  /// Passed through to the picker so each row's "available" reflects
-  /// what's still bookable after subtracting cart commitments.
+  /// Qty already committed in the parent cart, keyed by `partId`. Used
+  /// by the picker sheet so the per-row "available" reflects what's
+  /// still bookable after subtracting in-cart commitments.
   final Map<int, int> alreadyInCartByPartId;
 
-  /// Called with the picked rows when the user hits "Add to slip" in
-  /// the picker. Empty list / null when the user cancels.
-  final void Function(List<PickedPart> picks) onPartsAdded;
+  /// Called with the chosen (bucket, qty) when the user hits Add in
+  /// the picker sheet. Not called when the user cancels.
+  final void Function(PickedPart pick) onPartAdded;
 
-  const _PartDropdown({
+  final PlantCardPalette palette;
+
+  const _AddPartButton({
     required this.bucketsAsync,
-    required this.selectedMachineId,
+    required this.hasSelectedMachines,
     required this.buckets,
     required this.alreadyInCartByPartId,
-    required this.onPartsAdded,
+    required this.onPartAdded,
+    required this.palette,
   });
 
   @override
   Widget build(BuildContext context) {
     final hint = _hintForState();
     final enabled = hint == null;
-
-    return _PartPickerField(
-      label: 'Description',
-      placeholder: enabled ? 'Tap to pick parts' : hint,
-      enabled: enabled,
-      onTap: enabled ? () => _openPicker(context) : null,
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: enabled ? () => _openPicker(context) : null,
+        icon: const Icon(Icons.add_rounded),
+        label: Text(enabled ? 'Add description' : hint),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: palette.accentDark,
+          side: BorderSide(
+            color: enabled ? palette.edge : DplColors.divider,
+            width: 1.4,
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 13.5,
+          ),
+        ),
+      ),
     );
   }
 
   String? _hintForState() {
-    if (selectedMachineId == null) return 'Select a machine first';
+    if (!hasSelectedMachines) return 'Select at least one machine first';
     if (buckets == null) {
       if (bucketsAsync is AsyncError) return 'Failed to load parts';
       return 'Loading parts…';
     }
-    if (buckets!.isEmpty) return 'No parts with stock for this machine';
+    if (buckets!.isEmpty) {
+      return 'No parts with stock for the selected machines';
+    }
     return null;
   }
 
   Future<void> _openPicker(BuildContext context) async {
-    final picked = await showModalBottomSheet<List<PickedPart>>(
+    final pick = await showModalBottomSheet<PickedPart>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _PartPickerSheet(
+      builder: (_) => _AddPartSheet(
         buckets: buckets!,
         alreadyInCartByPartId: alreadyInCartByPartId,
       ),
     );
-    if (picked != null && picked.isNotEmpty) onPartsAdded(picked);
-  }
-}
-
-/// The on-screen description "field" — visually mimics a real input
-/// so it lines up with the other form fields, but it's actually a
-/// tap target that opens the picker bottom sheet.
-class _PartPickerField extends StatelessWidget {
-  final String label;
-  final String placeholder;
-  final bool enabled;
-  final VoidCallback? onTap;
-
-  const _PartPickerField({
-    required this.label,
-    required this.placeholder,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: InputDecorator(
-        isEmpty: true,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: placeholder,
-          prefixIcon: const Icon(Icons.search_rounded),
-          suffixIcon: Icon(
-            Icons.arrow_drop_down_rounded,
-            color: enabled
-                ? DplColors.textSecondary
-                : DplColors.textTertiary,
-          ),
-          enabled: enabled,
-          border:
-              OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        child: null,
-      ),
-    );
+    if (pick != null) onPartAdded(pick);
   }
 }
 
 /// One picked row returned from the bottom-sheet picker. Caller (the
-/// plant card) appends each of these to its cart.
+/// plant card) appends each of these to its cart, and each cart row
+/// fires its own dispatch slip when the user hits "Send for PDI".
 class PickedPart {
   final DplProductionSummary bucket;
   final int qty;
   const PickedPart({required this.bucket, required this.qty});
 }
 
-/// Multi-select bottom-sheet part picker. Each row has its own qty
-/// input so the user can pick several parts in a single open — type
-/// qty into row 1, type qty into row 5, hit "Add to slip", both rows
-/// land in the cart at once.
+/// Single-part picker — opens as a bottom sheet, the user searches /
+/// taps one description and types its qty, then hits Add. The chosen
+/// `PickedPart` is returned to the plant card via `Navigator.pop`.
 ///
-///   * Search field at top filters all rows by name / P/N / material code
-///   * Each row shows live "X NOS available (Y in cart)" with cart
-///     commitments subtracted so the user can't over-allocate one
-///     bucket across multiple cart entries
-///   * Per-row validator caps at remaining-available; submit button at
-///     the bottom is disabled until at least one row has a valid qty
-///   * Sticky footer with running total + Cancel + "Add N items · X NOS"
-class _PartPickerSheet extends StatefulWidget {
+///   * Top: search field that filters the bucket list as the user types.
+///   * Middle: scrollable list of matching buckets — each row shows
+///     description, customer P/N and `available NOS` (already subtracting
+///     anything sitting in the parent cart).
+///   * Below selection: a "Plan Qty" input pre-validated against the
+///     row's remaining-available, plus a tappable summary of the chosen
+///     part with an X to switch picks without closing the sheet.
+///   * Footer: Cancel + Add buttons; Add is disabled until the user has
+///     both selected a description AND entered a qty in `(0, remaining]`.
+///
+/// We deliberately keep this single-pick — the operator wanted each
+/// description queued separately so it goes out as its own slip, and a
+/// single-pick sheet keeps that intent obvious. Multi-row picking
+/// remains in the operator's hands via repeated taps on "+ Add
+/// description".
+class _AddPartSheet extends StatefulWidget {
   final List<DplProductionSummary> buckets;
 
-  /// Qty already in the parent cart per `bucket.partId`, used to
-  /// reduce each row's display + cap so the user can't double-allocate.
+  /// Qty already in the parent cart per `bucket.partId`. Reduces each
+  /// row's display "available" + the validator cap so the user can't
+  /// double-allocate one bucket across multiple cart entries before
+  /// the request even hits the backend.
   final Map<int, int> alreadyInCartByPartId;
 
-  const _PartPickerSheet({
+  const _AddPartSheet({
     required this.buckets,
     required this.alreadyInCartByPartId,
   });
 
   @override
-  State<_PartPickerSheet> createState() => _PartPickerSheetState();
+  State<_AddPartSheet> createState() => _AddPartSheetState();
 }
 
-class _PartPickerSheetState extends State<_PartPickerSheet> {
+class _AddPartSheetState extends State<_AddPartSheet> {
   final TextEditingController _searchCtrl = TextEditingController();
-  // Per-row qty controllers, keyed by `bucket.id` so collisions can't
-  // happen even if the buckets list spans multiple machines.
-  final Map<int, TextEditingController> _qtyCtrls = {};
+  final TextEditingController _qtyCtrl = TextEditingController();
   String _query = '';
+  DplProductionSummary? _selected;
 
   @override
   void initState() {
     super.initState();
-    for (final b in widget.buckets) {
-      final ctrl = TextEditingController()..addListener(_onAnyQtyChanged);
-      _qtyCtrls[b.id] = ctrl;
-    }
+    _searchCtrl.addListener(() {
+      final next = _searchCtrl.text;
+      if (next == _query) return;
+      setState(() => _query = next);
+    });
+    _qtyCtrl.addListener(() {
+      // Footer enable state depends on qty validity — rebuild on every
+      // keystroke so the Add button enables/disables as the user types.
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
-    for (final c in _qtyCtrls.values) {
-      c.dispose();
-    }
+    _qtyCtrl.dispose();
     super.dispose();
   }
 
-  void _onAnyQtyChanged() {
-    // Rebuild so the footer's running total + button enablement
-    // update on every keystroke.
-    if (mounted) setState(() {});
+  int _availableFor(DplProductionSummary b) {
+    final committed = widget.alreadyInCartByPartId[b.partId] ?? 0;
+    final remaining = b.availableForDispatchQty - committed;
+    return remaining < 0 ? 0 : remaining;
   }
 
   List<DplProductionSummary> get _visible {
@@ -1015,36 +1374,43 @@ class _PartPickerSheetState extends State<_PartPickerSheet> {
     }).toList(growable: false);
   }
 
-  int _availableForRow(DplProductionSummary b) {
-    final committed = widget.alreadyInCartByPartId[b.partId] ?? 0;
-    final remaining = b.availableForDispatchQty - committed;
-    return remaining < 0 ? 0 : remaining;
+  /// Parses the current qty input. Returns null when the field is
+  /// empty, when it isn't a positive integer, or when it exceeds the
+  /// selected bucket's remaining-available.
+  int? _validQty() {
+    final s = _selected;
+    if (s == null) return null;
+    final raw = _qtyCtrl.text.trim();
+    if (raw.isEmpty) return null;
+    final n = int.tryParse(raw);
+    if (n == null || n <= 0) return null;
+    if (n > _availableFor(s)) return null;
+    return n;
   }
 
-  /// Walks every row controller and returns the rows where the qty is
-  /// a valid positive integer that doesn't exceed the per-row cap.
-  List<PickedPart> _validPicks() {
-    final out = <PickedPart>[];
-    for (final b in widget.buckets) {
-      final raw = _qtyCtrls[b.id]?.text.trim() ?? '';
-      if (raw.isEmpty) continue;
-      final n = int.tryParse(raw);
-      if (n == null || n <= 0) continue;
-      if (n > _availableForRow(b)) continue;
-      out.add(PickedPart(bucket: b, qty: n));
-    }
-    return out;
+  void _select(DplProductionSummary bucket) {
+    setState(() {
+      _selected = bucket;
+      // Clear any qty typed against the previous pick so the caps
+      // line up with the new row's remaining-available.
+      _qtyCtrl.clear();
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selected = null;
+      _qtyCtrl.clear();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final fmt = NumberFormat.decimalPattern();
-    final visible = _visible;
     final mediaQuery = MediaQuery.of(context);
-    final picks = _validPicks();
-    final canAdd = picks.isNotEmpty;
-    final totalQty = picks.fold<int>(0, (s, p) => s + p.qty);
     final maxSheetHeight = mediaQuery.size.height * 0.85;
+    final fmt = NumberFormat.decimalPattern();
+    final picked = _validQty();
+    final canAdd = picked != null;
 
     return Padding(
       padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
@@ -1061,136 +1427,259 @@ class _PartPickerSheetState extends State<_PartPickerSheet> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const SizedBox(height: 10),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: DplColors.divider,
-                    borderRadius: BorderRadius.circular(999),
+                // Drag handle
+                Padding(
+                  padding: const EdgeInsets.only(top: 10, bottom: 6),
+                  child: Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: DplColors.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 14),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.fromLTRB(20, 4, 12, 6),
                   child: Row(
                     children: [
-                      Text('Pick parts', style: DplText.h3()),
-                      const SizedBox(width: 8),
-                      Text(
-                        '— enter qty in each part you want',
-                        style: const TextStyle(
-                          color: DplColors.textSecondary,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
+                      const Expanded(
+                        child: Text(
+                          'Add description',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            color: DplColors.textPrimary,
+                          ),
                         ),
                       ),
-                      const Spacer(),
                       IconButton(
-                        tooltip: 'Close',
+                        tooltip: 'Cancel',
                         onPressed: () => Navigator.of(context).pop(),
                         icon: const Icon(Icons.close_rounded),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                  child: TextField(
-                    controller: _searchCtrl,
-                    textInputAction: TextInputAction.search,
-                    onChanged: (v) => setState(() => _query = v),
-                    decoration: InputDecoration(
-                      hintText:
-                          'Search by name, customer P/N, material code…',
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: _searchCtrl.text.isEmpty
-                          ? null
-                          : IconButton(
-                              tooltip: 'Clear',
-                              icon: const Icon(Icons.close_rounded),
-                              onPressed: () {
-                                _searchCtrl.clear();
-                                setState(() => _query = '');
-                              },
-                            ),
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                const Divider(height: 1, color: DplColors.divider),
+                if (_selected == null) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                    child: TextField(
+                      controller: _searchCtrl,
+                      autofocus: false,
+                      decoration: InputDecoration(
+                        hintText: 'Search by name, customer P/N, '
+                            'material code…',
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        isDense: true,
                       ),
                     ),
                   ),
-                ),
-                const Divider(height: 1, color: DplColors.divider),
-                Expanded(
-                  child: visible.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.all(40),
-                          child: Center(
-                            child: Text(
-                              'No parts match "$_query".',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: DplColors.textSecondary,
-                                fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: _visible.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Center(
+                              child: Text(
+                                _query.trim().isEmpty
+                                    ? 'No parts with stock for the '
+                                        'selected machines.'
+                                    : 'No parts match "${_query.trim()}".',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: DplColors.textSecondary,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
+                          )
+                        : ListView.separated(
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 6),
+                            itemCount: _visible.length,
+                            separatorBuilder: (_, _) => const Divider(
+                              height: 1,
+                              indent: 16,
+                              endIndent: 16,
+                              color: DplColors.divider,
+                            ),
+                            itemBuilder: (context, i) {
+                              final b = _visible[i];
+                              final remaining = _availableFor(b);
+                              return InkWell(
+                                onTap: remaining > 0
+                                    ? () => _select(b)
+                                    : null,
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      16, 10, 16, 10),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        b.partName.isEmpty
+                                            ? b.description
+                                            : b.partName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13.5,
+                                          color: DplColors.textPrimary,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        b.customerPartNo.isEmpty
+                                            ? (b.materialCode.isEmpty
+                                                ? '-'
+                                                : b.materialCode)
+                                            : b.customerPartNo,
+                                        style: const TextStyle(
+                                          color: DplColors.textSecondary,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 11.5,
+                                          letterSpacing: 0.2,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${fmt.format(remaining)} '
+                                        'NOS available',
+                                        style: TextStyle(
+                                          color: remaining > 0
+                                              ? DplColors.primaryDark
+                                              : DplColors.textTertiary,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
                           ),
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          itemCount: visible.length,
-                          separatorBuilder: (_, _) => const Divider(
-                            height: 1,
-                            color: DplColors.divider,
-                          ),
-                          itemBuilder: (_, i) {
-                            final b = visible[i];
-                            return _PickerRow(
-                              bucket: b,
-                              controller: _qtyCtrls[b.id]!,
-                              availableForRow: _availableForRow(b),
-                              alreadyInCart:
-                                  widget.alreadyInCartByPartId[b.partId] ?? 0,
-                            );
-                          },
-                        ),
-                ),
-                // Footer — always visible, sticky.
-                const Divider(height: 1, color: DplColors.divider),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('Cancel'),
+                  ),
+                ] else ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                      decoration: BoxDecoration(
+                        color: DplColors.primaryTint,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: DplColors.primary.withValues(alpha: 0.18),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 2,
-                        child: FilledButton.icon(
-                          onPressed: canAdd
-                              ? () => Navigator.of(context).pop(picks)
-                              : null,
-                          icon: const Icon(Icons.add_rounded),
-                          label: Text(canAdd
-                              ? 'Add ${picks.length} '
-                                  'item${picks.length == 1 ? "" : "s"} · '
-                                  '${fmt.format(totalQty)} NOS'
-                              : 'Add to slip'),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 14,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _selected!.partName.isEmpty
+                                      ? _selected!.description
+                                      : _selected!.partName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 13.5,
+                                    color: DplColors.textPrimary,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _selected!.customerPartNo.isEmpty
+                                      ? (_selected!.materialCode.isEmpty
+                                          ? '-'
+                                          : _selected!.materialCode)
+                                      : _selected!.customerPartNo,
+                                  style: const TextStyle(
+                                    color: DplColors.textSecondary,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11.5,
+                                    letterSpacing: 0.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${fmt.format(_availableFor(_selected!))} '
+                                  'NOS available',
+                                  style: const TextStyle(
+                                    color: DplColors.primaryDark,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
+                          IconButton(
+                            tooltip: 'Change description',
+                            onPressed: _clearSelection,
+                            icon: const Icon(Icons.close_rounded),
+                            color: DplColors.textSecondary,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+                    child: TextField(
+                      controller: _qtyCtrl,
+                      autofocus: true,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(7),
+                      ],
+                      decoration: InputDecoration(
+                        labelText: 'Plan Qty',
+                        helperText:
+                            'Max ${fmt.format(_availableFor(_selected!))} NOS',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
+                      ),
+                    ),
+                  ),
+                ],
+                const Divider(height: 1, color: DplColors.divider),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  child: Row(
+                    children: [
+                      const Spacer(),
+                      OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: canAdd
+                            ? () => Navigator.of(context).pop(
+                                  PickedPart(
+                                    bucket: _selected!,
+                                    qty: picked,
+                                  ),
+                                )
+                            : null,
+                        child: const Text('Add'),
                       ),
                     ],
                   ),
@@ -1203,112 +1692,6 @@ class _PartPickerSheetState extends State<_PartPickerSheet> {
     );
   }
 }
-
-/// One row inside the multi-select picker. Renders part info on the
-/// left, qty input on the right. Disabled (greyed) when there's
-/// nothing left to allocate (`availableForRow == 0`).
-class _PickerRow extends StatelessWidget {
-  final DplProductionSummary bucket;
-  final TextEditingController controller;
-  final int availableForRow;
-  final int alreadyInCart;
-
-  const _PickerRow({
-    required this.bucket,
-    required this.controller,
-    required this.availableForRow,
-    required this.alreadyInCart,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final fmt = NumberFormat.decimalPattern();
-    final hasStock = availableForRow > 0;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  bucket.partLabel,
-                  style: TextStyle(
-                    color: hasStock
-                        ? DplColors.textPrimary
-                        : DplColors.textTertiary,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13.5,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (bucket.customerPartNo.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    bucket.customerPartNo,
-                    style: const TextStyle(
-                      color: DplColors.textSecondary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 11.5,
-                      letterSpacing: 0.2,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-                const SizedBox(height: 4),
-                Text(
-                  alreadyInCart > 0
-                      ? '${fmt.format(availableForRow)} NOS available'
-                          ' · ${fmt.format(alreadyInCart)} in cart'
-                      : '${fmt.format(availableForRow)} NOS available',
-                  style: TextStyle(
-                    color: hasStock
-                        ? DplColors.primaryDark
-                        : DplColors.textTertiary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 11.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 104,
-            child: TextField(
-              controller: controller,
-              enabled: hasStock,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(7),
-              ],
-              textAlign: TextAlign.center,
-              decoration: InputDecoration(
-                labelText: 'Qty',
-                hintText: hasStock ? '0' : '—',
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 12,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-
 
 
 /// Cart of items the user has already added to the in-progress slip.
@@ -1498,11 +1881,11 @@ class _Actions extends StatelessWidget {
     if (submitting) {
       label = 'Sending…';
     } else if (cartItemCount == 0) {
-      label = 'Send to QA';
+      label = 'Send for PDI';
     } else if (cartItemCount == 1) {
-      label = 'Send to QA · ${fmt.format(cartTotalQty)} NOS';
+      label = 'Send for PDI · 1 slip · ${fmt.format(cartTotalQty)} NOS';
     } else {
-      label = 'Send to QA · $cartItemCount items · '
+      label = 'Send for PDI · $cartItemCount slips · '
           '${fmt.format(cartTotalQty)} NOS';
     }
     return Row(

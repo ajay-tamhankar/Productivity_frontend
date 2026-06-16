@@ -63,9 +63,13 @@ class _DispatchSlipsInboxScreenState
     final current = ref.read(dplDispatchSlipFiltersProvider).status;
     if (current != null) return;
     String? defaultStatus;
-    if (AppConstants.isDplQaRole(role)) {
-      defaultStatus = DplDispatchSlipStatus.pendingQa;
-    } else if (AppConstants.isDplPdiRole(role)) {
+    // QA role lands on "Pending PDI" too — QA approval was removed
+    // from the workflow, so QA users effectively act on PDI-pending
+    // slips. Keep the QA branch commented for easy re-enable.
+    // if (AppConstants.isDplQaRole(role)) {
+    //   defaultStatus = DplDispatchSlipStatus.pendingQa;
+    // } else if (AppConstants.isDplPdiRole(role)) {
+    if (AppConstants.isDplPdiRole(role) || AppConstants.isDplQaRole(role)) {
       defaultStatus = DplDispatchSlipStatus.pendingPdi;
     }
     if (defaultStatus != null) {
@@ -221,20 +225,26 @@ class _StatusTabs extends ConsumerWidget {
 
     // Role-specific ordering: each role's primary inbox first, then the
     // others, then All. Dispatch sees all open + closed states.
+    //
+    // QA approval step was removed from the workflow — QA users now
+    // get the PDI tab set. The original QA-first branch + the
+    // "Pending QA" chip in the catch-all branch are commented for
+    // easy re-enable.
     final List<_StatusTabSpec> tabs;
-    if (AppConstants.isDplQaRole(role)) {
-      tabs = [
-        _StatusTabSpec(DplDispatchSlipStatus.pendingQa, 'Pending QA',
-            totals.pendingQa),
-        _StatusTabSpec(DplDispatchSlipStatus.pendingPdi, 'Pending PDI',
-            totals.pendingPdi),
-        _StatusTabSpec(DplDispatchSlipStatus.approved, 'Approved',
-            totals.approved),
-        _StatusTabSpec(DplDispatchSlipStatus.rejected, 'Rejected',
-            totals.rejected),
-        const _StatusTabSpec(null, 'All', null),
-      ];
-    } else if (AppConstants.isDplPdiRole(role)) {
+    // if (AppConstants.isDplQaRole(role)) {
+    //   tabs = [
+    //     _StatusTabSpec(DplDispatchSlipStatus.pendingQa, 'Pending QA',
+    //         totals.pendingQa),
+    //     _StatusTabSpec(DplDispatchSlipStatus.pendingPdi, 'Pending PDI',
+    //         totals.pendingPdi),
+    //     _StatusTabSpec(DplDispatchSlipStatus.approved, 'Approved',
+    //         totals.approved),
+    //     _StatusTabSpec(DplDispatchSlipStatus.rejected, 'Rejected',
+    //         totals.rejected),
+    //     const _StatusTabSpec(null, 'All', null),
+    //   ];
+    // } else if (...
+    if (AppConstants.isDplPdiRole(role) || AppConstants.isDplQaRole(role)) {
       tabs = [
         _StatusTabSpec(DplDispatchSlipStatus.pendingPdi, 'Pending PDI',
             totals.pendingPdi),
@@ -249,8 +259,9 @@ class _StatusTabs extends ConsumerWidget {
     } else {
       tabs = [
         const _StatusTabSpec(null, 'All', null),
-        _StatusTabSpec(DplDispatchSlipStatus.pendingQa, 'Pending QA',
-            totals.pendingQa),
+        // Pending QA chip hidden — QA approval step removed.
+        // _StatusTabSpec(DplDispatchSlipStatus.pendingQa, 'Pending QA',
+        //     totals.pendingQa),
         _StatusTabSpec(DplDispatchSlipStatus.pendingPdi, 'Pending PDI',
             totals.pendingPdi),
         _StatusTabSpec(DplDispatchSlipStatus.approved, 'Approved',

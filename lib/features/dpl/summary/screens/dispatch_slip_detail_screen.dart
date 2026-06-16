@@ -25,7 +25,7 @@ import '../widgets/dispatch_slip_status_badge.dart';
 ///
 /// Layout mirrors the `vistar_pulse_dispatch_slip.html` reference design
 /// — a single rounded paper with a gradient purple header band, a 5-cell
-/// identity strip (Vehicle / Plant / Machine / Line items / Dispatched),
+/// identity strip (Vehicle / Plant / Machine / Part description / Dispatched),
 /// a parts table with a Total row, QA + PDI sign-off checkpoints, and a
 /// verification panel carrying the QR code + a key/value contents grid.
 ///
@@ -130,20 +130,25 @@ class _DispatchSlipDetailScreenState
     );
   }
 
-  /// True when the user is a pure `dpl_qa` or `dpl_pdi` and the slip is
-  /// in the state they're expected to act on. Managers bypass the gate
+  /// True when the user is a pure `dpl_pdi` and the slip is in the
+  /// state they're expected to act on. Managers bypass the gate
   /// because they're trusted to override at any point. Dispatch has its
   /// own scanner flow at the gate, so we don't apply it here.
+  ///
+  /// QA role is intentionally NOT gated here — the QA approval step
+  /// was removed from the workflow; slips go straight to PDI. The
+  /// `isQa`/`isQaActing` branches are kept commented for easy
+  /// re-enable if QA ever comes back into the flow.
   bool _requiresScanFor({required String role, required DplDispatchSlip slip}) {
     final isManager = AppConstants.isDplManagerRole(role);
     if (isManager) return false;
-    final isQa = AppConstants.isDplQaRole(role);
+    // final isQa = AppConstants.isDplQaRole(role);
     final isPdi = AppConstants.isDplPdiRole(role);
-    final isQaActing =
-        isQa && slip.status == DplDispatchSlipStatus.pendingQa;
+    // final isQaActing =
+    //     isQa && slip.status == DplDispatchSlipStatus.pendingQa;
     final isPdiActing =
         isPdi && slip.status == DplDispatchSlipStatus.pendingPdi;
-    return isQaActing || isPdiActing;
+    return isPdiActing;
   }
 
   /// Opens the camera scanner. Compares the scanned token against the
@@ -509,7 +514,7 @@ class _SlipBand extends StatelessWidget {
             ),
           ),
           child: Text(
-            'VP',
+            'GA',
             style: _displayStyle(
               size: 23,
               weight: FontWeight.w700,
@@ -525,7 +530,7 @@ class _SlipBand extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'VISTAR  PULSE',
+              'Grupo Antolin India Private Limited',
               style: _displayStyle(
                 size: 25,
                 weight: FontWeight.w700,
@@ -535,15 +540,15 @@ class _SlipBand extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 5),
-            Text(
-              'PRODUCTION · DISPATCH',
-              style: _uiStyle(
-                size: 11,
-                weight: FontWeight.w600,
-                color: Colors.white.withValues(alpha: 0.82),
-                letterSpacing: 2.86,
-              ),
-            ),
+            // Text(
+            //   'PRODUCTION · DISPATCH',
+            //   style: _uiStyle(
+            //     size: 11,
+            //     weight: FontWeight.w600,
+            //     color: Colors.white.withValues(alpha: 0.82),
+            //     letterSpacing: 2.86,
+            //   ),
+            // ),
           ],
         ),
       ],
@@ -629,7 +634,22 @@ class _IdentityStrip extends StatelessWidget {
         slip.requestedAt;
 
     final machineLabel = _machineLabel(slip);
-    final itemsLabel = slip.items.length == 1 ? '1 part' : '${slip.items.length} parts';
+    // Headline part description — short `description` code only
+    // (e.g. "114ZZ"), so the identity strip mirrors the printed PDF.
+    // For multi-item slips we still show the first item's code with
+    // a "+ N more" sub-line so the gate knows the slip carries other
+    // parts; the per-row breakdown lives in the parts table below.
+    final firstItem = slip.firstItem;
+    final partDescription = firstItem == null
+        ? '-'
+        : (firstItem.description.trim().isNotEmpty
+              ? firstItem.description.trim()
+              : '-');
+    final partSub = firstItem == null
+        ? null
+        : (slip.items.length > 1
+              ? '+ ${slip.items.length - 1} more'
+              : null);
     final dateStr = referenceTime == null
         ? '-'
         : dateFmt.format(referenceTime.toLocal());
@@ -645,7 +665,13 @@ class _IdentityStrip extends StatelessWidget {
       ),
       _IdCell(child: _LabelValue(label: 'Plant', value: slip.plant.name)),
       _IdCell(child: _LabelValue(label: 'Machine', value: machineLabel)),
-      _IdCell(child: _LabelValue(label: 'Line items', value: itemsLabel)),
+      _IdCell(
+        child: _LabelValue(
+          label: 'Part description',
+          value: partDescription,
+          subValue: partSub,
+        ),
+      ),
       _IdCell(
         child: _LabelValue(
           label: 'Dispatched',
@@ -755,7 +781,6 @@ class _LabelValue extends StatelessWidget {
     required this.label,
     required this.value,
     this.subValue,
-    this.mono = false,
   });
 
   @override
@@ -1137,24 +1162,24 @@ class _TotalRow extends StatelessWidget {
   }
 }
 
-/// QA + PDI sign-off strip — two checkpoint cards side by side (1 col on
-/// narrow). Each card carries a 4px left bar (amber=pending, emerald=
-/// passed, red=rejected), a coloured tick badge, the station name +
-/// description, a state chip, and either a signature line or the signed
-/// name + timestamp.
+/// PDI sign-off strip — single checkpoint card spanning the full slip
+/// width. The QA card was removed when the QA approval step was taken
+/// out of the workflow; the `qa` widget construction stays commented
+/// for easy re-enable.
 class _SignoffStrip extends StatelessWidget {
   final DplDispatchSlip slip;
   const _SignoffStrip({required this.slip});
 
   @override
   Widget build(BuildContext context) {
-    final qa = _Checkpoint(
-      title: 'Quality Assurance · QA',
-      description: 'Confirm part conformity and quantity before release.',
-      state: slip.qaState,
-      approver: slip.qaApproval,
-      rejection: slip.rejection?.isQa == true ? slip.rejection : null,
-    );
+    // QA checkpoint intentionally disabled — see file/header comment.
+    // final qa = _Checkpoint(
+    //   title: 'Quality Assurance · QA',
+    //   description: 'Confirm part conformity and quantity before release.',
+    //   state: slip.qaState,
+    //   approver: slip.qaApproval,
+    //   rejection: slip.rejection?.isQa == true ? slip.rejection : null,
+    // );
     final pdi = _Checkpoint(
       title: 'Pre-Dispatch Inspection · PDI',
       description: 'Final loading check against this manifest.',
@@ -1167,33 +1192,7 @@ class _SignoffStrip extends StatelessWidget {
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: _SlipPalette.line)),
       ),
-      child: LayoutBuilder(
-        builder: (context, c) {
-          final wide = c.maxWidth >= 700;
-          if (wide) {
-            return IntrinsicHeight(
-              child: Row(
-                children: [
-                  Expanded(child: qa),
-                  Expanded(child: pdi),
-                ],
-              ),
-            );
-          }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              qa,
-              const Divider(
-                height: 1,
-                thickness: 1,
-                color: _SlipPalette.lineSoft,
-              ),
-              pdi,
-            ],
-          );
-        },
-      ),
+      child: pdi,
     );
   }
 }
@@ -1889,13 +1888,14 @@ class _Timeline extends StatelessWidget {
           label: 'Requested by ${slip.requestedBy?.name ?? "-"}',
           at: slip.requestedAt,
         ),
-      if (slip.qaApproval != null)
-        _TimelineEntry(
-          icon: Icons.verified_outlined,
-          label: 'QA approved by ${slip.qaApproval!.name}',
-          at: slip.qaApproval!.at,
-          remarks: slip.qaApproval!.remarks,
-        ),
+      // QA timeline entry disabled — QA step removed from workflow.
+      // if (slip.qaApproval != null)
+      //   _TimelineEntry(
+      //     icon: Icons.verified_outlined,
+      //     label: 'QA approved by ${slip.qaApproval!.name}',
+      //     at: slip.qaApproval!.at,
+      //     remarks: slip.qaApproval!.remarks,
+      //   ),
       if (slip.pdiApproval != null)
         _TimelineEntry(
           icon: Icons.check_circle_outline,
@@ -2059,23 +2059,29 @@ class _RoleActions extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isQa = AppConstants.isDplQaRole(role);
+    // QA branch intentionally disabled — the QA approval step was
+    // removed from the workflow, so we never surface QA buttons.
+    // final isQa = AppConstants.isDplQaRole(role);
     final isPdi = AppConstants.isDplPdiRole(role);
     final isDispatch = AppConstants.isDplDispatchRole(role);
     final isManager = AppConstants.isDplManagerRole(role);
 
-    final canQaAct =
-        (isQa || isManager) && slip.status == DplDispatchSlipStatus.pendingQa;
+    // QA approve/reject is no longer offered — `canQaAct` would
+    // require backend changes to make sense. PDI now handles
+    // first-pass approval directly. Keeping the line commented for
+    // re-enable if QA comes back.
+    // final canQaAct =
+    //     (isQa || isManager) && slip.status == DplDispatchSlipStatus.pendingQa;
     final canPdiAct = (isPdi || isManager) &&
         slip.status == DplDispatchSlipStatus.pendingPdi;
     final canDispatch = (isDispatch || isManager) &&
         slip.status == DplDispatchSlipStatus.approved;
 
-    if (!canQaAct && !canPdiAct && !canDispatch) {
+    if (!canPdiAct && !canDispatch) {
       return const SizedBox.shrink();
     }
 
-    // QA/PDI must scan first. Replace the Approve/Reject row with a
+    // PDI must scan first. Replace the Approve/Reject row with a
     // single "Scan slip QR" CTA until they do. Dispatch action is not
     // gated here (Dispatch has its own gate-scan flow).
     final gateApprovals = requiresScan && !scanVerified;
@@ -2101,15 +2107,17 @@ class _RoleActions extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 10),
-          if (gateApprovals && (canQaAct || canPdiAct))
+          if (gateApprovals && canPdiAct)
             _ScanToActCta(slipNo: slip.slipNo, onScan: onScan)
           else ...[
-            if (canQaAct)
-              _ApprovalRow(
-                approveAction: DispatchSlipApprovalAction.qaApprove,
-                rejectAction: DispatchSlipApprovalAction.qaReject,
-                slip: slip,
-              ),
+            // QA approve/reject row intentionally disabled — see
+            // top-of-method comment.
+            // if (canQaAct)
+            //   _ApprovalRow(
+            //     approveAction: DispatchSlipApprovalAction.qaApprove,
+            //     rejectAction: DispatchSlipApprovalAction.qaReject,
+            //     slip: slip,
+            //   ),
             if (canPdiAct)
               _ApprovalRow(
                 approveAction: DispatchSlipApprovalAction.pdiApprove,

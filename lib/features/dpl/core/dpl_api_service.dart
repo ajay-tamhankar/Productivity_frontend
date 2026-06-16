@@ -2132,6 +2132,59 @@ class DplApiService {
     );
   }
 
+  /// `POST /dispatch/slips/:id/email` — multipart upload of the
+  /// printed-slip PDF. Server emails it to the configured Dispatch
+  /// recipient (dispatch.san@sprautotech.com), with Balasaheb + the
+  /// Flutter developer CC'd by default. Pass [extraTo] / [extraCc] to
+  /// append per-send recipients without losing the defaults.
+  ///
+  /// Result shapes:
+  ///   * `{ sent: true,  message_id, to, cc }` — provider accepted
+  ///   * `{ sent: false, skipped: true, reason }` — SMTP not configured
+  ///     on this deploy. Slip is still persisted; only the email step
+  ///     was no-op'd. UI should surface this as a warning, not an error.
+  ///
+  /// PDF payload cap is 5 MB; the server also validates the magic-byte
+  /// header so corrupt or non-PDF uploads are rejected with 400.
+  Future<DplApiResponse<DplDispatchSlipEmailResult>> sendDispatchSlipEmail(
+    int id, {
+    required Uint8List pdfBytes,
+    required String filename,
+    List<String>? extraTo,
+    List<String>? extraCc,
+  }) async {
+    try {
+      final form = FormData.fromMap({
+        'pdf': MultipartFile.fromBytes(
+          pdfBytes,
+          filename: filename,
+          contentType: DioMediaType('application', 'pdf'),
+        ),
+        if (extraTo != null && extraTo.isNotEmpty)
+          'extra_to': extraTo.join(','),
+        if (extraCc != null && extraCc.isNotEmpty)
+          'extra_cc': extraCc.join(','),
+      });
+      return _send<DplDispatchSlipEmailResult>(
+        () => _dio.post(DplPaths.dispatchSlipEmail(id), data: form),
+        fallback: 'Failed to email the dispatch slip.',
+        fromJson: (data) {
+          if (data is Map) {
+            return DplDispatchSlipEmailResult.fromJson(
+              Map<String, dynamic>.from(data),
+            );
+          }
+          throw const FormatException('Expected object response.');
+        },
+      );
+    } catch (e) {
+      return DplErrorMapper.fromObject<DplDispatchSlipEmailResult>(
+        e,
+        fallback: 'Failed to email the dispatch slip.',
+      );
+    }
+  }
+
   /// `GET /dispatch/slips/verify?token=…` — public verifier consumed by
   /// gate staff scanning the printed QR. No Authorization header is
   /// required by the backend, but we send the JWT anyway when present;

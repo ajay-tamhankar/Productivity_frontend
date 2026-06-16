@@ -160,6 +160,7 @@ class DplPaths {
       '/dispatch/slips/$id/pdi-reject';
   static String dispatchSlipMarkDispatched(int id) =>
       '/dispatch/slips/$id/mark-dispatched';
+  static String dispatchSlipEmail(int id) => '/dispatch/slips/$id/email';
   static const String dispatchSlipVerify = '/dispatch/slips/verify';
 }
 
