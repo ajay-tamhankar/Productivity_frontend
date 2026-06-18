@@ -86,6 +86,42 @@ class DplMastersHubScreen extends StatelessWidget {
                 'photo, capture time and flag suspicious entries.',
             onTap: () => context.push('/dpl/manager/identity-audit'),
           ),
+          const SizedBox(height: 10),
+          // ───── Dispatch-planning baseline inputs ─────
+          // These two fields drive the daily dispatch formula but
+          // change rarely (norms = once, opening stock = monthly), so
+          // they belong here in Settings rather than on the daily
+          // dispatch-planning hub.
+          _OptionCard(
+            icon: Icons.layers_outlined,
+            color: const Color(0xFF6B1F8C),
+            title: 'Stocking Norm',
+            subtitle:
+                'Per-part safe-stock target at the customer. Configure '
+                'once — feeds the daily dispatch calculation.',
+            onTap: () => context.push('/dpl/manager/stocking-norms'),
+          ),
+          const SizedBox(height: 10),
+          _OptionCard(
+            icon: Icons.inventory_outlined,
+            color: const Color(0xFFB45309),
+            title: 'Customer Opening Stock',
+            subtitle:
+                'What the customer is currently holding per part. '
+                'Refresh monthly — feeds the daily dispatch calculation.',
+            onTap: () =>
+                context.push('/dpl/manager/customer-opening-stocks'),
+          ),
+          const SizedBox(height: 10),
+          _OptionCard(
+            icon: Icons.all_inbox_outlined,
+            color: const Color(0xFF0E7C66),
+            title: 'Packaging Qty',
+            subtitle:
+                'Units per pack for each part (e.g. 14 NOS / pack). '
+                'Powers the "Pack: N NOS" hint next to every qty input.',
+            onTap: () => context.push('/dpl/manager/packaging-qtys'),
+          ),
         ],
       ),
     );

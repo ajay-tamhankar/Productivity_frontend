@@ -145,6 +145,16 @@ class DplPaths {
   // served from a backend config file. Any DPL role can read the list.
   static const String plants = '/plants';
 
+  // Dispatch trips — manager-submitted truck plans (see migration 048).
+  // Each trip has 1–6 plans (one per part); plans flow through
+  // open → slip_created → dispatched as dispatchers cut + ship slips.
+  static const String dispatchTrips = '/dispatch/trips';
+  static const String dispatchTripsNextNumber = '/dispatch/trips/next-number';
+  static String dispatchTripById(int id) => '/dispatch/trips/$id';
+  static String dispatchTripCancel(int id) => '/dispatch/trips/$id/cancel';
+  static String dispatchTripPlan(int tripId, int planId) =>
+      '/dispatch/trips/$tripId/plans/$planId';
+
   // Dispatch slip workflow — Dispatch → QA → PDI three-step approval
   // pipeline with an HMAC-signed QR payload printed on the slip. Roles
   // are gated server-side; the verify endpoint is public.
@@ -162,6 +172,43 @@ class DplPaths {
       '/dispatch/slips/$id/mark-dispatched';
   static String dispatchSlipEmail(int id) => '/dispatch/slips/$id/email';
   static const String dispatchSlipVerify = '/dispatch/slips/verify';
+
+  // ---------------------------------------------------------------------------
+  // Auto Dispatch Plan (migration 045) — JIT buffer-replenishment calculator
+  // ---------------------------------------------------------------------------
+  // Buffer Norms — master data, manager configures per part (target + trolley
+  // capacity + trips/day). Drives the FE DplDispatchCalculator inputs.
+  static const String bufferNorms = '/manager/buffer-norms';
+
+  // Daily Customer Snapshots — morning entry of TML opening stock + the
+  // customer's planned consumption today (per part, per date).
+  static const String customerSnapshots = '/manager/customer-snapshots';
+
+  // Dispatch Plan Inputs — the single calculator-feeder endpoint. Backend
+  // joins buffer norms + snapshot + GA stock + GA plan and returns the
+  // per-part inputs that map 1:1 to `DispatchCalcInput`.
+  static const String dispatchPlanInputs = '/manager/dispatch-plan/inputs';
+
+  // Bulk slip creation — atomic N-slip POST used after the calculator
+  // produces today's plan. All-or-nothing (single DB transaction).
+  static const String dispatchSlipsBulk = '/dispatch/slips/bulk';
+
+  // ---------------------------------------------------------------------------
+  // Simple Dispatch Planning — three per-part master fields the manager
+  // edits at different cadences. Dispatch = (StockingNorm + TodaysPlan)
+  // − CustomerOpeningStock.
+  //   stocking-norms          — configured ONCE per part
+  //   customer-opening-stocks — refreshed MONTHLY
+  //   customer-todays-plans   — updated DAILY
+  // ---------------------------------------------------------------------------
+  static const String stockingNorms = '/manager/stocking-norms';
+  static const String customerOpeningStocks = '/manager/customer-opening-stocks';
+  static const String customerTodaysPlans = '/manager/customer-todays-plans';
+
+  // Packaging Qty — customer-supplied units per pack (migration 049).
+  // Drives the "Pack: N NOS" hint on every qty input across the
+  // dispatch flow. Not enforced by backend; partial packs are valid.
+  static const String packagingQtys = '/manager/packaging-qtys';
 }
 
 /// Allowed `context` values for the identity-verify endpoint.

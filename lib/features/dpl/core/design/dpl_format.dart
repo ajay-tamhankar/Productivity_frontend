@@ -13,12 +13,44 @@ class DplFormat {
 
   static const Duration _istOffset = Duration(hours: 5, minutes: 30);
 
+  /// IST hour at which the plant's business day rolls over (migration
+  /// 050). Backend's "today" endpoints (`/supervisor/today`,
+  /// `/dispatch/trips`, `/manager/alerts`, etc.) return yesterday's
+  /// calendar date when called between 00:00 and 06:59 IST, because
+  /// Shift C is still running on the previous business day.
+  static const int _businessDayCutoverHour = 7;
+
   /// Converts any [DateTime] (UTC or local) to the equivalent wall
   /// clock instant in IST, returned as a NAIVE DateTime so subsequent
   /// `DateFormat` calls treat the components literally.
   static DateTime _toIst(DateTime dt) {
     final asUtc = dt.isUtc ? dt : dt.toUtc();
     return asUtc.add(_istOffset);
+  }
+
+  /// Plant business day for [now] under the IST 07:00 cutover rule.
+  /// Returned as a date-only DateTime (time component zeroed) so it
+  /// can be compared with `==` against other business-day values and
+  /// fed straight into date-only API params.
+  ///
+  /// At 06:59 IST on June 18 → returns June 17 (Shift C still active
+  /// on yesterday's business day).
+  /// At 07:00 IST on June 18 → returns June 18.
+  static DateTime businessDay([DateTime? now]) {
+    final ist = _toIst(now ?? DateTime.now());
+    final dayOnly = DateTime(ist.year, ist.month, ist.day);
+    if (ist.hour < _businessDayCutoverHour) {
+      return dayOnly.subtract(const Duration(days: 1));
+    }
+    return dayOnly;
+  }
+
+  /// True when [now] lies in the 00:00–06:59 IST window where the
+  /// business day is one calendar day behind. UI uses this to decide
+  /// whether to render the "Business Day" advisory banner.
+  static bool isBeforeBusinessDayCutover([DateTime? now]) {
+    final ist = _toIst(now ?? DateTime.now());
+    return ist.hour < _businessDayCutoverHour;
   }
 
   /// "19 May 2026"

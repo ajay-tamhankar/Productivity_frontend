@@ -14,7 +14,15 @@ import '../../features/dpl/manager/screens/masters/manpower_master_screen.dart';
 import '../../features/dpl/manager/screens/masters/parts_master_screen.dart';
 import '../../features/dpl/manager/screens/identity_audit_screen.dart';
 import '../../features/dpl/manager/screens/masters/shifts_master_screen.dart';
+import '../../features/dpl/manager/screens/buffer_norms_screen.dart';
+import '../../features/dpl/manager/screens/dispatch_plan_view_screen.dart';
+import '../../features/dpl/manager/screens/dispatch_planning_hub_screen.dart';
+import '../../features/dpl/manager/screens/morning_stock_update_screen.dart';
+import '../../features/dpl/manager/screens/part_field_edit_screen.dart';
 import '../../features/dpl/manager/screens/plan_detail_screen.dart';
+import '../../features/dpl/manager/screens/plan_trip_screen.dart';
+import '../../features/dpl/manager/screens/todays_dispatch_plan_screen.dart';
+import '../../features/dpl/models/dpl_part_field.dart';
 import '../../features/dpl/manager/screens/upload_plan_screen.dart';
 import '../../features/dpl/summary/summary_shell.dart';
 import '../../features/dpl/supervisor/screens/machine_plan_screen.dart';
@@ -159,6 +167,55 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: 'upload-plan',
             builder: (context, state) => const DplUploadPlanScreen(),
+          ),
+          GoRoute(
+            path: 'todays-dispatch-plan',
+            builder: (context, state) => const TodaysDispatchPlanScreen(),
+          ),
+          GoRoute(
+            path: 'buffer-norms',
+            builder: (context, state) => const BufferNormsScreen(),
+          ),
+          GoRoute(
+            path: 'morning-stock',
+            builder: (context, state) => const MorningStockUpdateScreen(),
+          ),
+          // ───── Simple dispatch planning (3 master fields + computed view) ─────
+          GoRoute(
+            path: 'dispatch-planning',
+            builder: (context, state) => const DispatchPlanningHubScreen(),
+          ),
+          GoRoute(
+            path: 'stocking-norms',
+            builder: (context, state) => const PartFieldEditScreen(
+              kind: DplPartFieldKind.stockingNorm,
+            ),
+          ),
+          GoRoute(
+            path: 'customer-opening-stocks',
+            builder: (context, state) => const PartFieldEditScreen(
+              kind: DplPartFieldKind.customerOpeningStock,
+            ),
+          ),
+          GoRoute(
+            path: 'customer-todays-plans',
+            builder: (context, state) => const PartFieldEditScreen(
+              kind: DplPartFieldKind.customerTodayPlan,
+            ),
+          ),
+          GoRoute(
+            path: 'packaging-qtys',
+            builder: (context, state) => const PartFieldEditScreen(
+              kind: DplPartFieldKind.packagingQty,
+            ),
+          ),
+          GoRoute(
+            path: 'dispatch-plan-view',
+            builder: (context, state) => const DispatchPlanViewScreen(),
+          ),
+          GoRoute(
+            path: 'plan-trip',
+            builder: (context, state) => const PlanTripScreen(),
           ),
           GoRoute(
             path: 'plans/:id',

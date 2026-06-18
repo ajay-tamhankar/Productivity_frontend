@@ -8,7 +8,9 @@ import '../core/widgets/dpl_app_bar.dart';
 import '../core/widgets/dpl_bottom_nav.dart';
 import '../core/widgets/dpl_refresh_icon_button.dart';
 import 'providers/dispatch_slips_provider.dart';
+import 'providers/dispatch_trips_provider.dart';
 import 'providers/plants_provider.dart';
+import 'providers/production_summary_provider.dart';
 import 'providers/summary_tab_provider.dart';
 import 'screens/dispatch_slip_verifier_screen.dart';
 import 'screens/dispatch_slips_inbox_screen.dart';
@@ -72,12 +74,23 @@ class DplSummaryShell extends ConsumerWidget {
           DplRefreshIconButton(
             onRefresh: () async {
               if (tabIndex == 0) {
-                // Plant landing — refresh the plant list (cheap, since
-                // the mapping is effectively static; useful if backend
-                // ever flips a plant on/off).
+                // Plant landing — refresh everything the screen
+                // shows. Plant master is effectively static, but the
+                // open-trips list, the global production-summary
+                // banner and the per-plant production-summary
+                // (which drives the "Out of stock" hint on each
+                // trip-plan row) are all live and need a fresh
+                // pull on every refresh tap.
                 ref.invalidate(dplPlantsProvider);
+                ref.invalidate(dplOpenTripsProvider);
+                ref.invalidate(dplProductionSummaryProvider);
+                ref.invalidate(dplProductionSummaryByPlantProvider);
                 try {
-                  await ref.read(dplPlantsProvider.future);
+                  await Future.wait([
+                    ref.read(dplPlantsProvider.future),
+                    ref.read(dplOpenTripsProvider(null).future),
+                    ref.read(dplProductionSummaryProvider.future),
+                  ]);
                 } catch (_) {}
               } else {
                 ref.invalidate(dplDispatchSlipsProvider);
@@ -116,6 +129,9 @@ class DplSummaryShell extends ConsumerWidget {
           // user drills into a plant, so we don't preempt that here.
           if (i == 0) {
             ref.invalidate(dplPlantsProvider);
+            ref.invalidate(dplOpenTripsProvider);
+            ref.invalidate(dplProductionSummaryProvider);
+            ref.invalidate(dplProductionSummaryByPlantProvider);
           } else {
             ref.invalidate(dplDispatchSlipsProvider);
           }

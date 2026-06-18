@@ -70,6 +70,61 @@ class DispatchSlipPdfBuilder {
   }) async {
     final fonts = await _SlipFonts.load();
 
+    final doc = pw.Document(
+      title: 'Dispatch Slip ${slip.slipNo}',
+      author: 'Grupo Antolin India Private Limited',
+      theme: pw.ThemeData.withFont(base: fonts.uiRegular, bold: fonts.uiBold),
+    );
+
+    doc.addPage(_buildSlipPage(slip, fonts));
+
+    return doc.save();
+  }
+
+  /// Multi-slip print — one PDF, one A4-landscape page per slip. Used
+  /// by the Trip Slips screen "Print all" action so a trip's whole
+  /// stack lands as a single document at the print sheet. Order of
+  /// [slips] is preserved; an empty list produces an empty document
+  /// (printing layer surfaces the no-pages error to the caller).
+  static Future<Uint8List> buildBatch(
+    List<DplDispatchSlip> slips, {
+    String? organizationLabel,
+  }) async {
+    final fonts = await _SlipFonts.load();
+
+    final firstNo = slips.isNotEmpty ? slips.first.slipNo : 'batch';
+    final lastNo = slips.length > 1 ? slips.last.slipNo : '';
+    final title = slips.length == 1
+        ? 'Dispatch Slip $firstNo'
+        : 'Dispatch Slips · $firstNo … $lastNo (${slips.length})';
+
+    final doc = pw.Document(
+      title: title,
+      author: 'Grupo Antolin India Private Limited',
+      theme: pw.ThemeData.withFont(base: fonts.uiRegular, bold: fonts.uiBold),
+    );
+
+    for (final slip in slips) {
+      doc.addPage(_buildSlipPage(slip, fonts));
+    }
+
+    return doc.save();
+  }
+
+  // One A4-landscape page rendering a single dispatch slip. Shared by
+  // both [build] (single-slip print) and [buildBatch] (trip-level
+  // print) so the printed surface stays identical regardless of the
+  // entry point.
+  //
+  // We avoid `pw.MultiPage` because the slip is rendered as one
+  // rounded-bordered container that can't be split between pages —
+  // MultiPage would throw `TooManyPagesException` trying to paginate
+  // it. `orientation: landscape` is set explicitly so the browser's
+  // print preview always rotates to landscape; relying on
+  // `PdfPageFormat.a4.landscape` alone has been flaky across some
+  // print sheets (Chrome on Windows shows the page in portrait if
+  // the orientation header isn't present).
+  static pw.Page _buildSlipPage(DplDispatchSlip slip, _SlipFonts fonts) {
     final fmt = NumberFormat.decimalPattern();
     final dateFmt = DateFormat('dd MMM yyyy');
     final timeFmt = DateFormat('HH:mm');
@@ -78,55 +133,35 @@ class DispatchSlipPdfBuilder {
     final referenceTime =
         slip.pdiApproval?.at ?? slip.qaApproval?.at ?? slip.requestedAt;
 
-    final doc = pw.Document(
-      title: 'Dispatch Slip ${slip.slipNo}',
-      author: 'Grupo Antolin India Private Limited',
-      theme: pw.ThemeData.withFont(base: fonts.uiRegular, bold: fonts.uiBold),
-    );
-
-    // Single A4-landscape page. We avoid `pw.MultiPage` here because
-    // the slip is rendered as one rounded-bordered container that
-    // can't be split between pages — MultiPage would throw
-    // `TooManyPagesException` trying to paginate it.
-    //
-    // `orientation: landscape` is set explicitly so the browser's
-    // print preview always rotates to landscape; relying on
-    // `PdfPageFormat.a4.landscape` alone has been flaky across some
-    // print sheets (Chrome on Windows shows the page in portrait if
-    // the orientation header isn't present).
-    doc.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4.landscape,
-        orientation: pw.PageOrientation.landscape,
-        margin: const pw.EdgeInsets.fromLTRB(16, 14, 16, 14),
-        // Natural content height. We tried wrapping the body in
-        // Expanded + pw.Spacer() to claim the whole page, but pdf's
-        // Flex layout can't bound the height through a Table cell —
-        // it threw "Flex children have non-zero flex but incoming
-        // height constraints are unbounded" at print time. So we
-        // accept some bottom whitespace on short slips and let the
-        // content size itself.
-        build: (context) => pw.Container(
-          decoration: pw.BoxDecoration(
-            color: PdfColors.white,
-            border: pw.Border.all(color: _line),
-            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(12)),
-          ),
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-            mainAxisSize: pw.MainAxisSize.min,
-            children: [
-              _band(slip, fonts),
-              _identity(slip, fonts, dateFmt, timeFmt, referenceTime),
-              _bodyRow(slip, fonts, fmt, signDateFmt),
-              _foot(slip, fonts),
-            ],
-          ),
+    return pw.Page(
+      pageFormat: PdfPageFormat.a4.landscape,
+      orientation: pw.PageOrientation.landscape,
+      margin: const pw.EdgeInsets.fromLTRB(16, 14, 16, 14),
+      // Natural content height. We tried wrapping the body in
+      // Expanded + pw.Spacer() to claim the whole page, but pdf's
+      // Flex layout can't bound the height through a Table cell —
+      // it threw "Flex children have non-zero flex but incoming
+      // height constraints are unbounded" at print time. So we
+      // accept some bottom whitespace on short slips and let the
+      // content size itself.
+      build: (context) => pw.Container(
+        decoration: pw.BoxDecoration(
+          color: PdfColors.white,
+          border: pw.Border.all(color: _line),
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(12)),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          mainAxisSize: pw.MainAxisSize.min,
+          children: [
+            _band(slip, fonts),
+            _identity(slip, fonts, dateFmt, timeFmt, referenceTime),
+            _bodyRow(slip, fonts, fmt, signDateFmt),
+            _foot(slip, fonts),
+          ],
         ),
       ),
     );
-
-    return doc.save();
   }
 
   // ───────────────────────────────────────────────────────────────────
@@ -424,6 +459,29 @@ class DispatchSlipPdfBuilder {
   static pw.Widget _plateCell(DplDispatchSlip slip, _SlipFonts fonts) {
     final plate = slip.vehicleNo.isEmpty ? '-' : slip.vehicleNo;
     final notes = slip.notes.trim();
+
+    // Step the font size down for longer plates so the full string
+    // always fits on one line. Indian commercial plates run anywhere
+    // from 8 chars (MH12HV40) to 13+ with separators (MH-12-HV-4040).
+    // Letter spacing tracks the size — tight spacing on long plates
+    // keeps the gate-scannable look without overflowing the cell.
+    final n = plate.length;
+    final double size;
+    final double spacing;
+    if (n <= 8) {
+      size = 30;
+      spacing = 1.2;
+    } else if (n <= 10) {
+      size = 26;
+      spacing = 0.8;
+    } else if (n <= 12) {
+      size = 22;
+      spacing = 0.6;
+    } else {
+      size = 18;
+      spacing = 0.4;
+    }
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       mainAxisSize: pw.MainAxisSize.min,
@@ -438,16 +496,23 @@ class DispatchSlipPdfBuilder {
           ),
         ),
         pw.SizedBox(height: 5),
-        pw.Text(
-          plate,
-          style: pw.TextStyle(
-            font: fonts.uiBold,
-            fontSize: 30,
-            color: _ink,
-            letterSpacing: 1.2,
+        // FittedBox handles the long-tail (15+ char) plates that the
+        // step-down sizes above don't cover — it scales the text to
+        // the cell's bounded width without further font-size logic.
+        pw.FittedBox(
+          fit: pw.BoxFit.scaleDown,
+          alignment: pw.Alignment.centerLeft,
+          child: pw.Text(
+            plate,
+            style: pw.TextStyle(
+              font: fonts.uiBold,
+              fontSize: size,
+              color: _ink,
+              letterSpacing: spacing,
+            ),
+            maxLines: 1,
+            overflow: pw.TextOverflow.clip,
           ),
-          maxLines: 1,
-          overflow: pw.TextOverflow.clip,
         ),
         if (notes.isNotEmpty) ...[
           pw.SizedBox(height: 4),

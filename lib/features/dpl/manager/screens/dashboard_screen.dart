@@ -100,7 +100,39 @@ class _DplManagerDashboardScreenState
           // DPL Customer is read-only — Upload Plan is a write action so
           // it's stripped from the app bar entirely. The calendar picker
           // stays because it only changes which date the user is viewing.
-          if (!viewerOnly)
+          if (!viewerOnly) ...[
+            if (isPhone)
+              IconButton(
+                tooltip: 'Dispatch Planning',
+                icon: const Icon(
+                  Icons.local_shipping_outlined,
+                  color: Color(0xFF6B1F8C),
+                ),
+                onPressed: () =>
+                    context.push('/dpl/manager/dispatch-planning'),
+              )
+            else
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                child: OutlinedButton.icon(
+                  onPressed: () =>
+                      context.push('/dpl/manager/dispatch-planning'),
+                  icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                  label: const Text(
+                    'Dispatch Planning',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF6B1F8C),
+                    side: const BorderSide(color: Color(0xFF6B1F8C), width: 1.4),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
             if (isPhone)
               IconButton(
                 tooltip: 'Upload Plan',
@@ -131,6 +163,7 @@ class _DplManagerDashboardScreenState
                   ),
                 ),
               ),
+          ],
           IconButton(
             tooltip: 'Pick date',
             icon: const Icon(Icons.calendar_today_outlined),

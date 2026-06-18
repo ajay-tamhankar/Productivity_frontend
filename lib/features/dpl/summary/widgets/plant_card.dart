@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../core/design/dpl_theme.dart';
 import '../../core/dpl_api_response.dart';
 import '../../core/dpl_api_service.dart';
+import '../../core/dpl_feature_flags.dart';
 import '../../core/widgets/dpl_snack.dart';
 import '../../models/dpl_dispatch_slip.dart';
 import '../../models/dpl_plant.dart';
@@ -426,6 +427,11 @@ class _PlantCardState extends ConsumerState<PlantCard> {
                     // dropdowns aren't there.
                     if (_hasNoMachines)
                       _NoMachinesAssignedState(palette: widget.palette)
+                    else if (DplFeatureFlags.enableDispatchTrips)
+                      // Trip-driven dispatch is live — point the user
+                      // at the Open Trips section instead of showing
+                      // the legacy machine-picker form.
+                      _TripFlowPointer(palette: widget.palette)
                     else ...[
                       _MachineMultiPicker(
                         plant: widget.plant,
@@ -2020,6 +2026,65 @@ class _ErrorBox extends StatelessWidget {
 /// and the customer-confirmed plant-to-machine INSERTs are pending. As
 /// soon as backend runs them, this widget disappears and the form
 /// renders normally.
+/// Replaces the legacy slip-creation form (machine picker + cart +
+/// vehicle/notes + Send for PDI) when the trip-driven dispatch flag
+/// is on. Points the dispatcher up to the Open Trips section above
+/// the plant cards.
+class _TripFlowPointer extends StatelessWidget {
+  final PlantCardPalette palette;
+  const _TripFlowPointer({required this.palette});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: palette.edge),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.local_shipping_outlined,
+            size: 22,
+            color: palette.accentDark,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Slip creation moved to Open Trips',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                    color: palette.accentDark,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Pick a trip from the Open Trips list above, tick the '
+                  'parts you want to ship, then tap Send for PDI on the '
+                  'trip card.',
+                  style: TextStyle(
+                    color: DplColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11.5,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _NoMachinesAssignedState extends StatelessWidget {
   final PlantCardPalette palette;
   const _NoMachinesAssignedState({required this.palette});

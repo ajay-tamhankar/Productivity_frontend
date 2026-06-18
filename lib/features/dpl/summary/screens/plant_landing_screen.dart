@@ -6,8 +6,10 @@ import '../../core/design/dpl_theme.dart';
 import '../../manager/widgets/empty_state.dart';
 import '../../manager/widgets/error_retry.dart';
 import '../../models/dpl_plant.dart';
+import '../providers/dispatch_trips_provider.dart';
 import '../providers/plants_provider.dart';
 import '../providers/production_summary_provider.dart';
+import '../widgets/open_trips_section.dart';
 import '../widgets/plant_card.dart';
 import 'production_summary_screen.dart';
 
@@ -30,9 +32,16 @@ class PlantLandingScreen extends ConsumerWidget {
       onRefresh: () async {
         ref.invalidate(dplPlantsProvider);
         ref.invalidate(dplProductionSummaryProvider);
+        ref.invalidate(dplOpenTripsProvider);
+        // Per-plant production-summary family — drives the
+        // "Out of stock" availability hint on each trip-plan row.
+        // Without invalidating the whole family, stale bucket data
+        // can mask an inventory bump that just arrived on the wire.
+        ref.invalidate(dplProductionSummaryByPlantProvider);
         try {
           await ref.read(dplPlantsProvider.future);
           await ref.read(dplProductionSummaryProvider.future);
+          await ref.read(dplOpenTripsProvider(null).future);
         } catch (_) {}
       },
       child: CustomScrollView(
@@ -44,6 +53,11 @@ class PlantLandingScreen extends ConsumerWidget {
           const SliverToBoxAdapter(child: SizedBox(height: 8)),
           const SliverToBoxAdapter(child: ProductionTotalsBanner()),
           const SliverToBoxAdapter(child: SizedBox(height: 6)),
+          // Open trips section — manager-submitted trips waiting to be
+          // slipped. This is the new dispatch entry point introduced in
+          // migration 048; the per-plant manual machine-picker form
+          // (in `PlantCard`) stays below as fallback during transition.
+          const SliverToBoxAdapter(child: OpenTripsSection()),
           // Then — landing header + plant selection cards.
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),

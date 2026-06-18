@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +12,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../auth/auth_provider.dart';
 import '../../core/design/dpl_theme.dart';
+import '../../core/dpl_api_service.dart';
 import '../../core/dpl_constants.dart';
 import '../../core/dpl_organization_provider.dart';
 import '../../core/widgets/dpl_app_bar.dart';
@@ -54,6 +57,10 @@ class _DispatchSlipDetailScreenState
   /// because the state lives on the screen instance.
   bool _scanVerified = false;
 
+  /// Guards the AppBar Email button so back-to-back taps can't fire
+  /// two uploads. Render bytes once, POST once, snack the result.
+  bool _emailing = false;
+
   @override
   Widget build(BuildContext context) {
     final async =
@@ -67,6 +74,21 @@ class _DispatchSlipDetailScreenState
       appBar: DplAppBar(
         title: 'Dispatch Slip',
         actions: [
+          IconButton(
+            tooltip: _emailing
+                ? 'Emailing slip…'
+                : 'Email PDF to Dispatch',
+            icon: _emailing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.mail_outline_rounded),
+            onPressed: (slipForActions == null || _emailing)
+                ? null
+                : () => _emailSlip(context, ref, slipForActions),
+          ),
           IconButton(
             tooltip: 'Print / Save PDF',
             icon: const Icon(Icons.print_outlined),
@@ -228,6 +250,81 @@ class _DispatchSlipDetailScreenState
       }
     }
   }
+
+  /// Renders the same PDF the print sheet would produce and uploads it
+  /// to `POST /api/v1/dpl/dispatch/slips/:id/email` as `multipart/form-data`.
+  /// Default TO/CC are server-side; nothing is sent from the FE unless
+  /// the user explicitly adds extras (no current UI for that — the
+  /// detail-screen button uses backend defaults).
+  ///
+  /// The button itself is disabled while [_emailing] is true so a
+  /// double-tap can't fire two uploads.
+  Future<void> _emailSlip(
+    BuildContext context,
+    WidgetRef ref,
+    DplDispatchSlip slip,
+  ) async {
+    setState(() => _emailing = true);
+
+    final orgLabel = ref.read(dplActiveOrganizationProvider)?.displayLabel;
+    final api = ref.read(dplApiServiceProvider);
+
+    Uint8List pdfBytes;
+    try {
+      pdfBytes = await DispatchSlipPdfBuilder.build(
+        slip,
+        organizationLabel: orgLabel,
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      setState(() => _emailing = false);
+      DplSnacks.error(context, 'Could not render slip PDF: $e');
+      return;
+    }
+
+    final res = await api.sendDispatchSlipEmail(
+      slip.id,
+      pdfBytes: pdfBytes,
+      filename: '${slip.slipNo}.pdf',
+    );
+
+    if (!context.mounted) return;
+    setState(() => _emailing = false);
+
+    if (res.isError) {
+      DplSnacks.error(
+        context,
+        'Email failed: ${res.error ?? "unknown error"}',
+      );
+      return;
+    }
+
+    final data = res.data;
+    if (data == null) {
+      DplSnacks.error(context, 'Email response was empty.');
+      return;
+    }
+    if (data.sent) {
+      final toLabel =
+          data.to.isNotEmpty ? data.to.first : 'Dispatch';
+      DplSnacks.success(
+        context,
+        data.to.length > 1
+            ? 'Slip emailed to $toLabel +${data.to.length - 1} more.'
+            : 'Slip emailed to $toLabel.',
+      );
+    } else if (data.skipped) {
+      DplSnacks.warning(
+        context,
+        'Slip not emailed — SMTP is not configured on this deploy.',
+      );
+    } else {
+      DplSnacks.error(
+        context,
+        'Email not sent: ${data.reason ?? "unknown reason"}',
+      );
+    }
+  }
 }
 
 /// Compact slip-number + status block above the printable area. Gives
@@ -253,13 +350,23 @@ class _HeaderSummary extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  slip.slipNo,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 18,
-                    letterSpacing: 0.3,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        slip.slipNo,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                    if (slip.tripNumber != null) ...[
+                      const SizedBox(width: 8),
+                      _FromTripBadge(tripNumber: slip.tripNumber!),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -274,6 +381,44 @@ class _HeaderSummary extends StatelessWidget {
             ),
           ),
           DispatchSlipStatusBadge(status: slip.status),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compact "From Trip #N" badge surfaced next to the slip number on
+/// the detail header. Visible only when the slip was cut from a
+/// manager-submitted trip (migration 048). Legacy slips created via
+/// the manual machine-picker form hide the badge entirely.
+class _FromTripBadge extends StatelessWidget {
+  final int tripNumber;
+  const _FromTripBadge({required this.tripNumber});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: DplColors.primaryTint,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: DplColors.primary.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.local_shipping_rounded,
+              size: 11, color: DplColors.primaryDark),
+          const SizedBox(width: 4),
+          Text(
+            'Trip #$tripNumber',
+            style: const TextStyle(
+              color: DplColors.primaryDark,
+              fontWeight: FontWeight.w800,
+              fontSize: 10.5,
+              letterSpacing: 0.3,
+            ),
+          ),
         ],
       ),
     );
@@ -781,6 +926,7 @@ class _LabelValue extends StatelessWidget {
     required this.label,
     required this.value,
     this.subValue,
+    this.mono = false,
   });
 
   @override
@@ -838,6 +984,27 @@ class _PlateCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final plate = slip.vehicleNo.isEmpty ? '-' : slip.vehicleNo;
     final notes = slip.notes.trim();
+
+    // Step the font size down for longer plates — keeps the
+    // gate-scannable look while ensuring the full plate fits in the
+    // cell. FittedBox below handles any remaining edge cases.
+    final n = plate.length;
+    final double plateSize;
+    final double plateSpacing;
+    if (n <= 8) {
+      plateSize = 42;
+      plateSpacing = 1.7;
+    } else if (n <= 10) {
+      plateSize = 36;
+      plateSpacing = 1.1;
+    } else if (n <= 12) {
+      plateSize = 30;
+      plateSpacing = 0.8;
+    } else {
+      plateSize = 26;
+      plateSpacing = 0.5;
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -852,17 +1019,25 @@ class _PlateCell extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        Text(
-          plate,
-          style: _displayStyle(
-            size: 42,
-            weight: FontWeight.w700,
-            color: _SlipPalette.ink,
-            height: 0.95,
-            letterSpacing: 1.7,
+        // FittedBox safety-net so the plate always fits regardless of
+        // length — the step-down sizing above handles the common
+        // cases without distortion, and FittedBox catches very long
+        // edge cases (15+ chars) without any text being clipped.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            plate,
+            style: _displayStyle(
+              size: plateSize,
+              weight: FontWeight.w700,
+              color: _SlipPalette.ink,
+              height: 0.95,
+              letterSpacing: plateSpacing,
+            ),
+            maxLines: 1,
+            softWrap: false,
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 8),
         if (notes.isNotEmpty)

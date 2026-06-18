@@ -222,6 +222,14 @@ class DplDispatchSlip {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
+  /// Source trip when the slip was cut from a manager-submitted trip
+  /// (migration 048). `null` for legacy slips created via the manual
+  /// machine-picker form. [tripNumber] is the manager-facing per-day
+  /// per-plant label; backend includes it eagerly on slip responses
+  /// so we don't need a follow-up trip fetch to render the badge.
+  final int? tripId;
+  final int? tripNumber;
+
   const DplDispatchSlip({
     required this.id,
     required this.slipNo,
@@ -242,6 +250,8 @@ class DplDispatchSlip {
     this.notes = '',
     this.createdAt,
     this.updatedAt,
+    this.tripId,
+    this.tripNumber,
   });
 
   factory DplDispatchSlip.fromJson(Map<String, dynamic> json) {
@@ -312,6 +322,17 @@ class DplDispatchSlip {
       notes: parseStringOr(json['notes']),
       createdAt: parseDateTimeOrNull(json['created_at'] ?? json['createdAt']),
       updatedAt: parseDateTimeOrNull(json['updated_at'] ?? json['updatedAt']),
+      tripId: parseIntOrNull(json['trip_id'] ?? json['tripId']),
+      // Backend may inline `{trip: {id, trip_number, ...}}` instead of
+      // flat fields; accept both.
+      tripNumber: parseIntOrNull(
+        json['trip_number'] ??
+            json['tripNumber'] ??
+            (json['trip'] is Map
+                ? (json['trip'] as Map)['trip_number'] ??
+                    (json['trip'] as Map)['tripNumber']
+                : null),
+      ),
     );
   }
 

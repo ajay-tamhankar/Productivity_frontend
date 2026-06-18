@@ -15,6 +15,7 @@ import '../../models/dpl_dispatch_slip.dart';
 import '../providers/dispatch_slips_provider.dart';
 import '../widgets/dispatch_slip_status_badge.dart';
 import 'dispatch_slip_detail_screen.dart';
+import 'trip_slips_screen.dart';
 
 /// Lists dispatch slips with role-aware status tabs:
 ///   * QA → "Pending QA" inbox + history
@@ -156,12 +157,20 @@ class _DispatchSlipsInboxScreenState
                     ],
                   );
                 }
+                // Group by trip so a trip with N slips collapses to a
+                // single card. Legacy slips (no trip_id) render as
+                // standalone rows, interleaved in original order. The
+                // visible page may not contain every slip cut from a
+                // trip — if a trip's slips spill across paginated pages
+                // the card surfaces only what's loaded here (see
+                // backend ask in the PR description).
+                final rows = _groupByTrip(page.items);
                 return ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                  itemCount: page.items.length + 1,
+                  itemCount: rows.length + 1,
                   separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemBuilder: (_, i) {
-                    if (i == page.items.length) {
+                    if (i == rows.length) {
                       return _Pagination(
                         page: page,
                         onChange: (p) => ref
@@ -169,7 +178,11 @@ class _DispatchSlipsInboxScreenState
                             .setPage(p),
                       );
                     }
-                    return _SlipRowCard(slip: page.items[i]);
+                    final row = rows[i];
+                    if (row is _TripGroupRow) {
+                      return _TripGroupCard(group: row);
+                    }
+                    return _SlipRowCard(slip: (row as _LooseSlipRow).slip);
                   },
                 );
               },
@@ -208,6 +221,67 @@ class _DispatchSlipsInboxScreenState
     }
     return 'Try adjusting the filters above.';
   }
+
+  /// Buckets the visible page's slips by `trip_id` while preserving the
+  /// list's original order (a trip group lands at the position of its
+  /// FIRST slip). Slips without a `trip_id` (legacy single-shot slips
+  /// cut via the manual machine-picker) pass through as standalone
+  /// rows so this change doesn't hide them.
+  List<_InboxRow> _groupByTrip(List<DplDispatchSlip> items) {
+    final rows = <_InboxRow>[];
+    final byTrip = <int, int>{}; // trip_id → row index
+    for (final slip in items) {
+      final tripId = slip.tripId;
+      if (tripId == null) {
+        rows.add(_LooseSlipRow(slip));
+        continue;
+      }
+      final existing = byTrip[tripId];
+      if (existing == null) {
+        byTrip[tripId] = rows.length;
+        rows.add(_TripGroupRow(
+          tripId: tripId,
+          tripNumber: slip.tripNumber ?? 0,
+          plantCode: slip.plant.code,
+          plantName: slip.plant.name,
+          slips: [slip],
+        ));
+      } else {
+        (rows[existing] as _TripGroupRow).slips.add(slip);
+      }
+    }
+    return rows;
+  }
+}
+
+/// Sealed row type — either a one-card trip group or a legacy
+/// standalone slip. Lets the inbox `ListView.builder` switch on shape
+/// in one place.
+sealed class _InboxRow {
+  const _InboxRow();
+}
+
+class _TripGroupRow extends _InboxRow {
+  final int tripId;
+  final int tripNumber;
+  final String plantCode;
+  final String plantName;
+  final List<DplDispatchSlip> slips;
+
+  _TripGroupRow({
+    required this.tripId,
+    required this.tripNumber,
+    required this.plantCode,
+    required this.plantName,
+    required this.slips,
+  });
+
+  int get totalQty => slips.fold<int>(0, (s, x) => s + x.totalQty);
+}
+
+class _LooseSlipRow extends _InboxRow {
+  final DplDispatchSlip slip;
+  const _LooseSlipRow(this.slip);
 }
 
 /// Status tab strip — shows counts so QA / PDI can see their queue
@@ -434,14 +508,334 @@ class _SearchBar extends StatelessWidget {
   }
 }
 
-class _SlipRowCard extends StatelessWidget {
-  final DplDispatchSlip slip;
-  const _SlipRowCard({required this.slip});
+/// Inbox row that rolls every slip cut from one trip into a single
+/// card. Header carries the trip number + plant + total qty; the
+/// list below shows each slip as a one-line summary so the user can
+/// scan the trip's slip stack at a glance. The whole card is
+/// tappable — tap → [TripSlipsScreen] with the full per-slip detail
+/// + the multi-page "Print all" action.
+class _TripGroupCard extends StatelessWidget {
+  final _TripGroupRow group;
+  const _TripGroupCard({required this.group});
+
+  Color get _accent =>
+      _SlipRowCard._tripPalette[group.tripId.abs() % _SlipRowCard._tripPalette.length];
+
+  Map<String, int> _statusCounts() {
+    final out = <String, int>{};
+    for (final s in group.slips) {
+      out[s.status] = (out[s.status] ?? 0) + 1;
+    }
+    return out;
+  }
 
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat.decimalPattern();
     final dateFmt = DateFormat('dd MMM yyyy, HH:mm');
+    final statuses = _statusCounts();
+    final plantLabel = group.plantName.isNotEmpty
+        ? group.plantName
+        : group.plantCode;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => TripSlipsScreen(
+              tripId: group.tripId,
+              tripNumber: group.tripNumber,
+              plantCode: group.plantCode,
+              plantName: group.plantName,
+              slips: group.slips,
+            ),
+          ),
+        ),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: DplColors.cardBg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: DplColors.divider),
+            boxShadow: DplShadows.card,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header band — matches the trip-driven open-trips card on
+              // the dispatch landing so the visual language stays one.
+              Container(
+                padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+                decoration: BoxDecoration(
+                  color: _accent.withValues(alpha: 0.10),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(13),
+                  ),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: _accent.withValues(alpha: 0.25),
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.local_shipping_rounded,
+                        size: 18, color: _accent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Trip #${group.tripNumber}',
+                            style: TextStyle(
+                              color: _accent,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          if (plantLabel.isNotEmpty)
+                            Text(
+                              plantLabel,
+                              style: const TextStyle(
+                                color: DplColors.textSecondary,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11.5,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${group.slips.length} slip'
+                          '${group.slips.length == 1 ? "" : "s"}',
+                          style: const TextStyle(
+                            color: DplColors.textPrimary,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                        Text(
+                          '${fmt.format(group.totalQty)} NOS',
+                          style: const TextStyle(
+                            color: DplColors.textPrimary,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (statuses.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final entry in statuses.entries)
+                        _StatusPip(
+                          status: entry.key,
+                          count: entry.value,
+                        ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 8),
+              // Mini-roster of slips. Each row is a one-line summary —
+              // the full per-slip detail + actions live on
+              // [TripSlipsScreen], reachable by tapping anywhere on
+              // the card.
+              for (var i = 0; i < group.slips.length; i++) ...[
+                if (i > 0)
+                  const Divider(height: 1, color: DplColors.divider),
+                _TripGroupSlipRow(slip: group.slips[i], dateFmt: dateFmt),
+              ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                child: Row(
+                  children: [
+                    Icon(Icons.touch_app_outlined,
+                        size: 13, color: _accent),
+                    const SizedBox(width: 4),
+                    Text(
+                      'View all & print',
+                      style: TextStyle(
+                        color: _accent,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11.5,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(Icons.chevron_right_rounded,
+                        size: 16, color: _accent),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One-line summary of a slip inside a [_TripGroupCard]. Tappable so
+/// the user can jump straight into the existing detail screen for
+/// quick approve / reject / print on a single slip.
+class _TripGroupSlipRow extends StatelessWidget {
+  final DplDispatchSlip slip;
+  final DateFormat dateFmt;
+  const _TripGroupSlipRow({required this.slip, required this.dateFmt});
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat.decimalPattern();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => DispatchSlipDetailScreen(slipId: slip.id),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      slip.slipNo,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12.5,
+                        letterSpacing: 0.2,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      slip.isSingleItem
+                          ? '${slip.machineLabel} • Qty ${fmt.format(slip.qty)}'
+                          : '${slip.machineLabel} • '
+                              '${slip.items.length} items • '
+                              '${fmt.format(slip.totalQty)} NOS',
+                      style: const TextStyle(
+                        color: DplColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11.5,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              DispatchSlipStatusBadge(status: slip.status, dense: true),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusPip extends StatelessWidget {
+  final String status;
+  final int count;
+  const _StatusPip({required this.status, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _pipPalette(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: palette.bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$count ${DplDispatchSlipStatus.label(status)}',
+        style: TextStyle(
+          color: palette.fg,
+          fontWeight: FontWeight.w800,
+          fontSize: 10.5,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+
+  static ({Color bg, Color fg}) _pipPalette(String s) {
+    switch (s) {
+      case DplDispatchSlipStatus.pendingQa:
+      case DplDispatchSlipStatus.pendingPdi:
+        return (bg: DplColors.warningBg, fg: DplColors.warning);
+      case DplDispatchSlipStatus.approved:
+        return (bg: DplColors.primaryTint, fg: DplColors.primaryDark);
+      case DplDispatchSlipStatus.dispatched:
+        return (bg: DplColors.successBg, fg: DplColors.success);
+      case DplDispatchSlipStatus.rejected:
+        return (bg: DplColors.errorBg, fg: DplColors.error);
+      default:
+        return (bg: DplColors.neutralBg, fg: DplColors.textSecondary);
+    }
+  }
+}
+
+class _SlipRowCard extends StatelessWidget {
+  final DplDispatchSlip slip;
+  const _SlipRowCard({required this.slip});
+
+  /// Stable color picked from [_tripPalette] so every slip cut from
+  /// the same trip carries the same accent. Hashing the trip id keeps
+  /// the mapping deterministic across sessions — Trip 47 is always
+  /// the same color today and tomorrow. Legacy slips (no trip_id)
+  /// return null and skip the accent strip entirely.
+  static Color? _tripAccent(int? tripId) {
+    if (tripId == null) return null;
+    return _tripPalette[tripId.abs() % _tripPalette.length];
+  }
+
+  /// Curated palette — distinct hues that don't collide with the
+  /// status badges (which already use red/amber/green). 8 entries is
+  /// enough variety; if the same plant cuts more than 8 trips in a
+  /// shift, two of them will share a color, which we accept as a
+  /// tradeoff for keeping the legend mentally short.
+  static const List<Color> _tripPalette = [
+    Color(0xFF3F51B5), // indigo
+    Color(0xFF009688), // teal
+    Color(0xFF00ACC1), // cyan
+    Color(0xFFE91E63), // pink
+    Color(0xFF795548), // brown
+    Color(0xFF607D8B), // blue grey
+    Color(0xFFFF7043), // deep orange
+    Color(0xFF673AB7), // deep purple
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat.decimalPattern();
+    final dateFmt = DateFormat('dd MMM yyyy, HH:mm');
+    final tripAccent = _tripAccent(slip.tripId);
 
     return Material(
       color: Colors.transparent,
@@ -453,33 +847,52 @@ class _SlipRowCard extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(14),
         child: Ink(
-          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: DplColors.cardBg,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: DplColors.divider),
             boxShadow: DplShadows.card,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Stack(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      slip.slipNo,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                        letterSpacing: 0.2,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              // Main card content. The left padding is bumped up when
+              // a trip accent is present so the colored strip never
+              // overlaps the text.
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  tripAccent == null ? 14 : 18,
+                  14,
+                  14,
+                  14,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            slip.slipNo,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                              letterSpacing: 0.2,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (slip.tripNumber != null) ...[
+                          const SizedBox(width: 6),
+                          _TripPill(
+                            tripNumber: slip.tripNumber!,
+                            color: tripAccent ?? DplColors.textSecondary,
+                          ),
+                        ],
+                        const SizedBox(width: 6),
+                        DispatchSlipStatusBadge(status: slip.status),
+                      ],
                     ),
-                  ),
-                  DispatchSlipStatusBadge(status: slip.status),
-                ],
-              ),
               const SizedBox(height: 6),
               // Multi-item slips compress to "Machine · N items · X NOS"
               // so the tile stays one-line scannable. Single-item slips
@@ -557,9 +970,69 @@ class _SlipRowCard extends StatelessWidget {
                     ),
                 ],
               ),
+                  ],
+                ),
+              ),
+              // Vertical color strip pinned to the left edge of the
+              // card. Same trip → same color, derived from the trip
+              // id hash. Skipped for legacy slips so they read as
+              // visually distinct from trip-driven ones.
+              if (tripAccent != null)
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 5,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: tripAccent,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(13),
+                        bottomLeft: Radius.circular(13),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Compact pill showing the source trip number, painted in the same
+/// color as the card's left accent strip so the grouping signal is
+/// reinforced inline next to the slip number.
+class _TripPill extends StatelessWidget {
+  final int tripNumber;
+  final Color color;
+  const _TripPill({required this.tripNumber, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.local_shipping_rounded, size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(
+            'Trip #$tripNumber',
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: 10.5,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -24,8 +24,15 @@ import '../models/dpl_start_stop.dart';
 import '../models/dpl_supervisor.dart';
 import '../models/dpl_supervisor_plan_detail.dart';
 import '../models/dpl_carry_candidate.dart';
+import '../models/_json_helpers.dart';
+import '../models/dpl_buffer_norm.dart';
+import '../models/dpl_customer_snapshot.dart';
+import '../models/dpl_dispatch_plan_inputs.dart';
 import '../models/dpl_dispatch_slip.dart';
+import '../models/dpl_dispatch_slips_bulk.dart';
+import '../models/dpl_dispatch_trip.dart';
 import '../models/dpl_identity.dart';
+import '../models/dpl_part_field.dart';
 import '../models/dpl_plant.dart';
 import '../models/dpl_item_pause.dart';
 import '../models/dpl_supervisor_today.dart';
@@ -1992,6 +1999,38 @@ class DplApiService {
     );
   }
 
+  /// `POST /dispatch/slips` — trip-driven path (migration 048).
+  ///
+  /// Backend detects this shape via the presence of `trip_id` +
+  /// `trip_plan_ids[]` and routes through `createSlipFromTrip`:
+  ///   * resolves plant + items from the trip plans
+  ///   * flips the picked plans to `slip_created`
+  ///   * recomputes the trip status (`partial` / `fulfilled`)
+  /// All in a single transaction; rejects when plan ids belong to a
+  /// different trip or are no longer `open`.
+  Future<DplApiResponse<DplDispatchSlip>> createDispatchSlipFromTrip({
+    required int tripId,
+    required List<int> tripPlanIds,
+    String? vehicleNo,
+    String? notes,
+  }) {
+    return _send<DplDispatchSlip>(
+      () => _dio.post(
+        DplPaths.dispatchSlips,
+        data: {
+          'trip_id': tripId,
+          'trip_plan_ids': tripPlanIds,
+          if (vehicleNo != null && vehicleNo.trim().isNotEmpty)
+            'vehicle_no': vehicleNo.trim(),
+          if (notes != null && notes.trim().isNotEmpty)
+            'notes': notes.trim(),
+        },
+      ),
+      fallback: 'Failed to send slip for PDI.',
+      fromJson: _oneDispatchSlip,
+    );
+  }
+
   /// `GET /dispatch/slips` — paginated list, server-side role-filtered.
   /// QA inbox: `?status=pending_qa`. PDI inbox: `?status=pending_pdi`.
   /// Dispatch defaults to their own slips across every status.
@@ -2152,6 +2191,7 @@ class DplApiService {
     required String filename,
     List<String>? extraTo,
     List<String>? extraCc,
+    String? subjectSuffix,
   }) async {
     try {
       final form = FormData.fromMap({
@@ -2164,6 +2204,8 @@ class DplApiService {
           'extra_to': extraTo.join(','),
         if (extraCc != null && extraCc.isNotEmpty)
           'extra_cc': extraCc.join(','),
+        if (subjectSuffix != null && subjectSuffix.trim().isNotEmpty)
+          'subject_suffix': subjectSuffix.trim(),
       });
       return _send<DplDispatchSlipEmailResult>(
         () => _dio.post(DplPaths.dispatchSlipEmail(id), data: form),
@@ -2340,6 +2382,444 @@ class DplApiService {
           .map((e) => fromMap(Map<String, dynamic>.from(e)))
           .toList();
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auto Dispatch Plan (migration 045) — JIT buffer-replenishment calculator.
+  // 6 endpoints powering the new "Today's Dispatch Plan" feature. Existing
+  // endpoints are read-only / never modified by this group of methods.
+  // ---------------------------------------------------------------------------
+
+  /// `GET /manager/buffer-norms?plant_code=...` — Manager only.
+  ///
+  /// Returns the per-plant per-part norm rows (`buffer_target`,
+  /// `trolley_capacity`, `trips_per_day`) plus a `parts_without_norms`
+  /// list so the admin screen can highlight what's still missing.
+  Future<DplApiResponse<DplBufferNormsPage>> listBufferNorms({
+    required String plantCode,
+  }) {
+    return _send<DplBufferNormsPage>(
+      () => _dio.get(
+        DplPaths.bufferNorms,
+        queryParameters: {'plant_code': plantCode},
+      ),
+      fallback: 'Failed to load buffer norms.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DplBufferNormsPage.fromJson(Map<String, dynamic>.from(data));
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
+  }
+
+  /// `PUT /manager/buffer-norms` — Manager only. Bulk upsert.
+  ///
+  /// Sends every row the admin screen currently has — backend resolves
+  /// inserts vs updates by the unique (organization, plant, part) key.
+  Future<DplApiResponse<int>> upsertBufferNorms({
+    required String plantCode,
+    required List<DplBufferNormUpsertRequest> norms,
+  }) {
+    return _send<int>(
+      () => _dio.put(
+        DplPaths.bufferNorms,
+        data: {
+          'plant_code': plantCode,
+          'norms': [for (final n in norms) n.toJson()],
+        },
+      ),
+      fallback: 'Failed to save buffer norms.',
+      fromJson: (data) {
+        if (data is Map) {
+          return parseIntOr(data['upserted_count'] ?? data['upsertedCount']);
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
+  }
+
+  /// `GET /manager/customer-snapshots?plant_code=...&date=...` —
+  /// Manager + Dispatch.
+  Future<DplApiResponse<DplCustomerSnapshotsPage>> listCustomerSnapshots({
+    required String plantCode,
+    required DateTime date,
+  }) {
+    final dateStr =
+        '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+    return _send<DplCustomerSnapshotsPage>(
+      () => _dio.get(
+        DplPaths.customerSnapshots,
+        queryParameters: {'plant_code': plantCode, 'date': dateStr},
+      ),
+      fallback: 'Failed to load customer snapshot.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DplCustomerSnapshotsPage.fromJson(
+            Map<String, dynamic>.from(data),
+          );
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
+  }
+
+  /// `POST /manager/customer-snapshots` — Manager + Dispatch.
+  /// Bulk upsert. `date` is sent as ISO `YYYY-MM-DD`.
+  Future<DplApiResponse<int>> upsertCustomerSnapshots({
+    required String plantCode,
+    required DateTime snapshotDate,
+    required List<DplCustomerSnapshotUpsertRequest> entries,
+  }) {
+    final dateStr =
+        '${snapshotDate.year.toString().padLeft(4, '0')}-'
+        '${snapshotDate.month.toString().padLeft(2, '0')}-'
+        '${snapshotDate.day.toString().padLeft(2, '0')}';
+    return _send<int>(
+      () => _dio.post(
+        DplPaths.customerSnapshots,
+        data: {
+          'plant_code': plantCode,
+          'snapshot_date': dateStr,
+          'entries': [for (final e in entries) e.toJson()],
+        },
+      ),
+      fallback: 'Failed to save customer snapshot.',
+      fromJson: (data) {
+        if (data is Map) {
+          return parseIntOr(data['upserted_count'] ?? data['upsertedCount']);
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
+  }
+
+  /// `GET /manager/dispatch-plan/inputs?plant_code=...&date=...` —
+  /// Manager + Dispatch. The single calculator-feeder endpoint.
+  ///
+  /// Field names map 1:1 to `DispatchCalcInput`'s named parameters,
+  /// so the response rows go straight into `toCalcInput()` and feed
+  /// `DplDispatchCalculator.calculateBatch(...)` without an adapter.
+  Future<DplApiResponse<DplDispatchPlanInputsPage>> getDispatchPlanInputs({
+    required String plantCode,
+    required DateTime date,
+  }) {
+    final dateStr =
+        '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+    return _send<DplDispatchPlanInputsPage>(
+      () => _dio.get(
+        DplPaths.dispatchPlanInputs,
+        queryParameters: {'plant_code': plantCode, 'date': dateStr},
+      ),
+      fallback: 'Failed to load dispatch plan inputs.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DplDispatchPlanInputsPage.fromJson(
+            Map<String, dynamic>.from(data),
+          );
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Simple Dispatch Planning — 3 per-part master fields, edited at
+  // different cadences. All three endpoints share the same response
+  // shape so we use one parameterized method pair driven by the
+  // `DplPartFieldKind` enum.
+  //
+  // dispatch = (stocking_norm + customer_today_plan) - customer_opening_stock
+  // ---------------------------------------------------------------------------
+
+  /// `GET /manager/{kind-path}` — Manager only. Lists the per-part
+  /// values for [kind]. Pass `withNull=true` to include parts that
+  /// don't yet have this field configured (default: only configured
+  /// rows).
+  Future<DplApiResponse<DplPartFieldPage>> listPartField(
+    DplPartFieldKind kind, {
+    bool withNull = false,
+  }) {
+    return _send<DplPartFieldPage>(
+      () => _dio.get(
+        _pathForPartField(kind),
+        queryParameters: withNull ? {'with_null': 'true'} : null,
+      ),
+      fallback: 'Failed to load ${kind.label.toLowerCase()}.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DplPartFieldPage.fromJson(
+            Map<String, dynamic>.from(data),
+            kind,
+          );
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
+  }
+
+  /// `PUT /manager/{kind-path}` — Manager only. Bulk upsert.
+  /// Atomic — either all entries apply or none. Pass `value: null`
+  /// to explicitly clear a row's value back to NULL.
+  Future<DplApiResponse<DplPartFieldUpsertResult>> updatePartField(
+    DplPartFieldKind kind,
+    List<DplPartFieldUpsertRequest> entries,
+  ) {
+    return _send<DplPartFieldUpsertResult>(
+      () => _dio.put(
+        _pathForPartField(kind),
+        data: {
+          'entries': [for (final e in entries) e.toJson(kind)],
+        },
+      ),
+      fallback: 'Failed to save ${kind.label.toLowerCase()}.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DplPartFieldUpsertResult.fromJson(
+            Map<String, dynamic>.from(data),
+            kind,
+          );
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
+  }
+
+  static String _pathForPartField(DplPartFieldKind kind) {
+    switch (kind) {
+      case DplPartFieldKind.stockingNorm:
+        return DplPaths.stockingNorms;
+      case DplPartFieldKind.customerOpeningStock:
+        return DplPaths.customerOpeningStocks;
+      case DplPartFieldKind.customerTodayPlan:
+        return DplPaths.customerTodaysPlans;
+      case DplPartFieldKind.packagingQty:
+        return DplPaths.packagingQtys;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dispatch trips (migration 048) — manager submits trips, dispatchers
+  // cut slips from them.
+  // ---------------------------------------------------------------------------
+
+  /// `POST /dispatch/trips` — Manager. Creates one trip with 1–6
+  /// plans. Backend assigns `trip_number` per (plant, IST-date) and
+  /// returns the full trip object with the new ids.
+  Future<DplApiResponse<DplTrip>> createTrip(
+    DplTripCreateRequest body,
+  ) {
+    return _send<DplTrip>(
+      () => _dio.post(DplPaths.dispatchTrips, data: body.toJson()),
+      fallback: 'Failed to submit trip.',
+      fromJson: (data) {
+        if (data is Map) {
+          // The response wraps the trip under `trip` per the brief.
+          final map = Map<String, dynamic>.from(data);
+          final raw = map['trip'] is Map
+              ? Map<String, dynamic>.from(map['trip'] as Map)
+              : map;
+          return DplTrip.fromJson(raw);
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
+  }
+
+  /// `GET /dispatch/trips/next-number?plant_code=<code>` — preview the
+  /// `trip_number` the backend will assign for the next trip on the
+  /// given plant + today's IST business day. No allocation, no lock —
+  /// the actual POST may end up ±1 if another user submits in the same
+  /// window. UI should treat this as advisory, not authoritative.
+  Future<DplApiResponse<int>> peekNextTripNumber({
+    required String plantCode,
+  }) {
+    return _send<int>(
+      () => _dio.get(
+        DplPaths.dispatchTripsNextNumber,
+        queryParameters: _cleanQuery({'plant_code': plantCode}),
+      ),
+      fallback: 'Failed to fetch next trip number.',
+      fromJson: (data) {
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          final n = map['next_number'];
+          if (n is int) return n;
+          if (n is num) return n.toInt();
+          if (n is String) {
+            final parsed = int.tryParse(n.trim());
+            if (parsed != null) return parsed;
+          }
+        }
+        throw const FormatException('Expected { next_number: int }.');
+      },
+    );
+  }
+
+  /// `GET /dispatch/trips` — Manager, Dispatch, Admin, Supervisor.
+  /// Filterable by status (comma-separated), plant_code, date.
+  /// Defaults the status filter to `open,partial` so dashboards land
+  /// on the actionable subset.
+  ///
+  /// [submittedBy] accepts either `'me'` (filter to the calling user)
+  /// or a numeric user id as a string. Server returns 400
+  /// VALIDATION_ERROR on any other value.
+  Future<DplApiResponse<DplTripListResponse>> listTrips({
+    List<String>? statuses,
+    String? plantCode,
+    DateTime? date,
+    String? submittedBy,
+    int limit = 50,
+    int offset = 0,
+  }) {
+    return _send<DplTripListResponse>(
+      () => _dio.get(
+        DplPaths.dispatchTrips,
+        queryParameters: _cleanQuery({
+          'status': (statuses ?? const ['open', 'partial']).join(','),
+          'plant_code': plantCode,
+          'date': date == null ? null : _ymd(date),
+          'submitted_by': submittedBy,
+          'limit': limit,
+          'offset': offset,
+        }),
+      ),
+      fallback: 'Failed to load trips.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DplTripListResponse.fromJson(Map<String, dynamic>.from(data));
+        }
+        if (data is List) {
+          // Tolerate a bare list shape just in case.
+          return DplTripListResponse(
+            trips: data
+                .whereType<Map>()
+                .map((t) => DplTrip.fromJson(Map<String, dynamic>.from(t)))
+                .toList(growable: false),
+            total: data.length,
+            limit: data.length,
+            offset: 0,
+          );
+        }
+        throw const FormatException('Expected list response.');
+      },
+    );
+  }
+
+  /// `GET /dispatch/trips/:id` — full detail including plans.
+  Future<DplApiResponse<DplTrip>> getTrip(int id) {
+    return _send<DplTrip>(
+      () => _dio.get(DplPaths.dispatchTripById(id)),
+      fallback: 'Failed to load trip.',
+      fromJson: (data) {
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          final raw = map['trip'] is Map
+              ? Map<String, dynamic>.from(map['trip'] as Map)
+              : map;
+          return DplTrip.fromJson(raw);
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
+  }
+
+  /// `POST /dispatch/trips/:id/cancel` — manager (own) or admin /
+  /// supervisor (any). `reason` is required by the backend.
+  Future<DplApiResponse<DplTrip>> cancelTrip(
+    int id, {
+    required String reason,
+  }) {
+    return _send<DplTrip>(
+      () => _dio.post(
+        DplPaths.dispatchTripCancel(id),
+        data: {'reason': reason},
+      ),
+      fallback: 'Failed to cancel trip.',
+      fromJson: (data) {
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          final raw = map['trip'] is Map
+              ? Map<String, dynamic>.from(map['trip'] as Map)
+              : map;
+          return DplTrip.fromJson(raw);
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
+  }
+
+  /// `PATCH /dispatch/trips/:tripId/plans/:planId` — Dispatch role.
+  /// Decrease-only qty edit. Backend rejects with 409 if the plan is
+  /// no longer `open` or 422 if `qty` is greater than the current
+  /// value. [varianceNote] is required when reducing.
+  Future<DplApiResponse<DplTripPlan>> patchTripPlanQty(
+    int tripId,
+    int planId, {
+    required int qty,
+    String? varianceNote,
+  }) {
+    return _send<DplTripPlan>(
+      () => _dio.patch(
+        DplPaths.dispatchTripPlan(tripId, planId),
+        data: {
+          'qty': qty,
+          if (varianceNote != null && varianceNote.isNotEmpty)
+            'variance_note': varianceNote,
+        },
+      ),
+      fallback: 'Failed to update qty.',
+      fromJson: (data) {
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          final raw = map['plan'] is Map
+              ? Map<String, dynamic>.from(map['plan'] as Map)
+              : map;
+          return DplTripPlan.fromJson(raw);
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
+  }
+
+  /// `POST /dispatch/slips/bulk` — Manager + Dispatch.
+  ///
+  /// Atomic — every slip in [slips] is committed in a single DB
+  /// transaction. Either all succeed or none persist (server-side).
+  /// Used by the "Create Dispatch Slips" CTA on the Today's Plan
+  /// screen after the calculator output is reviewed.
+  ///
+  /// Errors:
+  ///   * 400 `EMPTY_SLIPS` — `slips[]` is empty
+  ///   * 400 `INVALID_PLANT_CODE` — unknown plant
+  ///   * 400 `INVALID_PLANT_MACHINE` — an item's machine_id isn't in the plant
+  ///   * 409 `INSUFFICIENT_QTY` — at least one slip's qty > bucket.available
+  Future<DplApiResponse<DispatchSlipBulkResult>> createDispatchSlipsBulk({
+    required String plantCode,
+    required List<DispatchSlipBulkItem> slips,
+  }) {
+    return _send<DispatchSlipBulkResult>(
+      () => _dio.post(
+        DplPaths.dispatchSlipsBulk,
+        data: {
+          'plant_code': plantCode,
+          'slips': [for (final s in slips) s.toJson()],
+        },
+      ),
+      fallback: 'Failed to create dispatch slips.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DispatchSlipBulkResult.fromJson(
+            Map<String, dynamic>.from(data),
+          );
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
   }
 }
 
