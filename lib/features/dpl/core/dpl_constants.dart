@@ -8,6 +8,8 @@ class DplPaths {
   static const String authMe = '/auth/me';
   static const String authLogout = '/auth/logout';
   static const String authChangePassword = '/auth/change-password';
+  // Public list used to populate the org selector on the login screen.
+  static const String authOrganizations = '/auth/organizations';
 
   // Manager — dashboard
   static const String dashboard = '/manager/dashboard';

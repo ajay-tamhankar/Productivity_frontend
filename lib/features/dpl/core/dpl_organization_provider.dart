@@ -50,3 +50,15 @@ final dplActiveOrganizationProvider =
     NotifierProvider<DplActiveOrganization, DplOrganization?>(
   DplActiveOrganization.new,
 );
+
+/// Public list of tenants for the login-screen org selector.
+/// Fetched lazily once the user picks the Vistar Pulse flow; errors
+/// surface as `AsyncError` so the UI can show a retry control.
+final dplOrganizationListProvider =
+    FutureProvider<List<DplOrganization>>((ref) async {
+  final res = await ref.read(dplApiServiceProvider).fetchOrganizations();
+  if (res.isError) {
+    throw Exception(res.error ?? 'Failed to load organizations.');
+  }
+  return res.data ?? const <DplOrganization>[];
+});

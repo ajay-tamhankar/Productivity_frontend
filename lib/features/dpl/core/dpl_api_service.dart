@@ -109,17 +109,39 @@ class DplApiService {
 
   Future<DplApiResponse<DplLoginResult>> login(
     String email,
-    String password,
-  ) {
+    String password, {
+    int? organizationId,
+  }) {
     return _send<DplLoginResult>(
       () => _dio.post(
         DplPaths.authLogin,
-        data: {'email': email, 'password': password},
+        data: {
+          'email': email,
+          'password': password,
+          'organization_id': ?organizationId,
+        },
       ),
       fallback: 'Login failed. Please try again.',
       fromJson: (data) => DplLoginResult.fromJson(
         data is Map ? Map<String, dynamic>.from(data) : const {},
       ),
+    );
+  }
+
+  /// Public list of tenants used to populate the org selector on the
+  /// login screen. Backend must allow this without a JWT.
+  Future<DplApiResponse<List<DplOrganization>>> fetchOrganizations() {
+    return _send<List<DplOrganization>>(
+      () => _dio.get(DplPaths.authOrganizations),
+      fallback: 'Unable to load organizations.',
+      fromJson: (data) {
+        if (data is! List) return const <DplOrganization>[];
+        return data
+            .whereType<Map>()
+            .map((m) =>
+                DplOrganization.fromJson(Map<String, dynamic>.from(m)))
+            .toList();
+      },
     );
   }
 
@@ -2034,6 +2056,12 @@ class DplApiService {
   /// `GET /dispatch/slips` — paginated list, server-side role-filtered.
   /// QA inbox: `?status=pending_qa`. PDI inbox: `?status=pending_pdi`.
   /// Dispatch defaults to their own slips across every status.
+  ///
+  /// [respectFilters] — when `true`, the backend's `totals` envelope
+  /// honors `machine_id` / `part_id` / `q` / `from` / `to` (intersected
+  /// with role scope) instead of returning the org-wide badge counts.
+  /// Default `false` preserves the inbox-tab badge behavior. The
+  /// rollup banner on the Plan Trip screen opts in.
   Future<DplApiResponse<DplDispatchSlipPage>> listDispatchSlips({
     String? status,
     int? machineId,
@@ -2043,6 +2071,7 @@ class DplApiService {
     DateTime? to,
     int? page,
     int? limit,
+    bool respectFilters = false,
   }) {
     return _send<DplDispatchSlipPage>(
       () => _dio.get(
@@ -2056,6 +2085,7 @@ class DplApiService {
           if (to != null) 'to': _ymd(to),
           'page': ?page,
           'limit': ?limit,
+          if (respectFilters) 'respect_filters': 'true',
         }),
       ),
       fallback: 'Failed to load dispatch slips.',
@@ -2630,18 +2660,26 @@ class DplApiService {
     );
   }
 
-  /// `GET /dispatch/trips/next-number?plant_code=<code>` — preview the
-  /// `trip_number` the backend will assign for the next trip on the
-  /// given plant + today's IST business day. No allocation, no lock —
-  /// the actual POST may end up ±1 if another user submits in the same
-  /// window. UI should treat this as advisory, not authoritative.
+  /// `GET /dispatch/trips/next-number?plant_code=<code>&date=<YYYY-MM-DD>`
+  /// — preview the `trip_number` the backend will assign for the next
+  /// trip on the given plant + IST business day. [date] defaults
+  /// server-side to today when omitted; pass it explicitly when the
+  /// manager is planning for a future day (mig. 052).
+  ///
+  /// No allocation, no lock — the actual POST may end up ±1 if another
+  /// user submits in the same window. UI should treat this as
+  /// advisory, not authoritative.
   Future<DplApiResponse<int>> peekNextTripNumber({
     required String plantCode,
+    DateTime? date,
   }) {
     return _send<int>(
       () => _dio.get(
         DplPaths.dispatchTripsNextNumber,
-        queryParameters: _cleanQuery({'plant_code': plantCode}),
+        queryParameters: _cleanQuery({
+          'plant_code': plantCode,
+          if (date != null) 'date': _ymd(date),
+        }),
       ),
       fallback: 'Failed to fetch next trip number.',
       fromJson: (data) {

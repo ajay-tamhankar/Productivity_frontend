@@ -17,6 +17,8 @@ import '../../models/dpl_plant.dart';
 import '../../summary/providers/dispatch_trips_provider.dart';
 import '../../summary/providers/plants_provider.dart';
 import '../providers/dpl_part_field_provider.dart';
+import '../providers/dpl_plan_trip_rollup_provider.dart';
+import '../widgets/dpl_plan_trip_rollup_card.dart';
 import '../widgets/error_retry.dart';
 
 /// Manager-driven trip planning.
@@ -78,7 +80,10 @@ class _PlanTripScreenState extends ConsumerState<PlanTripScreen> {
                 ref.invalidate(dplPartFieldPageProvider(k));
               }
               ref.invalidate(dplPlantsProvider);
-              ref.invalidate(dplManagerTodayTripsProvider);
+              ref.invalidate(dplManagerPlanForDateTripsProvider);
+              ref.invalidate(dplPlanTripTodayProductionProvider);
+              ref.invalidate(dplPlanTripProductionRollupProvider);
+              ref.invalidate(dplPlanTripDispatchedRollupProvider);
               // Also re-resolve trip_numbers for every draft whose
               // plant is set, so a refresh re-aligns with whatever
               // other managers may have submitted in the meantime.
@@ -161,6 +166,7 @@ class _PlanTripScreenState extends ConsumerState<PlanTripScreen> {
 
     setState(() => _submitting = true);
     final api = ref.read(dplApiServiceProvider);
+    final planForDate = ref.read(dplManagerPlanForDateProvider);
 
     var submittedCount = 0;
     var submittedQty = 0;
@@ -169,6 +175,7 @@ class _PlanTripScreenState extends ConsumerState<PlanTripScreen> {
     for (final t in [..._trips]) {
       final body = DplTripCreateRequest(
         plantCode: t.plantCode!,
+        date: planForDate,
         plans: byTripPlans[t]!,
       );
       final res = await api.createTrip(body);
@@ -198,7 +205,7 @@ class _PlanTripScreenState extends ConsumerState<PlanTripScreen> {
     // a just-submitted one. The backend has incremented its per-plant
     // counter; without this, a second draft for the same plant would
     // re-use the number we showed pre-submit.
-    ref.invalidate(dplManagerTodayTripsProvider);
+    ref.invalidate(dplManagerPlanForDateTripsProvider);
     await _refreshAllTripNumbers();
     if (!mounted) return;
     setState(() => _submitting = false);
@@ -229,7 +236,11 @@ class _PlanTripScreenState extends ConsumerState<PlanTripScreen> {
     _TripDraft? skipTrip,
   }) async {
     final api = ref.read(dplApiServiceProvider);
-    final res = await api.peekNextTripNumber(plantCode: plantCode);
+    final planForDate = ref.read(dplManagerPlanForDateProvider);
+    final res = await api.peekNextTripNumber(
+      plantCode: plantCode,
+      date: planForDate,
+    );
     if (!mounted) return null;
     if (res.isError || res.data == null) return null;
     final localSamePlantBefore = _trips
@@ -249,6 +260,16 @@ class _PlanTripScreenState extends ConsumerState<PlanTripScreen> {
     if (t.number != null) return 'Trip ${t.number}';
     final idx = _trips.indexOf(t);
     return idx >= 0 ? 'Trip draft #${idx + 1}' : 'A trip';
+  }
+
+  /// User picked a new planning date from the pill at the top. Updates
+  /// the provider (drives the trips-list + the next-number preview) and
+  /// re-resolves the displayed `trip_number` on every draft because the
+  /// backend counter is per `(plant, date)` — the number we previewed
+  /// for yesterday's date is meaningless for tomorrow's.
+  Future<void> _onPlanForDateChanged(DateTime date) async {
+    ref.read(dplManagerPlanForDateProvider.notifier).set(date);
+    await _refreshAllTripNumbers();
   }
 
   /// Re-resolve the [number] for every local draft that has a plant
@@ -453,6 +474,12 @@ class _PlanTripScreenState extends ConsumerState<PlanTripScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 100),
       children: [
+        _PlanForDatePicker(
+          onDateChanged: _onPlanForDateChanged,
+        ),
+        const SizedBox(height: 12),
+        DplPlanTripRollupCard(plants: plants),
+        const SizedBox(height: 12),
         _ProductionSummaryCard(
           totalDispatch: totalDispatch,
           totalAllocated: totalAllocated,
@@ -583,7 +610,7 @@ class _PlanTripScreenState extends ConsumerState<PlanTripScreen> {
 
 /// Live overview of every trip the manager (and any other manager on
 /// the same org) has filed under today's business day — read from
-/// `dplManagerTodayTripsProvider`, which calls
+/// `dplManagerPlanForDateTripsProvider`, which calls
 /// `GET /dispatch/trips?date=<businessDay>&statuses=all`. Auto-refreshes
 /// on submit (the screen invalidates the provider in `_onSubmit`).
 class _TodaysTripsCard extends ConsumerWidget {
@@ -591,8 +618,9 @@ class _TodaysTripsCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(dplManagerTodayTripsProvider);
+    final async = ref.watch(dplManagerPlanForDateTripsProvider);
     final mineOnly = ref.watch(dplManagerTripsMineOnlyProvider);
+    final planForDate = ref.watch(dplManagerPlanForDateProvider);
     return Container(
       decoration: BoxDecoration(
         color: DplColors.cardBg,
@@ -641,7 +669,11 @@ class _TodaysTripsCard extends ConsumerWidget {
                 );
               }
               final trips = res.data?.trips ?? const <DplTrip>[];
-              return _TodaysTripsBody(trips: trips, mineOnly: mineOnly);
+              return _TodaysTripsBody(
+                trips: trips,
+                mineOnly: mineOnly,
+                planForDate: planForDate,
+              );
             },
           ),
         ],
@@ -650,7 +682,7 @@ class _TodaysTripsCard extends ConsumerWidget {
   }
 }
 
-class _TodaysTripsHeader extends StatelessWidget {
+class _TodaysTripsHeader extends ConsumerWidget {
   final bool mineOnly;
   final ValueChanged<bool> onMineOnlyChanged;
   const _TodaysTripsHeader({
@@ -659,16 +691,17 @@ class _TodaysTripsHeader extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final planForDate = ref.watch(dplManagerPlanForDateProvider);
     return Row(
       children: [
         const Icon(Icons.local_shipping_outlined,
             size: 18, color: DplColors.primaryDark),
         const SizedBox(width: 6),
-        Text('Today\'s trips', style: DplText.h3()),
+        Text(_titleFor(planForDate), style: DplText.h3()),
         const Spacer(),
         // "My trips only" — flips `dplManagerTripsMineOnlyProvider`,
-        // which retriggers `dplManagerTodayTripsProvider` with
+        // which retriggers `dplManagerPlanForDateTripsProvider` with
         // `?submitted_by=me`. Default OFF (org-wide), since the screen
         // doubles as a coordination view for multi-manager orgs.
         Text(
@@ -691,12 +724,28 @@ class _TodaysTripsHeader extends StatelessWidget {
       ],
     );
   }
+
+  /// Heading label that adapts to the planning date — "Today's trips"
+  /// when planning for today, "Tomorrow's trips" for D+1, and an
+  /// explicit "Trips for 25 Jun" for further-out dates.
+  static String _titleFor(DateTime planForDate) {
+    final today = DplFormat.businessDay();
+    final diff = planForDate.difference(today).inDays;
+    if (diff == 0) return "Today's trips";
+    if (diff == 1) return "Tomorrow's trips";
+    return 'Trips for ${DateFormat('d MMM').format(planForDate)}';
+  }
 }
 
 class _TodaysTripsBody extends StatelessWidget {
   final List<DplTrip> trips;
   final bool mineOnly;
-  const _TodaysTripsBody({required this.trips, required this.mineOnly});
+  final DateTime planForDate;
+  const _TodaysTripsBody({
+    required this.trips,
+    required this.mineOnly,
+    required this.planForDate,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -738,7 +787,7 @@ class _TodaysTripsBody extends StatelessWidget {
         Row(
           children: [
             Text(
-              DateFormat('EEE, dd MMM').format(DplFormat.businessDay()),
+              DateFormat('EEE, dd MMM').format(planForDate),
               style: const TextStyle(
                 color: DplColors.textSecondary,
                 fontWeight: FontWeight.w600,
@@ -751,10 +800,11 @@ class _TodaysTripsBody extends StatelessWidget {
         if (total == 0)
           Text(
             mineOnly
-                ? 'You haven\'t submitted any trips yet today. Switch '
-                    'off "My trips only" to see other managers\' trips.'
-                : 'No trips submitted yet today. The first trip you '
-                    'submit will land here.',
+                ? 'You haven\'t submitted any trips yet for this date. '
+                    'Switch off "My trips only" to see other managers\' '
+                    'trips.'
+                : 'No trips submitted yet for this date. The first '
+                    'trip you submit will land here.',
             style: const TextStyle(
               color: DplColors.textSecondary,
               fontWeight: FontWeight.w600,
@@ -1009,6 +1059,137 @@ class _PlantChip extends StatelessWidget {
 }
 
 // ────────────── Production-summary header ──────────────
+
+/// Date pill at the top of the Plan Trip body — surfaces which IST
+/// business day the manager is planning for and lets them shift it via
+/// the system date picker.
+///
+/// Defaults to tomorrow (handled in `dplManagerPlanForDateProvider`).
+/// Forward window matches the backend cap: today → today+14 (mig.
+/// 052's `TRIP_DATE_MAX_DAYS_AHEAD`). Past dates are blocked since the
+/// backend rejects them with 400.
+class _PlanForDatePicker extends ConsumerWidget {
+  final ValueChanged<DateTime> onDateChanged;
+  const _PlanForDatePicker({required this.onDateChanged});
+
+  static const int _maxDaysAhead = 14;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final planForDate = ref.watch(dplManagerPlanForDateProvider);
+    final today = DplFormat.businessDay();
+    final diff = planForDate.difference(today).inDays;
+    final relative = switch (diff) {
+      0 => 'Today',
+      1 => 'Tomorrow',
+      -1 => 'Yesterday',
+      _ => null,
+    };
+    final dateLabel = DateFormat('EEE, d MMM').format(planForDate);
+
+    return Material(
+      color: DplColors.primaryTint,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: () => _pickDate(context, ref, today),
+        borderRadius: BorderRadius.circular(14),
+        splashColor: DplColors.primary.withValues(alpha: 0.08),
+        highlightColor: DplColors.primary.withValues(alpha: 0.04),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            border: Border.all(color: DplColors.primary, width: 1.5),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: DplColors.primary.withValues(alpha: 0.10),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(
+                  color: DplColors.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.event_outlined,
+                  size: 16,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'PLANNING FOR',
+                style: TextStyle(
+                  color: DplColors.primaryDark,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 10,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(width: 10),
+              if (relative != null) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: DplColors.primary,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    relative,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text(
+                  dateLabel,
+                  style: const TextStyle(
+                    color: DplColors.primaryDark,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 22,
+                color: DplColors.primaryDark,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickDate(
+    BuildContext context,
+    WidgetRef ref,
+    DateTime today,
+  ) async {
+    final current = ref.read(dplManagerPlanForDateProvider);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: _maxDaysAhead)),
+    );
+    if (picked == null) return;
+    onDateChanged(DateTime(picked.year, picked.month, picked.day));
+  }
+}
 
 class _ProductionSummaryCard extends StatelessWidget {
   final int totalDispatch;

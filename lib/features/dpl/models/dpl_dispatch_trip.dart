@@ -177,6 +177,12 @@ class DplTrip {
   final String plantCode;
   final String plantName;
   final int tripNumber;
+  /// IST business day the trip is filed under (migration 052). The
+  /// `trip_number` sequence is per `(plant, tripDate)`, so two trips on
+  /// the same plant but different dates can share a number. May be
+  /// `null` on legacy payloads from a backend version pre-migration —
+  /// callers should fall back to `submittedAt::date` in that case.
+  final DateTime? tripDate;
   final String status;
   final String? vehicleNo;
   final String? notes;
@@ -207,6 +213,7 @@ class DplTrip {
     required this.tripNumber,
     required this.status,
     this.plantName = '',
+    this.tripDate,
     this.vehicleNo,
     this.notes,
     this.submittedByUserId = 0,
@@ -246,6 +253,7 @@ class DplTrip {
       plantCode: parseStringOr(json['plant_code'] ?? json['plantCode']),
       plantName: parseStringOr(json['plant_name'] ?? json['plantName']),
       tripNumber: parseIntOr(json['trip_number'] ?? json['tripNumber']),
+      tripDate: parseDateTimeOrNull(json['trip_date'] ?? json['tripDate']),
       status: parseStringOr(json['status'], DplTripStatus.open),
       vehicleNo: json['vehicle_no'] is String
           ? json['vehicle_no'] as String
@@ -294,8 +302,13 @@ class DplTrip {
 
 /// Body shape for `POST /dispatch/trips`. The FE builds one of these
 /// per drafted trip on the Plan Trip screen and POSTs sequentially.
+///
+/// [date] is the IST business day the trip is being planned for
+/// (migration 052). Backend defaults to today when omitted; the FE
+/// passes the manager's selected planning date (tomorrow by default).
 class DplTripCreateRequest {
   final String plantCode;
+  final DateTime? date;
   final String? vehicleNo;
   final String? notes;
   final List<DplTripCreatePlan> plans;
@@ -303,17 +316,24 @@ class DplTripCreateRequest {
   const DplTripCreateRequest({
     required this.plantCode,
     required this.plans,
+    this.date,
     this.vehicleNo,
     this.notes,
   });
 
   Map<String, dynamic> toJson() => {
         'plant_code': plantCode,
+        if (date != null) 'date': _ymd(date!),
         if (vehicleNo != null && vehicleNo!.isNotEmpty)
           'vehicle_no': vehicleNo,
         if (notes != null && notes!.isNotEmpty) 'notes': notes,
         'plans': [for (final p in plans) p.toJson()],
       };
+
+  static String _ymd(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 }
 
 class DplTripCreatePlan {

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/widgets/shimmer_skeleton.dart';
+import '../dpl/core/dpl_organization_provider.dart';
 import '../dpl/core/widgets/vistar_logo.dart';
+import '../dpl/models/dpl_organization.dart';
 import 'auth_repository.dart';
 import 'auth_provider.dart';
 
@@ -36,6 +38,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// backend method gets called on Sign In.
   _LoginFlow _flow = _LoginFlow.productivity;
 
+  /// Selected organization for the Vistar Pulse flow. Required before
+  /// Sign In is enabled; cleared when the flow toggles back to classic
+  /// Productivity (which has no per-tenant scoping at login).
+  int? _selectedOrgId;
+
   @override
   void dispose() {
     _usernameController.dispose();
@@ -53,6 +60,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
+    if (_flow == _LoginFlow.vistarPulse && _selectedOrgId == null) {
+      setState(() => _inlineError = 'Select an organization to continue.');
+      return;
+    }
+
     setState(() => _inlineError = null);
     final identifier = _usernameController.text.trim();
     final password = _passwordController.text;
@@ -63,7 +75,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         auth.login(identifier, password);
         break;
       case _LoginFlow.vistarPulse:
-        auth.loginDpl(identifier, password);
+        auth.loginDpl(identifier, password, organizationId: _selectedOrgId);
         break;
     }
   }
@@ -74,6 +86,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _flow = next;
       _inlineError = null;
       _submittedOnce = false;
+      _selectedOrgId = null;
     });
     // Username/email validation rules differ — re-run validation so any
     // stale error messages disappear once the user starts typing.
@@ -105,6 +118,101 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (password.length < 4) return 'Password must be at least 4 characters.';
     if (password.length > 128) return 'Password is too long.';
     return null;
+  }
+
+  /// Org picker shown above the email field on the Vistar Pulse flow.
+  /// Reads [dplOrganizationListProvider]; handles loading/error/empty
+  /// states inline so the form layout stays stable.
+  Widget _buildOrgSelector(bool submitting) {
+    final orgsAsync = ref.watch(dplOrganizationListProvider);
+
+    return orgsAsync.when(
+      loading: () => InputDecorator(
+        decoration: const InputDecoration(
+          labelText: 'Organization',
+          prefixIcon: Icon(Icons.apartment_outlined),
+        ),
+        child: const SizedBox(
+          height: 20,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ShimmerButtonDots(size: 6, spacing: 3),
+          ),
+        ),
+      ),
+      error: (err, _) => InputDecorator(
+        decoration: InputDecoration(
+          labelText: 'Organization',
+          prefixIcon: const Icon(Icons.apartment_outlined),
+          errorText: _toDisplayError(err),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Could not load organizations.',
+              style: TextStyle(color: Color(0xFF5F6B7A)),
+            ),
+            TextButton(
+              onPressed: submitting
+                  ? null
+                  : () => ref.invalidate(dplOrganizationListProvider),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+      data: (orgs) {
+        if (orgs.isEmpty) {
+          return InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'Organization',
+              prefixIcon: Icon(Icons.apartment_outlined),
+              errorText: 'No organizations available. Contact your admin.',
+            ),
+            child: const SizedBox(height: 20),
+          );
+        }
+        // Auto-select if there's only one tenant — no point making the
+        // user open the dropdown to pick the single option.
+        if (orgs.length == 1 && _selectedOrgId != orgs.first.id) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _selectedOrgId != orgs.first.id) {
+              setState(() => _selectedOrgId = orgs.first.id);
+            }
+          });
+        }
+        return DropdownButtonFormField<int>(
+          value: _selectedOrgId,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Organization',
+            hintText: 'Select your organization',
+            prefixIcon: Icon(Icons.apartment_outlined),
+          ),
+          items: [
+            for (final DplOrganization org in orgs)
+              DropdownMenuItem<int>(
+                value: org.id,
+                child: Text(
+                  org.displayLabel,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: submitting
+              ? null
+              : (id) {
+                  setState(() {
+                    _selectedOrgId = id;
+                    if (_inlineError != null) _inlineError = null;
+                  });
+                },
+          validator: (v) =>
+              v == null ? 'Select an organization to continue.' : null,
+        );
+      },
+    );
   }
 
   String _toDisplayError(Object error) {
@@ -342,6 +450,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         ),
                                       ),
                                       const SizedBox(height: 16),
+                                    ],
+                                    if (_flow == _LoginFlow.vistarPulse) ...[
+                                      _buildOrgSelector(isLoading),
+                                      const SizedBox(height: 14),
                                     ],
                                     TextFormField(
                                       controller: _usernameController,

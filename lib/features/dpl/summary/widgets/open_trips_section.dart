@@ -711,6 +711,11 @@ class _TripHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final fmt = NumberFormat.decimalPattern();
     final isPartial = trip.status == DplTripStatus.partial;
+    // Plant is the dominant identifier — `trip_number` is per
+    // `(plant, date)`, so two plants can both have "Trip 1". Leading
+    // with the plant name keeps the two cards visually distinct.
+    final plantLabel =
+        trip.plantName.isNotEmpty ? trip.plantName : trip.plantCode;
     return Container(
       decoration: const BoxDecoration(
         color: DplColors.primaryTint,
@@ -722,16 +727,19 @@ class _TripHeader extends StatelessWidget {
           const Icon(Icons.local_shipping_rounded,
               color: DplColors.primaryDark, size: 20),
           const SizedBox(width: 8),
-          Text(
-            'Trip ${trip.tripNumber}',
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 14,
-              color: DplColors.primaryDark,
+          Flexible(
+            child: Text(
+              plantLabel.isEmpty ? 'Trip ${trip.tripNumber}' : plantLabel,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+                color: DplColors.primaryDark,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: 8),
-          if (trip.plantName.isNotEmpty)
+          if (plantLabel.isNotEmpty) ...[
+            const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
@@ -739,14 +747,15 @@ class _TripHeader extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
-                trip.plantName,
+                'Trip ${trip.tripNumber}',
                 style: const TextStyle(
                   color: DplColors.primaryDark,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
                   fontSize: 10.5,
                 ),
               ),
             ),
+          ],
           const SizedBox(width: 6),
           if (isPartial)
             Container(

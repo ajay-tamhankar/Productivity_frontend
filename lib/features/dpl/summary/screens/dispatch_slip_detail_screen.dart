@@ -63,8 +63,7 @@ class _DispatchSlipDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    final async =
-        ref.watch(dplDispatchSlipDetailProvider(widget.slipId));
+    final async = ref.watch(dplDispatchSlipDetailProvider(widget.slipId));
     final role = ref.watch(authControllerProvider).asData?.value?.role ?? '';
 
     final slipForActions = async.asData?.value.data;
@@ -75,9 +74,7 @@ class _DispatchSlipDetailScreenState
         title: 'Dispatch Slip',
         actions: [
           IconButton(
-            tooltip: _emailing
-                ? 'Emailing slip…'
-                : 'Email PDF to Dispatch',
+            tooltip: _emailing ? 'Emailing slip…' : 'Email PDF to Dispatch',
             icon: _emailing
                 ? const SizedBox(
                     width: 18,
@@ -109,8 +106,8 @@ class _DispatchSlipDetailScreenState
           if (res.isError || res.data == null) {
             return DplErrorRetry(
               message: res.error ?? 'Failed to load slip.',
-              onRetry: () => ref
-                  .invalidate(dplDispatchSlipDetailProvider(widget.slipId)),
+              onRetry: () =>
+                  ref.invalidate(dplDispatchSlipDetailProvider(widget.slipId)),
             );
           }
           final slip = res.data!;
@@ -198,10 +195,7 @@ class _DispatchSlipDetailScreenState
 
     if (scanned.trim() == expected) {
       setState(() => _scanVerified = true);
-      DplSnacks.success(
-        context,
-        'Slip verified. Approval actions unlocked.',
-      );
+      DplSnacks.success(context, 'Slip verified. Approval actions unlocked.');
     } else {
       DplSnacks.error(
         context,
@@ -223,14 +217,11 @@ class _DispatchSlipDetailScreenState
     DplDispatchSlip slip,
   ) async {
     try {
-      final orgLabel =
-          ref.read(dplActiveOrganizationProvider)?.displayLabel;
+      final orgLabel = ref.read(dplActiveOrganizationProvider)?.displayLabel;
       await Printing.layoutPdf(
         name: 'Dispatch-${slip.slipNo}',
-        onLayout: (_) => DispatchSlipPdfBuilder.build(
-          slip,
-          organizationLabel: orgLabel,
-        ),
+        onLayout: (_) =>
+            DispatchSlipPdfBuilder.build(slip, organizationLabel: orgLabel),
       );
     } on MissingPluginException {
       // Almost always means the running app binary predates the
@@ -292,10 +283,7 @@ class _DispatchSlipDetailScreenState
     setState(() => _emailing = false);
 
     if (res.isError) {
-      DplSnacks.error(
-        context,
-        'Email failed: ${res.error ?? "unknown error"}',
-      );
+      DplSnacks.error(context, 'Email failed: ${res.error ?? "unknown error"}');
       return;
     }
 
@@ -305,8 +293,7 @@ class _DispatchSlipDetailScreenState
       return;
     }
     if (data.sent) {
-      final toLabel =
-          data.to.isNotEmpty ? data.to.first : 'Dispatch';
+      final toLabel = data.to.isNotEmpty ? data.to.first : 'Dispatch';
       DplSnacks.success(
         context,
         data.to.length > 1
@@ -407,8 +394,11 @@ class _FromTripBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.local_shipping_rounded,
-              size: 11, color: DplColors.primaryDark),
+          const Icon(
+            Icons.local_shipping_rounded,
+            size: 11,
+            color: DplColors.primaryDark,
+          ),
           const SizedBox(width: 4),
           Text(
             'Trip #$tripNumber',
@@ -466,14 +456,13 @@ TextStyle _displayStyle({
   Color color = _SlipPalette.ink,
   double? height,
   double? letterSpacing,
-}) =>
-    GoogleFonts.sairaCondensed(
-      fontSize: size,
-      fontWeight: weight,
-      color: color,
-      height: height,
-      letterSpacing: letterSpacing,
-    );
+}) => GoogleFonts.sairaCondensed(
+  fontSize: size,
+  fontWeight: weight,
+  color: color,
+  height: height,
+  letterSpacing: letterSpacing,
+);
 
 /// UI font — Inter via google_fonts. Used for body text, labels,
 /// chips, descriptions.
@@ -483,14 +472,13 @@ TextStyle _uiStyle({
   Color color = _SlipPalette.ink,
   double? height,
   double? letterSpacing,
-}) =>
-    GoogleFonts.inter(
-      fontSize: size,
-      fontWeight: weight,
-      color: color,
-      height: height,
-      letterSpacing: letterSpacing,
-    );
+}) => GoogleFonts.inter(
+  fontSize: size,
+  fontWeight: weight,
+  color: color,
+  height: height,
+  letterSpacing: letterSpacing,
+);
 
 /// Mono font — JetBrains Mono via google_fonts. Used for the slip
 /// number, part numbers, sub-codes, anything that should read as data.
@@ -500,14 +488,13 @@ TextStyle _monoStyle({
   Color color = _SlipPalette.ink,
   double? height,
   double? letterSpacing,
-}) =>
-    GoogleFonts.jetBrainsMono(
-      fontSize: size,
-      fontWeight: weight,
-      color: color,
-      height: height,
-      letterSpacing: letterSpacing,
-    );
+}) => GoogleFonts.jetBrainsMono(
+  fontSize: size,
+  fontWeight: weight,
+  color: color,
+  height: height,
+  letterSpacing: letterSpacing,
+);
 
 /// The printable Vistar Pulse dispatch slip — a single rounded paper
 /// composed of a gradient header band, identity strip, parts table,
@@ -523,11 +510,7 @@ class _PrintableSlip extends StatelessWidget {
   final bool hideQr;
   final VoidCallback? onScan;
 
-  const _PrintableSlip({
-    required this.slip,
-    this.hideQr = false,
-    this.onScan,
-  });
+  const _PrintableSlip({required this.slip, this.hideQr = false, this.onScan});
 
   @override
   Widget build(BuildContext context) {
@@ -556,11 +539,7 @@ class _PrintableSlip extends StatelessWidget {
               _IdentityStrip(slip: slip),
               _PartsTable(slip: slip),
               _SignoffStrip(slip: slip),
-              _VerifySection(
-                slip: slip,
-                hideQr: hideQr,
-                onScan: onScan,
-              ),
+              _VerifySection(slip: slip, hideQr: hideQr, onScan: onScan),
               _SlipFoot(slip: slip),
             ],
           ),
@@ -608,11 +587,7 @@ class _SlipBand extends StatelessWidget {
                 if (compact) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      brand,
-                      const SizedBox(height: 14),
-                      doc,
-                    ],
+                    children: [brand, const SizedBox(height: 14), doc],
                   );
                 }
                 return Row(
@@ -654,9 +629,7 @@ class _SlipBand extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.16),
             borderRadius: BorderRadius.circular(11),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.32),
-            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.32)),
           ),
           child: Text(
             'GA',
@@ -721,9 +694,7 @@ class _SlipBand extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.14),
             borderRadius: BorderRadius.circular(7),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.28),
-            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
           ),
           child: Text(
             slip.slipNo,
@@ -774,9 +745,8 @@ class _IdentityStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final dateFmt = DateFormat('dd MMM yyyy');
     final timeFmt = DateFormat('HH:mm');
-    final referenceTime = slip.pdiApproval?.at ??
-        slip.qaApproval?.at ??
-        slip.requestedAt;
+    final referenceTime =
+        slip.pdiApproval?.at ?? slip.qaApproval?.at ?? slip.requestedAt;
 
     final machineLabel = _machineLabel(slip);
     // Headline part description — short `description` code only
@@ -792,9 +762,7 @@ class _IdentityStrip extends StatelessWidget {
               : '-');
     final partSub = firstItem == null
         ? null
-        : (slip.items.length > 1
-              ? '+ ${slip.items.length - 1} more'
-              : null);
+        : (slip.items.length > 1 ? '+ ${slip.items.length - 1} more' : null);
     final dateStr = referenceTime == null
         ? '-'
         : dateFmt.format(referenceTime.toLocal());
@@ -808,8 +776,12 @@ class _IdentityStrip extends StatelessWidget {
         leftBorder: false,
         child: _PlateCell(slip: slip),
       ),
-      _IdCell(child: _LabelValue(label: 'Plant', value: slip.plant.name)),
-      _IdCell(child: _LabelValue(label: 'Machine', value: machineLabel)),
+      _IdCell(
+        child: _LabelValue(label: 'Plant', value: slip.plant.name),
+      ),
+      _IdCell(
+        child: _LabelValue(label: 'Machine', value: machineLabel),
+      ),
       _IdCell(
         child: _LabelValue(
           label: 'Part description',
@@ -948,14 +920,8 @@ class _LabelValue extends StatelessWidget {
         Text(
           value,
           style: mono
-              ? _monoStyle(
-                  size: 13.5,
-                  weight: FontWeight.w500,
-                )
-              : _uiStyle(
-                  size: 15,
-                  weight: FontWeight.w600,
-                ),
+              ? _monoStyle(size: 13.5, weight: FontWeight.w500)
+              : _uiStyle(size: 15, weight: FontWeight.w600),
         ),
         if (subValue != null) ...[
           const SizedBox(height: 2),
@@ -1111,20 +1077,13 @@ class _PartsHeader extends StatelessWidget {
         children: [
           SizedBox(
             width: 46,
-            child: Text(
-              '#',
-              textAlign: TextAlign.center,
-              style: headerStyle,
-            ),
+            child: Text('#', textAlign: TextAlign.center, style: headerStyle),
           ),
           Expanded(
             flex: 11,
             child: Text('PART DESCRIPTION', style: headerStyle),
           ),
-          Expanded(
-            flex: 6,
-            child: Text('CUSTOMER P/N', style: headerStyle),
-          ),
+          Expanded(flex: 6, child: Text('CUSTOMER P/N', style: headerStyle)),
           SizedBox(
             width: 130,
             child: Text(
@@ -1157,9 +1116,10 @@ class _PartRow extends StatelessWidget {
     final partName = item.partName.trim().isNotEmpty
         ? item.partName
         : (item.description.trim().isNotEmpty
-            ? item.description
-            : item.partLabel);
-    final hasSub = item.description.trim().isNotEmpty &&
+              ? item.description
+              : item.partLabel);
+    final hasSub =
+        item.description.trim().isNotEmpty &&
         item.description.trim() != partName.trim();
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 15, 24, 15),
@@ -1268,9 +1228,7 @@ class _TotalRow extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: _SlipPalette.surface,
-        border: Border(
-          top: BorderSide(color: _SlipPalette.ink, width: 2),
-        ),
+        border: Border(top: BorderSide(color: _SlipPalette.ink, width: 2)),
       ),
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
       child: Row(
@@ -1445,10 +1403,7 @@ class _Checkpoint extends StatelessWidget {
                         runSpacing: 10,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          _Chip(
-                            label: _chipLabel(state),
-                            palette: palette,
-                          ),
+                          _Chip(label: _chipLabel(state), palette: palette),
                           _SignBlock(
                             state: state,
                             approver: approver,
@@ -1534,11 +1489,7 @@ class _TickBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: palette.line),
       ),
-      child: Icon(
-        Icons.task_alt_outlined,
-        size: 20,
-        color: palette.ink,
-      ),
+      child: Icon(Icons.task_alt_outlined, size: 20, color: palette.ink),
     );
   }
 }
@@ -1617,9 +1568,7 @@ class _SignBlock extends StatelessWidget {
               Container(
                 height: 18,
                 decoration: const BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: _SlipPalette.line),
-                  ),
+                  border: Border(bottom: BorderSide(color: _SlipPalette.line)),
                 ),
               ),
               const SizedBox(height: 5),
@@ -1638,22 +1587,12 @@ class _SignBlock extends StatelessWidget {
     }
   }
 
-  Widget _signed({
-    required String name,
-    DateTime? at,
-    String? reason,
-  }) {
+  Widget _signed({required String name, DateTime? at, String? reason}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          name,
-          style: _uiStyle(
-            size: 13,
-            weight: FontWeight.w600,
-          ),
-        ),
+        Text(name, style: _uiStyle(size: 13, weight: FontWeight.w600)),
         if (at != null) ...[
           const SizedBox(height: 2),
           Text(
@@ -1710,11 +1649,7 @@ class _VerifySection extends StatelessWidget {
           if (compact) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                qr,
-                const SizedBox(height: 18),
-                meta,
-              ],
+              children: [qr, const SizedBox(height: 18), meta],
             );
           }
           return Row(
@@ -1745,24 +1680,24 @@ class _VerifySection extends StatelessWidget {
       child: hideQr
           ? _ScanGatePlaceholder(onScan: onScan)
           : hasQr
-              ? QrImageView(
-                  data: payload,
-                  version: QrVersions.auto,
-                  errorCorrectionLevel: QrErrorCorrectLevel.M,
-                  gapless: true,
-                )
-              : Center(
-                  child: Text(
-                    'QR appears after PDI approval',
-                    textAlign: TextAlign.center,
-                    style: _uiStyle(
-                      size: 10.5,
-                      weight: FontWeight.w600,
-                      color: _SlipPalette.muted,
-                      height: 1.3,
-                    ),
-                  ),
+          ? QrImageView(
+              data: payload,
+              version: QrVersions.auto,
+              errorCorrectionLevel: QrErrorCorrectLevel.M,
+              gapless: true,
+            )
+          : Center(
+              child: Text(
+                'QR appears after PDI approval',
+                textAlign: TextAlign.center,
+                style: _uiStyle(
+                  size: 10.5,
+                  weight: FontWeight.w600,
+                  color: _SlipPalette.muted,
+                  height: 1.3,
                 ),
+              ),
+            ),
     );
   }
 
@@ -1771,21 +1706,11 @@ class _VerifySection extends StatelessWidget {
     final cells = <_KvCell>[
       _KvCell('Slip no', slip.slipNo, mono: true),
       _KvCell('Plant', slip.plant.name.isEmpty ? '-' : slip.plant.name),
-      _KvCell(
-        'Machine',
-        _IdentityStrip._machineLabel(slip),
-      ),
-      _KvCell(
-        'Vehicle',
-        slip.vehicleNo.isEmpty ? '-' : slip.vehicleNo,
-      ),
+      _KvCell('Machine', _IdentityStrip._machineLabel(slip)),
+      _KvCell('Vehicle', slip.vehicleNo.isEmpty ? '-' : slip.vehicleNo),
       _KvCell('Items', '${slip.items.length}'),
-      _KvCell(
-        'Total qty',
-        '${fmt.format(slip.totalQty)} NOS',
-      ),
-      if (slip.notes.trim().isNotEmpty)
-        _KvCell('Notes', slip.notes.trim()),
+      _KvCell('Total qty', '${fmt.format(slip.totalQty)} NOS'),
+      if (slip.notes.trim().isNotEmpty) _KvCell('Notes', slip.notes.trim()),
     ];
 
     final gridCols = maxWidth < 320 ? 1 : (maxWidth < 560 ? 2 : 3);
@@ -1840,10 +1765,11 @@ class _KvGrid extends StatelessWidget {
       }
       rows.add(
         Padding(
-          padding: EdgeInsets.only(
-            bottom: i + columns >= cells.length ? 0 : 9,
+          padding: EdgeInsets.only(bottom: i + columns >= cells.length ? 0 : 9),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: row,
           ),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: row),
         ),
       );
     }
@@ -1872,14 +1798,8 @@ class _KvGrid extends StatelessWidget {
         Text(
           c.value,
           style: c.mono
-              ? _monoStyle(
-                  size: 12,
-                  weight: FontWeight.w500,
-                )
-              : _uiStyle(
-                  size: 13,
-                  weight: FontWeight.w600,
-                ),
+              ? _monoStyle(size: 12, weight: FontWeight.w500)
+              : _uiStyle(size: 13, weight: FontWeight.w600),
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
         ),
@@ -1942,11 +1862,7 @@ class _ScanGatePlaceholder extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.lock_outline,
-            size: 24,
-            color: _SlipPalette.muted,
-          ),
+          const Icon(Icons.lock_outline, size: 24, color: _SlipPalette.muted),
           const SizedBox(height: 4),
           Text(
             'Scan to view',
@@ -2026,11 +1942,7 @@ class _SlipFoot extends StatelessWidget {
           if (c.maxWidth < 460) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                id,
-                const SizedBox(height: 4),
-                gen,
-              ],
+              children: [id, const SizedBox(height: 4), gen],
             );
           }
           return Row(
@@ -2112,10 +2024,7 @@ class _Timeline extends StatelessWidget {
           for (final e in entries) ...[
             _TimelineRow(entry: e),
             if (e != entries.last)
-              const Divider(
-                height: 12,
-                color: DplColors.divider,
-              ),
+              const Divider(height: 12, color: DplColors.divider),
           ],
         ],
       ),
@@ -2154,8 +2063,7 @@ class _TimelineRow extends StatelessWidget {
           height: 28,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color:
-                entry.danger ? DplColors.errorBg : DplColors.primaryTint,
+            color: entry.danger ? DplColors.errorBg : DplColors.primaryTint,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(entry.icon, size: 16, color: color),
@@ -2247,9 +2155,10 @@ class _RoleActions extends ConsumerWidget {
     // re-enable if QA comes back.
     // final canQaAct =
     //     (isQa || isManager) && slip.status == DplDispatchSlipStatus.pendingQa;
-    final canPdiAct = (isPdi || isManager) &&
-        slip.status == DplDispatchSlipStatus.pendingPdi;
-    final canDispatch = (isDispatch || isManager) &&
+    final canPdiAct =
+        (isPdi || isManager) && slip.status == DplDispatchSlipStatus.pendingPdi;
+    final canDispatch =
+        (isDispatch || isManager) &&
         slip.status == DplDispatchSlipStatus.approved;
 
     if (!canPdiAct && !canDispatch) {
@@ -2344,11 +2253,7 @@ class _ScanToActCta extends StatelessWidget {
         children: [
           Row(
             children: const [
-              Icon(
-                Icons.lock_outline,
-                size: 18,
-                color: DplColors.warning,
-              ),
+              Icon(Icons.lock_outline, size: 18, color: DplColors.warning),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -2521,9 +2426,7 @@ class _SlipScanGateScreenState extends State<_SlipScanGateScreen> {
         fit: StackFit.expand,
         children: [
           MobileScanner(controller: _controller, onDetect: _onDetect),
-          IgnorePointer(
-            child: CustomPaint(painter: _ScanGateOverlayPainter()),
-          ),
+          IgnorePointer(child: CustomPaint(painter: _ScanGateOverlayPainter())),
           Positioned(
             left: 0,
             right: 0,
@@ -2581,8 +2484,7 @@ class _ScanGateOverlayPainter extends CustomPainter {
       width: box,
       height: box,
     );
-    final rrect =
-        RRect.fromRectAndRadius(rect, const Radius.circular(20));
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(20));
 
     final scrim = Path()
       ..fillType = PathFillType.evenOdd
@@ -2609,22 +2511,46 @@ class _ScanGateOverlayPainter extends CustomPainter {
     const tickLen = 22.0;
     final r = rrect.outerRect;
     canvas
-      ..drawLine(r.topLeft + const Offset(8, 8),
-          r.topLeft + const Offset(8 + tickLen, 8), corner)
-      ..drawLine(r.topLeft + const Offset(8, 8),
-          r.topLeft + const Offset(8, 8 + tickLen), corner)
-      ..drawLine(r.topRight + const Offset(-8, 8),
-          r.topRight + const Offset(-8 - tickLen, 8), corner)
-      ..drawLine(r.topRight + const Offset(-8, 8),
-          r.topRight + const Offset(-8, 8 + tickLen), corner)
-      ..drawLine(r.bottomLeft + const Offset(8, -8),
-          r.bottomLeft + const Offset(8 + tickLen, -8), corner)
-      ..drawLine(r.bottomLeft + const Offset(8, -8),
-          r.bottomLeft + const Offset(8, -8 - tickLen), corner)
-      ..drawLine(r.bottomRight + const Offset(-8, -8),
-          r.bottomRight + const Offset(-8 - tickLen, -8), corner)
-      ..drawLine(r.bottomRight + const Offset(-8, -8),
-          r.bottomRight + const Offset(-8, -8 - tickLen), corner);
+      ..drawLine(
+        r.topLeft + const Offset(8, 8),
+        r.topLeft + const Offset(8 + tickLen, 8),
+        corner,
+      )
+      ..drawLine(
+        r.topLeft + const Offset(8, 8),
+        r.topLeft + const Offset(8, 8 + tickLen),
+        corner,
+      )
+      ..drawLine(
+        r.topRight + const Offset(-8, 8),
+        r.topRight + const Offset(-8 - tickLen, 8),
+        corner,
+      )
+      ..drawLine(
+        r.topRight + const Offset(-8, 8),
+        r.topRight + const Offset(-8, 8 + tickLen),
+        corner,
+      )
+      ..drawLine(
+        r.bottomLeft + const Offset(8, -8),
+        r.bottomLeft + const Offset(8 + tickLen, -8),
+        corner,
+      )
+      ..drawLine(
+        r.bottomLeft + const Offset(8, -8),
+        r.bottomLeft + const Offset(8, -8 - tickLen),
+        corner,
+      )
+      ..drawLine(
+        r.bottomRight + const Offset(-8, -8),
+        r.bottomRight + const Offset(-8 - tickLen, -8),
+        corner,
+      )
+      ..drawLine(
+        r.bottomRight + const Offset(-8, -8),
+        r.bottomRight + const Offset(-8, -8 - tickLen),
+        corner,
+      );
   }
 
   @override

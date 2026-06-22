@@ -41,23 +41,46 @@ final dplManagerTripsMineOnlyProvider = NotifierProvider.autoDispose<
   DplManagerTripsMineOnlyNotifier.new,
 );
 
-/// EVERY trip filed under today's business day (mig. 050 IST 07:00
-/// cutover), across every plant + every status. Drives the manager's
-/// "Today's trips" summary card on the Plan Trip screen — totals,
-/// status breakdown, and per-plant chips all derive from this single
-/// payload so we don't hit the backend N times.
+/// IST business day the manager is currently *planning for* on the
+/// Plan Trip screen (migration 052). Defaults to tomorrow — the
+/// common case is filing tomorrow's trips today. The screen's date
+/// picker writes back to this provider; the trip-list provider and
+/// the `peekNextTripNumber` call both read it.
+class DplManagerPlanForDateNotifier extends Notifier<DateTime> {
+  @override
+  DateTime build() =>
+      DplFormat.businessDay().add(const Duration(days: 1));
+
+  void set(DateTime date) {
+    state = DateTime(date.year, date.month, date.day);
+  }
+}
+
+final dplManagerPlanForDateProvider =
+    NotifierProvider<DplManagerPlanForDateNotifier, DateTime>(
+  DplManagerPlanForDateNotifier.new,
+);
+
+/// EVERY trip filed under the planning date (see
+/// [dplManagerPlanForDateProvider]), across every plant + every
+/// status. Drives the manager's "Trips for {date}" summary card on
+/// the Plan Trip screen — totals, status breakdown, and per-plant
+/// chips all derive from this single payload so we don't hit the
+/// backend N times.
 ///
-/// Re-fetches whenever `dplManagerTripsMineOnlyProvider` flips so the
-/// toggle is reactive. `autoDispose` so the screen unmounting drops
-/// the cache; reseed via `ref.invalidate(dplManagerTodayTripsProvider)`
-/// after submit / on refresh.
-final dplManagerTodayTripsProvider = FutureProvider.autoDispose<
+/// Re-fetches whenever either the planning date or the
+/// `dplManagerTripsMineOnlyProvider` flips so both are reactive.
+/// `autoDispose` so the screen unmounting drops the cache; reseed via
+/// `ref.invalidate(dplManagerPlanForDateTripsProvider)` after submit /
+/// on refresh.
+final dplManagerPlanForDateTripsProvider = FutureProvider.autoDispose<
     DplApiResponse<DplTripListResponse>>((ref) async {
   final svc = ref.watch(dplApiServiceProvider);
   final mineOnly = ref.watch(dplManagerTripsMineOnlyProvider);
+  final date = ref.watch(dplManagerPlanForDateProvider);
   return svc.listTrips(
     statuses: DplTripStatus.all,
-    date: DplFormat.businessDay(),
+    date: date,
     submittedBy: mineOnly ? 'me' : null,
     limit: 1000,
   );

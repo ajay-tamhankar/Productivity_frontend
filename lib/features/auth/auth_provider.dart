@@ -87,11 +87,15 @@ class AuthController extends _$AuthController {
   /// of the app uses. The role is forced to `DPL_MANAGER` if the backend
   /// returns the dpl_manager role in any casing, so the existing router
   /// redirect lands the user on `/dpl/manager`.
-  Future<void> loginDpl(String email, String password) async {
+  Future<void> loginDpl(
+    String email,
+    String password, {
+    int? organizationId,
+  }) async {
     state = const AsyncValue.loading();
     try {
       final svc = ref.read(dplApiServiceProvider);
-      final res = await svc.login(email, password);
+      final res = await svc.login(email, password, organizationId: organizationId);
       if (res.isError) {
         throw AuthException(res.error ?? 'DPL login failed.');
       }
