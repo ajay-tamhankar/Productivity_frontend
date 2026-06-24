@@ -64,6 +64,43 @@ class DispatchSlipPdfBuilder {
   <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
 </svg>
 ''';
+
+  // Activity-strip icons — one per timeline entry kind. Same inline-SVG
+  // approach as `_tickSvg` so the activity row stays font-free and crisp
+  // at any DPI. `currentColor` is swapped for the entry's ink at build.
+  static const _sendSvg = '''
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M22 2 11 13"/>
+  <path d="M22 2 15 22 11 13 2 9z"/>
+</svg>
+''';
+  static const _checkCircleSvg = '''
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+  <path d="M22 4 12 14.01 9 11.01"/>
+</svg>
+''';
+  static const _truckSvg = '''
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M14 18V6a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h2"/>
+  <path d="M14 9h4l4 4v4a1 1 0 0 1-1 1h-1"/>
+  <circle cx="7.5" cy="18.5" r="2.5"/>
+  <circle cx="17.5" cy="18.5" r="2.5"/>
+</svg>
+''';
+  static const _xCircleSvg = '''
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="10"/>
+  <path d="m15 9-6 6"/>
+  <path d="m9 9 6 6"/>
+</svg>
+''';
+
+  // Soft purple tint for the activity badge background — pre-blended
+  // (no alpha) so it survives print rasterisation, matching the on-screen
+  // `DplColors.primaryTint`.
+  static const _brandTint = PdfColor.fromInt(0xFFF6E9F3);
+
   static Future<Uint8List> build(
     DplDispatchSlip slip, {
     String? organizationLabel,
@@ -129,6 +166,9 @@ class DispatchSlipPdfBuilder {
     final dateFmt = DateFormat('dd MMM yyyy');
     final timeFmt = DateFormat('HH:mm');
     final signDateFmt = DateFormat('dd MMM · HH:mm');
+    // Full date+time for the Activity strip — mirrors the on-screen
+    // `_Timeline` format (`dd MMM yyyy, HH:mm`) shown on the detail screen.
+    final activityFmt = DateFormat('dd MMM yyyy, HH:mm');
 
     final referenceTime =
         slip.pdiApproval?.at ?? slip.qaApproval?.at ?? slip.requestedAt;
@@ -157,6 +197,7 @@ class DispatchSlipPdfBuilder {
             _band(slip, fonts),
             _identity(slip, fonts, dateFmt, timeFmt, referenceTime),
             _bodyRow(slip, fonts, fmt, signDateFmt),
+            _activity(slip, fonts, activityFmt),
             _foot(slip, fonts),
           ],
         ),
@@ -1229,6 +1270,193 @@ class DispatchSlipPdfBuilder {
   }
 
   // ───────────────────────────────────────────────────────────────────
+  // Activity strip — the slip's audit trail (Requested → PDI approved /
+  // rejected → Dispatched), laid out as a single full-width horizontal
+  // row so it adds minimal height and the whole slip stays on one page.
+  // Mirrors the on-screen `_Timeline` entry logic 1:1 so download = view.
+  // ───────────────────────────────────────────────────────────────────
+  static pw.Widget _activity(
+    DplDispatchSlip slip,
+    _SlipFonts fonts,
+    DateFormat dateFmt,
+  ) {
+    final requestedName = _actorName(slip.requestedBy?.name);
+    final dispatchedName = _actorName(slip.dispatchedBy?.name);
+
+    final entries = <_ActivityEntry>[
+      if (slip.requestedBy != null || slip.requestedAt != null)
+        _ActivityEntry(
+          svg: _sendSvg,
+          label: 'Requested by $requestedName',
+          at: slip.requestedAt,
+        ),
+      if (slip.pdiApproval != null)
+        _ActivityEntry(
+          svg: _checkCircleSvg,
+          label: 'PDI approved by ${_actorName(slip.pdiApproval!.name)}',
+          at: slip.pdiApproval!.at,
+          remarks: slip.pdiApproval!.remarks,
+        ),
+      if (slip.rejection != null)
+        _ActivityEntry(
+          svg: _xCircleSvg,
+          label:
+              '${slip.rejection!.role.toUpperCase()} rejected by '
+              '${_actorName(slip.rejection!.name)}',
+          at: slip.rejection!.at,
+          remarks: slip.rejection!.reason,
+          danger: true,
+        ),
+      if (slip.dispatchedAt != null)
+        _ActivityEntry(
+          svg: _truckSvg,
+          label: 'Dispatched by $dispatchedName',
+          at: slip.dispatchedAt,
+        ),
+    ];
+
+    // No audit trail yet → render nothing (no empty bordered strip).
+    if (entries.isEmpty) return pw.SizedBox();
+
+    return pw.Container(
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(top: pw.BorderSide(color: _line)),
+      ),
+      padding: const pw.EdgeInsets.fromLTRB(16, 10, 16, 12),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        mainAxisSize: pw.MainAxisSize.min,
+        children: [
+          pw.Text(
+            'ACTIVITY',
+            style: pw.TextStyle(
+              font: fonts.uiBold,
+              fontSize: 11,
+              color: _faint,
+              letterSpacing: 1.2,
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          // Default cross-axis (start) — not `stretch`. The Row sits in a
+          // Column with unbounded height, so stretch would feed each
+          // Expanded child an infinite minHeight and silently break the
+          // layout (see the identity-strip note above).
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < entries.length; i++)
+                pw.Expanded(
+                  child: _activityCell(
+                    fonts,
+                    dateFmt,
+                    entries[i],
+                    leftBorder: i != 0,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _activityCell(
+    _SlipFonts fonts,
+    DateFormat dateFmt,
+    _ActivityEntry entry, {
+    required bool leftBorder,
+  }) {
+    final ink = entry.danger ? _rejectedInk : _brand;
+    final badgeBg = entry.danger ? _rejectedBg : _brandTint;
+    final badgeLine = entry.danger ? _rejectedLine : _bandChipBorder;
+
+    return pw.Container(
+      padding: pw.EdgeInsets.only(left: leftBorder ? 14 : 0, right: 14),
+      decoration: pw.BoxDecoration(
+        border: pw.Border(
+          left: leftBorder
+              ? const pw.BorderSide(color: _lineSoft)
+              : pw.BorderSide.none,
+        ),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Container(
+            width: 22,
+            height: 22,
+            alignment: pw.Alignment.center,
+            decoration: pw.BoxDecoration(
+              color: badgeBg,
+              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+              border: pw.Border.all(color: badgeLine),
+            ),
+            child: pw.SizedBox(
+              width: 12,
+              height: 12,
+              child: pw.SvgImage(
+                svg: entry.svg.replaceAll('currentColor', _rgbHex(ink)),
+              ),
+            ),
+          ),
+          pw.SizedBox(width: 9),
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              mainAxisSize: pw.MainAxisSize.min,
+              children: [
+                pw.Text(
+                  entry.label,
+                  style: pw.TextStyle(
+                    font: fonts.uiBold,
+                    fontSize: 10.5,
+                    color: _ink,
+                  ),
+                  maxLines: 2,
+                  overflow: pw.TextOverflow.clip,
+                ),
+                if (entry.at != null) ...[
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    dateFmt.format(entry.at!.toLocal()),
+                    style: pw.TextStyle(
+                      font: fonts.uiSemiBold,
+                      fontSize: 9,
+                      color: _muted,
+                    ),
+                  ),
+                ],
+                if (entry.remarks != null &&
+                    entry.remarks!.trim().isNotEmpty) ...[
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    '"${entry.remarks!.trim()}"',
+                    style: pw.TextStyle(
+                      font: fonts.uiSemiBold,
+                      fontSize: 9,
+                      color: entry.danger ? _rejectedInk : _muted,
+                      fontStyle: pw.FontStyle.italic,
+                    ),
+                    maxLines: 2,
+                    overflow: pw.TextOverflow.clip,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Trims an actor name and falls back to "-" when blank — keeps the
+  /// activity row from rendering a dangling "Requested by " with no name.
+  static String _actorName(String? name) {
+    final trimmed = name?.trim() ?? '';
+    return trimmed.isEmpty ? '-' : trimmed;
+  }
+
+  // ───────────────────────────────────────────────────────────────────
   // Foot strip — slip ID on the left + "Generated by …" on the right.
   // ───────────────────────────────────────────────────────────────────
   static pw.Widget _foot(DplDispatchSlip slip, _SlipFonts fonts) {
@@ -1339,6 +1567,24 @@ class _CheckpointPalette {
     required this.bg,
     required this.ink,
     required this.line,
+  });
+}
+
+/// One row in the printed Activity strip — the PDF twin of the on-screen
+/// `_TimelineEntry`. [svg] is the inline icon (with `currentColor`),
+/// [danger] flips the palette to red for rejections.
+class _ActivityEntry {
+  final String svg;
+  final String label;
+  final DateTime? at;
+  final String? remarks;
+  final bool danger;
+  const _ActivityEntry({
+    required this.svg,
+    required this.label,
+    required this.at,
+    this.remarks,
+    this.danger = false,
   });
 }
 
