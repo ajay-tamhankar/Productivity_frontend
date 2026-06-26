@@ -15,6 +15,7 @@ import 'providers/summary_tab_provider.dart';
 import 'screens/dispatch_slip_verifier_screen.dart';
 import 'screens/dispatch_slips_inbox_screen.dart';
 import 'screens/plant_landing_screen.dart';
+import 'widgets/buffer_plan_download_sheet.dart';
 
 /// Two-tab shell for the Dispatch / QA / PDI roles.
 ///
@@ -62,6 +63,16 @@ class DplSummaryShell extends ConsumerWidget {
       appBar: DplAppBar(
         title: titles[tabIndex],
         actions: [
+          // Dispatch role can pull the monthly Buffer Creation Plan as an
+          // Excel workbook (Opn Stock at TML / Production at GA / Dispatch
+          // From GA / Customer Plan, per part per day). Hidden for QA/PDI
+          // since the underlying inputs endpoint is Manager + Dispatch only.
+          if (AppConstants.isDplDispatchRole(role))
+            IconButton(
+              tooltip: 'Download Buffer Creation Plan',
+              icon: const Icon(Icons.table_view_outlined),
+              onPressed: () => BufferPlanDownloadSheet.show(context),
+            ),
           IconButton(
             tooltip: 'Verify slip QR',
             icon: const Icon(Icons.qr_code_scanner_rounded),
