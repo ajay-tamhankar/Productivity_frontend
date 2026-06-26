@@ -409,7 +409,9 @@ class _OpenTripCardState extends ConsumerState<_OpenTripCard> {
   /// Endpoint quirk: the email endpoint is keyed by slip id (no
   /// trip-level email endpoint), so the server-generated subject +
   /// canonical filename reference the first slip's metadata. We set
-  /// `subject_suffix=Trip #N (M slips)` to mark it as a batch.
+  /// `subject_suffix=Trip #N (M slips)` to mark it as a batch and pass
+  /// `slip_ids` (every slip cut) so the server can build the details
+  /// table from the whole trip once it reads that field.
   Future<void> _emailCreatedSlipsAsBatch(
     List<DplDispatchSlip> slips,
   ) async {
@@ -443,6 +445,9 @@ class _OpenTripCardState extends ConsumerState<_OpenTripCard> {
       pdfBytes: bytes,
       filename: filename,
       subjectSuffix: suffix,
+      // Send every slip id so the server can build the email details
+      // table from the whole trip, not just the anchor slip in the path.
+      slipIds: slips.map((s) => s.id).toList(),
     );
 
     if (!mounted) return;

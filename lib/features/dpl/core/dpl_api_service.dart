@@ -2215,6 +2215,13 @@ class DplApiService {
   ///
   /// PDF payload cap is 5 MB; the server also validates the magic-byte
   /// header so corrupt or non-PDF uploads are rejected with 400.
+  ///
+  /// [slipIds] marks a batch (trip) send: the attached PDF carries every
+  /// slip in the list, so the server should build the email details
+  /// table from ALL of them rather than from the single path [id]. When
+  /// omitted (or a single id) the server falls back to the path slip —
+  /// preserving the old single-slip behavior. The path [id] should be
+  /// the first/anchor slip and is expected to appear in [slipIds].
   Future<DplApiResponse<DplDispatchSlipEmailResult>> sendDispatchSlipEmail(
     int id, {
     required Uint8List pdfBytes,
@@ -2222,6 +2229,7 @@ class DplApiService {
     List<String>? extraTo,
     List<String>? extraCc,
     String? subjectSuffix,
+    List<int>? slipIds,
   }) async {
     try {
       final form = FormData.fromMap({
@@ -2236,6 +2244,8 @@ class DplApiService {
           'extra_cc': extraCc.join(','),
         if (subjectSuffix != null && subjectSuffix.trim().isNotEmpty)
           'subject_suffix': subjectSuffix.trim(),
+        if (slipIds != null && slipIds.isNotEmpty)
+          'slip_ids': slipIds.join(','),
       });
       return _send<DplDispatchSlipEmailResult>(
         () => _dio.post(DplPaths.dispatchSlipEmail(id), data: form),

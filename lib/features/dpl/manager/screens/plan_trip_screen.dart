@@ -41,7 +41,7 @@ class PlanTripScreen extends ConsumerStatefulWidget {
   ConsumerState<PlanTripScreen> createState() => _PlanTripScreenState();
 }
 
-const int _maxPlansPerTrip = 6;
+const int _maxPlansPerTrip = 8;
 
 class _PlanTripScreenState extends ConsumerState<PlanTripScreen> {
   /// Local trips draft. Survives provider rebuilds because it lives on

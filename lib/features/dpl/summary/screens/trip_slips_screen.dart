@@ -159,10 +159,11 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
   /// (`/dispatch/slips/:id/email`). With no trip-level endpoint
   /// available we aim the single POST at the FIRST slip's id and rely
   /// on `subject_suffix=Trip #N (N slips)` to mark it as a batch in
-  /// the recipient inbox. The server-generated subject + filename will
-  /// still reference the first slip's metadata — see "Backend ask" in
-  /// the PR description for the clean fix (a trip-level email
-  /// endpoint).
+  /// the recipient inbox. We also pass `slip_ids` (every slip in the
+  /// trip) so the server can build the email details table from the
+  /// whole stack once it reads that field; until then the body still
+  /// references only the anchor slip — see "Backend ask" in the PR
+  /// description for the clean fix (a trip-level email endpoint).
   Future<void> _emailAll(BuildContext context) async {
     final slips = widget.slips;
     if (slips.isEmpty) return;
@@ -198,6 +199,9 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
       pdfBytes: bytes,
       filename: filename,
       subjectSuffix: suffix,
+      // Send every slip id so the server can build the email details
+      // table from the whole trip, not just the anchor slip in the path.
+      slipIds: slips.map((s) => s.id).toList(),
     );
 
     if (!context.mounted) return;
