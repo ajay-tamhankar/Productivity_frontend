@@ -605,16 +605,23 @@ class DispatchSlipPdfBuilder {
           ),
         ),
         pw.SizedBox(height: 5),
-        pw.Text(
-          code,
-          style: pw.TextStyle(
-            font: fonts.uiBold,
-            fontSize: 30,
-            color: _ink,
-            letterSpacing: 1.2,
+        // FittedBox(scaleDown) so longer codes (e.g. "109D1-Spacer") shrink
+        // to fit the cell width on one line instead of being clipped to
+        // "109D1-". Mirrors the VEHICLE plate cell's handling above.
+        pw.FittedBox(
+          fit: pw.BoxFit.scaleDown,
+          alignment: pw.Alignment.centerLeft,
+          child: pw.Text(
+            code,
+            style: pw.TextStyle(
+              font: fonts.uiBold,
+              fontSize: 30,
+              color: _ink,
+              letterSpacing: 1.2,
+            ),
+            maxLines: 1,
+            overflow: pw.TextOverflow.clip,
           ),
-          maxLines: 1,
-          overflow: pw.TextOverflow.clip,
         ),
         if (subValue != null) ...[
           pw.SizedBox(height: 5),
