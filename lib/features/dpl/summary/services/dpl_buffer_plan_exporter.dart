@@ -46,8 +46,8 @@ class DplBufferPlanPart {
 ///
 /// Naming maps the on-screen / API field to the customer's spreadsheet
 /// column label:
-///   * [opnStockTml]  → "Opn Stock at TML"   (customer opening stock)
-///   * [opnStockGa]   → "Opn Stock at GA"    (left blank for now)
+///   * [opnStockTml]  → "Opn Stock at TML"   (roll-forward from a seed)
+///   * [opnStockGa]   → "Opn Stock at GA"    (roll-forward from a seed)
 ///   * [productionGa] → "Production at GA"   (daily production qty)
 ///   * [dispatchGa]   → "Dispatch From GA"   (qty dispatched that day)
 ///   * [customerPlan] → "Customer Plan"      (customer's plan for the day)
@@ -94,7 +94,8 @@ class DplBufferPlanWorkbook {
   final int year;
   final int month;
 
-  /// Every calendar day of the month, ascending.
+  /// Working days of the month, ascending — idle days (no activity for any
+  /// part) are dropped to mirror the customer's working-day layout.
   final List<DateTime> days;
 
   final List<DplBufferPlanPlant> plants;
@@ -113,10 +114,30 @@ class DplBufferPlanWorkbook {
 
   bool get isEmpty => plants.every((p) => p.isEmpty);
 
-  /// Opn Stock at GA is intentionally left blank for now (the customer
-  /// asked to add it later). The `ga_opening_stock` input is already
-  /// fetched into [_Acc.ga] — flip this to `true` to surface it.
-  static const bool includeOpnStockGa = false;
+  /// Roll-forward a stock series exactly like the customer's reference sheet:
+  /// seed at the first working day that has a stored opening value, then each
+  /// subsequent day = previous + [plus] of the previous day − [minus] of the
+  /// previous day. All three lists are aligned to the same working-day axis.
+  ///   * Opn Stock at TML: plus = Dispatch From GA, minus = Customer Plan
+  ///   * Opn Stock at GA : plus = Production at GA, minus = Dispatch From GA
+  /// Days before the seed stay null (no basis to compute).
+  static List<int?> rollForward({
+    required List<int?> seedSeries,
+    required List<int?> plus,
+    required List<int?> minus,
+  }) {
+    final n = seedSeries.length;
+    final out = List<int?>.filled(n, null);
+    for (var p = 0; p < n; p++) {
+      if (seedSeries[p] == null) continue;
+      out[p] = seedSeries[p];
+      for (var q = p + 1; q < n; q++) {
+        out[q] = (out[q - 1] ?? 0) + (plus[q - 1] ?? 0) - (minus[q - 1] ?? 0);
+      }
+      break;
+    }
+    return out;
+  }
 
   /// Fetches the buffer plan for ALL [plants] in the given [year]/[month]
   /// and aggregates it into a [DplBufferPlanWorkbook].
@@ -204,7 +225,7 @@ class DplBufferPlanWorkbook {
 
     // ---- 2. Per-plant inputs (Opn Stock TML / Production / Customer Plan) ----
     var failedInputCount = 0;
-    final plantSheets = <DplBufferPlanPlant>[];
+    final plantAccs = <_PlantAcc>[];
 
     for (final plant in plants) {
       final accByPart = <int, _Acc>{};
@@ -268,22 +289,53 @@ class DplBufferPlanWorkbook {
         });
       }
 
-      plantSheets.add(_freeze(plant, accByPart, days.length));
+      plantAccs.add(_PlantAcc(plant, accByPart));
     }
+
+    // Working-day axis: keep only days where SOME part (any plant) has real
+    // input data — production, dispatch, customer plan, or a stored TML
+    // opening stock. Drops idle days (e.g. Sundays) so the sheet matches the
+    // customer's working-day layout without hard-coding a weekend rule.
+    final activeIdx = <int>[];
+    for (var di = 0; di < days.length; di++) {
+      var has = false;
+      outer:
+      for (final pa in plantAccs) {
+        for (final acc in pa.accByPart.values) {
+          if (acc.prod[di] != null ||
+              acc.disp[di] != null ||
+              acc.plan[di] != null ||
+              acc.tml[di] != null) {
+            has = true;
+            break outer;
+          }
+        }
+      }
+      if (has) activeIdx.add(di);
+    }
+    final activeDays = [for (final di in activeIdx) days[di]];
+
+    final plantSheets = [
+      for (final pa in plantAccs) _freeze(pa.plant, pa.accByPart, activeIdx),
+    ];
 
     return DplBufferPlanWorkbook(
       year: year,
       month: month,
-      days: days,
+      days: activeDays,
       plants: plantSheets,
       failedInputCount: failedInputCount,
     );
   }
 
+  /// Builds one plant sheet over the [activeIdx] working-day columns, with
+  /// Opn Stock at TML & GA COMPUTED by roll-forward (see [rollForward]) — the
+  /// same formulas the customer's reference sheet uses. Production / Dispatch /
+  /// Customer Plan are shown as fetched (blank where the app has no value).
   static DplBufferPlanPlant _freeze(
     DplPlant plant,
     Map<int, _Acc> accByPart,
-    int dayCount,
+    List<int> activeIdx,
   ) {
     final parts = accByPart.entries
         .map((e) => DplBufferPlanPart(
@@ -299,17 +351,36 @@ class DplBufferPlanWorkbook {
         return a.descLabel.toLowerCase().compareTo(b.descLabel.toLowerCase());
       });
 
+    final n = activeIdx.length;
     final cells = <int, List<DplBufferPlanCell>>{};
     for (final part in parts) {
       final acc = accByPart[part.partId]!;
+      // Re-slice each metric onto the working-day axis.
+      final tmlSeed = [for (final di in activeIdx) acc.tml[di]];
+      final gaSeed = [for (final di in activeIdx) acc.ga[di]];
+      final prod = [for (final di in activeIdx) acc.prod[di]];
+      final disp = [for (final di in activeIdx) acc.disp[di]];
+      final plan = [for (final di in activeIdx) acc.plan[di]];
+
+      final tmlOut = DplBufferPlanWorkbook.rollForward(
+        seedSeries: tmlSeed,
+        plus: disp,
+        minus: plan,
+      );
+      final gaOut = DplBufferPlanWorkbook.rollForward(
+        seedSeries: gaSeed,
+        plus: prod,
+        minus: disp,
+      );
+
       cells[part.partId] = [
-        for (var i = 0; i < dayCount; i++)
+        for (var p = 0; p < n; p++)
           DplBufferPlanCell(
-            opnStockTml: acc.tml[i],
-            opnStockGa: includeOpnStockGa ? acc.ga[i] : null,
-            productionGa: acc.prod[i],
-            dispatchGa: acc.disp[i],
-            customerPlan: acc.plan[i],
+            opnStockTml: tmlOut[p],
+            opnStockGa: gaOut[p],
+            productionGa: prod[p],
+            dispatchGa: disp[p],
+            customerPlan: plan[p],
           ),
       ];
     }
@@ -321,6 +392,14 @@ class DplBufferPlanWorkbook {
       cells: cells,
     );
   }
+}
+
+/// Pairs a plant with its mutable accumulator while [DplBufferPlanWorkbook.fetchAll]
+/// is collecting data, before the working-day axis is known.
+class _PlantAcc {
+  final DplPlant plant;
+  final Map<int, _Acc> accByPart;
+  const _PlantAcc(this.plant, this.accByPart);
 }
 
 /// Tiny identity triple carried from a dispatch-slip item.

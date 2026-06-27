@@ -2,6 +2,48 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:productivity_tracker/features/dpl/summary/services/dpl_buffer_plan_exporter.dart';
 
 void main() {
+  group('DplBufferPlanWorkbook.rollForward', () {
+    test('seeds at first non-null then carries forward (reference formula)', () {
+      // Opn Stock at TML: seed 35, plus = Dispatch, minus = Customer Plan.
+      // day0 seed=35; day1 = 35 + disp0(10) - plan0(6) = 39;
+      // day2 = 39 + disp1(0) - plan1(9) = 30; day3 = 30 + disp2(39) - plan2(52) = 17
+      final out = DplBufferPlanWorkbook.rollForward(
+        seedSeries: [35, null, null, null],
+        plus: [10, 0, 39, 0],
+        minus: [6, 9, 52, 0],
+      );
+      expect(out, [35, 39, 30, 17]);
+    });
+
+    test('treats null flows as zero', () {
+      final out = DplBufferPlanWorkbook.rollForward(
+        seedSeries: [14, null, null],
+        plus: [null, 70, null],
+        minus: [null, null, null],
+      );
+      expect(out, [14, 14, 84]);
+    });
+
+    test('leaves everything null when there is no seed', () {
+      final out = DplBufferPlanWorkbook.rollForward(
+        seedSeries: [null, null, null],
+        plus: [5, 5, 5],
+        minus: [1, 1, 1],
+      );
+      expect(out, [null, null, null]);
+    });
+
+    test('days before the seed stay null; seed mid-series rolls forward', () {
+      final out = DplBufferPlanWorkbook.rollForward(
+        seedSeries: [null, 100, null, null],
+        plus: [9, 9, 20, 9], // only index>=seed matters
+        minus: [9, 9, 5, 9],
+      );
+      // day0 null; day1 seed=100; day2 = 100 + 9 - 9 = 100; day3 = 100 + 20 - 5 = 115
+      expect(out, [null, 100, 100, 115]);
+    });
+  });
+
   group('DplBufferPlanExporter.build', () {
     DplBufferPlanPlant samplePlant(String code, String name) {
       final parts = <DplBufferPlanPart>[
