@@ -28,6 +28,7 @@ import '../services/dpl_downtime_matrix_exporter.dart';
 import '../providers/dpl_reports_provider.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
+import '../../summary/widgets/buffer_plan_download_sheet.dart';
 
 // =============================================================================
 // Tokens
@@ -393,6 +394,11 @@ class _DplReportsScreenState extends ConsumerState<DplReportsScreen>
       appBar: DplAppBar(
         title: 'Reports',
         actions: [
+          IconButton(
+            tooltip: 'Download Buffer Creation Plan (all plants)',
+            icon: const Icon(Icons.calendar_view_month_outlined),
+            onPressed: () => BufferPlanDownloadSheet.show(context),
+          ),
           PopupMenuButton<String>(
             tooltip: 'Download',
             enabled: !_isDownloading,
