@@ -174,6 +174,7 @@ class DplStatusSlipQty {
 /// bucket without leaving the screen.
 class DplBucketSlipCounts {
   final DplStatusSlipQty pendingQa;
+  final DplStatusSlipQty pendingDeo;
   final DplStatusSlipQty pendingPdi;
   final DplStatusSlipQty approved;
   final DplStatusSlipQty dispatched;
@@ -181,6 +182,7 @@ class DplBucketSlipCounts {
 
   const DplBucketSlipCounts({
     this.pendingQa = const DplStatusSlipQty(),
+    this.pendingDeo = const DplStatusSlipQty(),
     this.pendingPdi = const DplStatusSlipQty(),
     this.approved = const DplStatusSlipQty(),
     this.dispatched = const DplStatusSlipQty(),
@@ -189,19 +191,31 @@ class DplBucketSlipCounts {
 
   int get totalCount =>
       pendingQa.count +
+      pendingDeo.count +
       pendingPdi.count +
       approved.count +
       dispatched.count +
       rejected.count;
 
   bool get hasAny => totalCount > 0;
-  bool get hasOpen => pendingQa.hasAny || pendingPdi.hasAny;
+  bool get hasOpen =>
+      pendingQa.hasAny || pendingDeo.hasAny || pendingPdi.hasAny;
 
   DplBucketSlipCounts _bumpFor(String status, int slipQty) {
     switch (status) {
       case DplDispatchSlipStatus.pendingQa:
         return DplBucketSlipCounts(
           pendingQa: pendingQa.add(slipQty),
+          pendingDeo: pendingDeo,
+          pendingPdi: pendingPdi,
+          approved: approved,
+          dispatched: dispatched,
+          rejected: rejected,
+        );
+      case DplDispatchSlipStatus.pendingDeo:
+        return DplBucketSlipCounts(
+          pendingQa: pendingQa,
+          pendingDeo: pendingDeo.add(slipQty),
           pendingPdi: pendingPdi,
           approved: approved,
           dispatched: dispatched,
@@ -210,6 +224,7 @@ class DplBucketSlipCounts {
       case DplDispatchSlipStatus.pendingPdi:
         return DplBucketSlipCounts(
           pendingQa: pendingQa,
+          pendingDeo: pendingDeo,
           pendingPdi: pendingPdi.add(slipQty),
           approved: approved,
           dispatched: dispatched,
@@ -218,6 +233,7 @@ class DplBucketSlipCounts {
       case DplDispatchSlipStatus.approved:
         return DplBucketSlipCounts(
           pendingQa: pendingQa,
+          pendingDeo: pendingDeo,
           pendingPdi: pendingPdi,
           approved: approved.add(slipQty),
           dispatched: dispatched,
@@ -226,6 +242,7 @@ class DplBucketSlipCounts {
       case DplDispatchSlipStatus.dispatched:
         return DplBucketSlipCounts(
           pendingQa: pendingQa,
+          pendingDeo: pendingDeo,
           pendingPdi: pendingPdi,
           approved: approved,
           dispatched: dispatched.add(slipQty),
@@ -234,6 +251,7 @@ class DplBucketSlipCounts {
       case DplDispatchSlipStatus.rejected:
         return DplBucketSlipCounts(
           pendingQa: pendingQa,
+          pendingDeo: pendingDeo,
           pendingPdi: pendingPdi,
           approved: approved,
           dispatched: dispatched,

@@ -41,6 +41,11 @@ class AppConstants {
   static const String roleDplQa = 'DPL_QA';
   static const String roleDplPdi = 'DPL_PDI';
 
+  /// Dispatch Data-Entry Operator. Sits between Dispatch and PDI: receives
+  /// the slips Dispatch cuts (status `pending_deo`), stamps the trip's
+  /// invoice number, then forwards the whole trip to PDI + emails it.
+  static const String roleDplDeo = 'DPL_DEO';
+
   static const List<String> assignableRoles = <String>[
     roleAdmin,
     roleSupervisor,
@@ -72,6 +77,8 @@ class AppConstants {
         return 'DPL QA';
       case roleDplPdi:
         return 'DPL PDI';
+      case roleDplDeo:
+        return 'Dispatch DEO';
       default:
         return normalizeRole(role);
     }
@@ -103,10 +110,16 @@ class AppConstants {
 
   static bool isDplPdiRole(String role) => normalizeRole(role) == roleDplPdi;
 
-  /// Any of the three downstream "summary-only" roles. These users land
-  /// on the Production Summary screen and have no other DPL access.
+  static bool isDplDeoRole(String role) => normalizeRole(role) == roleDplDeo;
+
+  /// Any of the downstream "summary-only" roles (Dispatch / QA / PDI /
+  /// DEO). These users land on the Production Summary shell and have no
+  /// other DPL access.
   static bool isDplSummaryViewerRole(String role) =>
-      isDplDispatchRole(role) || isDplQaRole(role) || isDplPdiRole(role);
+      isDplDispatchRole(role) ||
+      isDplQaRole(role) ||
+      isDplPdiRole(role) ||
+      isDplDeoRole(role);
 
   static bool isDplRole(String role) =>
       isDplManagerRole(role) ||

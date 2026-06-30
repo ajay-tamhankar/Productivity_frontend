@@ -6,13 +6,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
+import '../../../../core/constants/app_constants.dart';
+import '../../../auth/auth_provider.dart';
 import '../../core/design/dpl_theme.dart';
+import '../../core/dpl_api_response.dart';
 import '../../core/dpl_api_service.dart';
 import '../../core/dpl_constants.dart';
 import '../../core/dpl_organization_provider.dart';
 import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_snack.dart';
 import '../../models/dpl_dispatch_slip.dart';
+import '../providers/dispatch_slips_provider.dart';
 import '../services/dispatch_slip_pdf.dart';
 import '../widgets/dispatch_slip_status_badge.dart';
 import 'dispatch_slip_detail_screen.dart';
@@ -54,10 +58,47 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
   /// (one slip at a time) so SMTP throttling on the server stays sane.
   bool _emailing = false;
 
+  /// Mutable working copy of the trip's slips. Starts as the snapshot
+  /// the inbox passed in; replaced with the server's updated slips once
+  /// the DEO sends the trip for PDI (so the invoice + new status render
+  /// without a round-trip).
+  late List<DplDispatchSlip> _slips;
+
+  /// Invoice no the DEO is entering for the trip. Pre-filled from the
+  /// trip's existing invoice (if any slip already carries one).
+  late final TextEditingController _invoiceCtrl;
+
+  /// Guards the DEO "Send for PDI" action against double taps.
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _slips = List.of(widget.slips);
+    // Start empty — each DEO batch gets its own invoice (multi-batch), so
+    // we never pre-fill from a prior batch's number.
+    _invoiceCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _invoiceCtrl.dispose();
+    super.dispose();
+  }
+
+  /// True when the current user is a Dispatch DEO and this trip still
+  /// has at least one slip waiting in `pending_deo` — i.e. the DEO can
+  /// stamp an invoice and forward it.
+  bool _deoCanAct(String role) =>
+      AppConstants.isDplDeoRole(role) &&
+      _slips.any((s) => s.status == DplDispatchSlipStatus.pendingDeo);
+
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat.decimalPattern();
-    final slips = widget.slips;
+    final slips = _slips;
+    final role = ref.watch(authControllerProvider).asData?.value?.role ?? '';
+    final showDeoPanel = _deoCanAct(role);
     final totalQty =
         slips.fold<int>(0, (s, x) => s + x.totalQty);
     final plantLabel =
@@ -72,7 +113,7 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
             tooltip: _emailing
                 ? 'Emailing trip PDF…'
                 : slips.length == 1
-                    ? 'Email slip to Dispatch'
+                    ? 'Email slip'
                     : 'Email all ${slips.length} slips as one PDF',
             icon: _emailing
                 ? const SizedBox(
@@ -81,47 +122,286 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.mail_outline_rounded),
-            onPressed: (slips.isEmpty || _emailing)
+            onPressed: (slips.isEmpty || _emailing || _sending)
                 ? null
                 : () => _emailAll(context),
           ),
           IconButton(
             tooltip: 'Print all (${slips.length}-page PDF)',
             icon: const Icon(Icons.print_outlined),
-            onPressed: slips.isEmpty ? null : () => _printAll(context),
+            onPressed: (slips.isEmpty || _sending)
+                ? null
+                : () => _printAll(context),
           ),
         ],
       ),
-      body: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        itemCount: slips.length + 1,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (_, i) {
-          if (i == 0) {
-            return _TripSummaryCard(
-              tripNumber: widget.tripNumber,
-              plantLabel: plantLabel,
-              slipCount: slips.length,
-              totalQty: totalQty,
-              fmt: fmt,
-            );
-          }
-          final slip = slips[i - 1];
-          return _SlipDetailTile(
-            slip: slip,
-            index: i,
-            total: slips.length,
-            fmt: fmt,
-          );
-        },
+      body: Column(
+        children: [
+          if (showDeoPanel) _buildDeoPanel(),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              itemCount: slips.length + 1,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (_, i) {
+                if (i == 0) {
+                  return _TripSummaryCard(
+                    tripNumber: widget.tripNumber,
+                    plantLabel: plantLabel,
+                    slipCount: slips.length,
+                    totalQty: totalQty,
+                    fmt: fmt,
+                  );
+                }
+                final slip = slips[i - 1];
+                return _SlipDetailTile(
+                  slip: slip,
+                  index: i,
+                  total: slips.length,
+                  fmt: fmt,
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  /// Builds a multi-page PDF — one page per slip in [widget.slips] order
-  /// — and hands it to the OS print sheet via the `printing` plugin.
-  /// Same error surface as the single-slip print path on the detail
-  /// screen.
+  /// DEO action card pinned above the slip list — invoice-no field +
+  /// "Send for PDI" button. Stamping the invoice + forwarding the whole
+  /// trip to PDI (and emailing it) happens in one tap.
+  Widget _buildDeoPanel() {
+    final pendingCount = _slips
+        .where((s) => s.status == DplDispatchSlipStatus.pendingDeo)
+        .length;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: DplColors.cardBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: DplColors.primary),
+        boxShadow: DplShadows.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.receipt_long_outlined,
+                  size: 18, color: DplColors.primaryDark),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Add invoice & send for PDI',
+                  style: DplText.h3(),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: DplColors.warningBg,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$pendingCount waiting',
+                  style: const TextStyle(
+                    color: DplColors.warning,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'The invoice is stamped on every slip in this trip, printed on '
+            'each, then the trip is forwarded to PDI and emailed.',
+            style: TextStyle(
+              color: DplColors.textSecondary,
+              fontWeight: FontWeight.w600,
+              fontSize: 11.5,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _invoiceCtrl,
+            textCapitalization: TextCapitalization.characters,
+            maxLength: 64,
+            enabled: !_sending,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              isDense: true,
+              prefixIcon: const Icon(Icons.tag_rounded, size: 18),
+              labelText: 'Invoice no *',
+              counterText: '',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: (_sending || _invoiceCtrl.text.trim().isEmpty)
+                ? null
+                : () => _sendForPdi(),
+            icon: _sending
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.send_rounded, size: 18),
+            label: Text(_sending ? 'Sending…' : 'Send for PDI'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Stamps the invoice on the trip, moves its `pending_deo` slips to
+  /// `pending_pdi`, then emails the (now invoice-stamped) trip PDF to
+  /// PDI. On success pops back to the DEO queue.
+  Future<void> _sendForPdi() async {
+    final invoice = _invoiceCtrl.text.trim();
+    if (invoice.isEmpty) {
+      DplSnacks.error(context, 'Enter an invoice no before sending for PDI.');
+      return;
+    }
+    final tripId = widget.tripId;
+    if (tripId == null) {
+      DplSnacks.error(
+        context,
+        'This trip has no id on record, so it cannot be forwarded.',
+      );
+      return;
+    }
+
+    // Count the slips this batch forwards (the pending_deo ones) before we
+    // mutate _slips — used for the success message.
+    final batchCount = _slips
+        .where((s) => s.status == DplDispatchSlipStatus.pendingDeo)
+        .length;
+
+    setState(() => _sending = true);
+    final api = ref.read(dplApiServiceProvider);
+    final res = await api.sendTripForPdi(tripId, invoiceNo: invoice);
+    if (!mounted) return;
+
+    if (res.isError) {
+      setState(() => _sending = false);
+      // The only conflict from send-for-pdi is NO_PENDING_SLIPS: the
+      // trip's pending_deo queue was already drained (e.g. a double-tap,
+      // or another DEO forwarded the last batch). Treat it as done —
+      // refresh the queue, mark this screen's pending_deo slips forwarded
+      // so the panel hides, and stay put (no auto-navigate).
+      final code = (res.code ?? '').toUpperCase();
+      if (code == 'NO_PENDING_SLIPS' || res.statusCode == 409) {
+        ref.invalidate(dplDispatchSlipsProvider);
+        setState(() {
+          _slips = [
+            for (final s in _slips)
+              s.status == DplDispatchSlipStatus.pendingDeo
+                  ? s.copyWith(status: DplDispatchSlipStatus.pendingPdi)
+                  : s,
+          ];
+        });
+        DplSnacks.warning(
+          context,
+          'All slips on this trip have already been sent for PDI.',
+        );
+        return;
+      }
+      // Genuine failure (network / validation) — keep the DEO on the
+      // screen with their typed invoice so they can retry.
+      DplSnacks.error(
+        context,
+        'Send for PDI failed: ${res.error ?? "unknown error"}',
+      );
+      return;
+    }
+
+    // Merge the server's updated slips (this batch, now pending_pdi with
+    // their invoice) into the on-screen list BY ID, so slips forwarded in
+    // earlier batches on the same trip are preserved. If the backend
+    // didn't echo them, stamp the invoice + forwarded status locally so
+    // the emailed PDF is still correct.
+    final updated = res.data ?? const <DplDispatchSlip>[];
+    if (updated.isNotEmpty) {
+      final byId = {for (final s in updated) s.id: s};
+      setState(() {
+        _slips = [
+          for (final s in _slips) byId[s.id] ?? s,
+          for (final s in updated)
+            if (!_slips.any((x) => x.id == s.id)) s,
+        ];
+      });
+    } else {
+      setState(() {
+        _slips = [
+          for (final s in _slips)
+            s.status == DplDispatchSlipStatus.pendingDeo
+                ? s.copyWith(
+                    invoiceNo: invoice,
+                    status: DplDispatchSlipStatus.pendingPdi,
+                  )
+                : s,
+        ];
+      });
+    }
+
+    // Email JUST this batch (the slips now carrying this invoice), not the
+    // whole trip — earlier batches were already emailed under their own
+    // invoice. Recipient is server-side config (PDI for the DEO step).
+    final batchSlips =
+        _slips.where((s) => s.invoiceNo.trim() == invoice).toList();
+    final emailResp = await _renderAndEmail(
+      batchSlips.isNotEmpty ? batchSlips : _slips,
+    );
+
+    // Guard BEFORE touching `ref` — if the screen was popped mid-email the
+    // State is disposed and `ref.invalidate` would throw a StateError.
+    if (!mounted) return;
+    // Refresh the inbox so the forwarded slips leave the DEO queue.
+    ref.invalidate(dplDispatchSlipsProvider);
+    _invoiceCtrl.clear();
+    setState(() => _sending = false);
+
+    final emailData = emailResp?.data;
+    final mailNote = emailResp == null
+        ? ' (PDF email could not be rendered)'
+        : emailResp.isError
+            ? ' (email failed: ${emailResp.error ?? "unknown error"})'
+            : emailData == null
+                ? ''
+                : emailData.sent
+                    ? ' · emailed to PDI'
+                    : emailData.skipped
+                        ? ' · email skipped (SMTP not configured)'
+                        : ' · email not sent';
+    // Stay on the trip (no auto-navigate) — the DEO may forward another
+    // batch. The panel auto-hides now that no pending_deo slips remain.
+    DplSnacks.success(
+      context,
+      'Batch of $batchCount slip${batchCount == 1 ? "" : "s"} sent for PDI '
+      '· invoice $invoice$mailNote.',
+    );
+  }
+
+  /// Builds a multi-page PDF — one page per slip in the trip's current
+  /// slips — and hands it to the OS print sheet via the `printing`
+  /// plugin. Same error surface as the single-slip print path on the
+  /// detail screen.
   Future<void> _printAll(BuildContext context) async {
     final orgLabel = ref.read(dplActiveOrganizationProvider)?.displayLabel;
     final name = 'Trip-${widget.tripNumber}-'
@@ -131,7 +411,7 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
       await Printing.layoutPdf(
         name: name,
         onLayout: (_) => DispatchSlipPdfBuilder.buildBatch(
-          widget.slips,
+          _slips,
           organizationLabel: orgLabel,
         ),
       );
@@ -165,11 +445,65 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
   /// references only the anchor slip — see "Backend ask" in the PR
   /// description for the clean fix (a trip-level email endpoint).
   Future<void> _emailAll(BuildContext context) async {
-    final slips = widget.slips;
-    if (slips.isEmpty) return;
+    if (_slips.isEmpty) return;
 
     setState(() => _emailing = true);
+    final res = await _renderAndEmail(_slips);
+    if (!context.mounted) return;
+    setState(() => _emailing = false);
 
+    if (res == null) {
+      DplSnacks.error(context, 'Could not render trip PDF for email.');
+      return;
+    }
+    if (res.isError) {
+      DplSnacks.error(
+        context,
+        'Email failed: ${res.error ?? "unknown error"}',
+      );
+      return;
+    }
+
+    final data = res.data;
+    if (data == null) {
+      DplSnacks.error(context, 'Email response was empty.');
+      return;
+    }
+    if (data.sent) {
+      final toLabel = data.to.isNotEmpty ? data.to.first : 'the recipient';
+      DplSnacks.success(
+        context,
+        _slips.length == 1
+            ? 'Slip emailed to $toLabel.'
+            : '${_slips.length} slips emailed to $toLabel in one PDF.',
+      );
+    } else if (data.skipped) {
+      DplSnacks.warning(
+        context,
+        'Trip not emailed — SMTP is not configured on this deploy.',
+      );
+    } else {
+      DplSnacks.error(
+        context,
+        'Email not sent: ${data.reason ?? "unknown reason"}',
+      );
+    }
+  }
+
+  /// Renders [slips] into ONE multi-page PDF (via [buildBatch]) and POSTs
+  /// it as a single multipart upload so the recipient gets one email with
+  /// one PDF regardless of slip count. Returns the API response, or `null`
+  /// if the PDF couldn't be rendered. Recipients are server-side config.
+  ///
+  /// **Endpoint quirk**: the email endpoint is keyed by slip id
+  /// (`/dispatch/slips/:id/email`). With no trip-level endpoint we aim the
+  /// single POST at the FIRST slip's id and pass `slip_ids` (every slip in
+  /// the trip) + `subject_suffix=Trip #N` so the server can build the
+  /// details table from the whole stack.
+  Future<DplApiResponse<DplDispatchSlipEmailResult>?> _renderAndEmail(
+    List<DplDispatchSlip> slips,
+  ) async {
+    if (slips.isEmpty) return null;
     final orgLabel = ref.read(dplActiveOrganizationProvider)?.displayLabel;
     final api = ref.read(dplApiServiceProvider);
     final anchor = slips.first;
@@ -187,60 +521,17 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
         slips,
         organizationLabel: orgLabel,
       );
-    } catch (e) {
-      if (!context.mounted) return;
-      setState(() => _emailing = false);
-      DplSnacks.error(context, 'Could not render trip PDF: $e');
-      return;
+    } catch (_) {
+      return null;
     }
 
-    final res = await api.sendDispatchSlipEmail(
+    return api.sendDispatchSlipEmail(
       anchor.id,
       pdfBytes: bytes,
       filename: filename,
       subjectSuffix: suffix,
-      // Send every slip id so the server can build the email details
-      // table from the whole trip, not just the anchor slip in the path.
       slipIds: slips.map((s) => s.id).toList(),
     );
-
-    if (!context.mounted) return;
-    setState(() => _emailing = false);
-
-    if (res.isError) {
-      DplSnacks.error(
-        context,
-        'Email failed: ${res.error ?? "unknown error"}',
-      );
-      return;
-    }
-
-    final data = res.data;
-    if (data == null) {
-      DplSnacks.error(context, 'Email response was empty.');
-      return;
-    }
-    if (data.sent) {
-      final toLabel =
-          data.to.isNotEmpty ? data.to.first : 'Dispatch';
-      DplSnacks.success(
-        context,
-        slips.length == 1
-            ? 'Slip emailed to $toLabel.'
-            : '${slips.length} slips emailed to $toLabel '
-                'in one PDF.',
-      );
-    } else if (data.skipped) {
-      DplSnacks.warning(
-        context,
-        'Trip not emailed — SMTP is not configured on this deploy.',
-      );
-    } else {
-      DplSnacks.error(
-        context,
-        'Email not sent: ${data.reason ?? "unknown reason"}',
-      );
-    }
   }
 }
 
@@ -508,9 +799,10 @@ class _SignOffStrip extends StatelessWidget {
       children: [
         Expanded(
           child: _Step(
-            label: 'QA',
-            done: slip.qaApproval != null,
-            rejected: isRejected && (slip.rejection?.isQa ?? false),
+            label: 'DEO',
+            done: slip.deoApproval != null ||
+                slip.invoiceNo.trim().isNotEmpty,
+            rejected: false,
           ),
         ),
         const SizedBox(width: 6),

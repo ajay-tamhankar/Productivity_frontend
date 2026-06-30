@@ -70,7 +70,11 @@ class _DispatchSlipsInboxScreenState
     // if (AppConstants.isDplQaRole(role)) {
     //   defaultStatus = DplDispatchSlipStatus.pendingQa;
     // } else if (AppConstants.isDplPdiRole(role)) {
-    if (AppConstants.isDplPdiRole(role) || AppConstants.isDplQaRole(role)) {
+    if (AppConstants.isDplDeoRole(role)) {
+      // DEO owns the invoice stage — land them on their queue.
+      defaultStatus = DplDispatchSlipStatus.pendingDeo;
+    } else if (AppConstants.isDplPdiRole(role) ||
+        AppConstants.isDplQaRole(role)) {
       defaultStatus = DplDispatchSlipStatus.pendingPdi;
     }
     if (defaultStatus != null) {
@@ -204,6 +208,7 @@ class _DispatchSlipsInboxScreenState
 
   String _emptyTitleFor(String? status, String role) {
     if (status == DplDispatchSlipStatus.pendingQa) return 'QA inbox is clear';
+    if (status == DplDispatchSlipStatus.pendingDeo) return 'DEO inbox is clear';
     if (status == DplDispatchSlipStatus.pendingPdi) return 'PDI inbox is clear';
     if (AppConstants.isDplDispatchRole(role)) return 'No slips yet';
     return 'No slips found';
@@ -212,6 +217,9 @@ class _DispatchSlipsInboxScreenState
   String _emptyMessageFor(String? status, String role) {
     if (status == DplDispatchSlipStatus.pendingQa) {
       return 'Nothing is waiting for QA approval right now.';
+    }
+    if (status == DplDispatchSlipStatus.pendingDeo) {
+      return 'No trips are waiting for an invoice right now.';
     }
     if (status == DplDispatchSlipStatus.pendingPdi) {
       return 'Nothing is waiting for PDI approval right now.';
@@ -318,7 +326,24 @@ class _StatusTabs extends ConsumerWidget {
     //     const _StatusTabSpec(null, 'All', null),
     //   ];
     // } else if (...
-    if (AppConstants.isDplPdiRole(role) || AppConstants.isDplQaRole(role)) {
+    if (AppConstants.isDplDeoRole(role)) {
+      // DEO's queue first — the slips waiting for an invoice — then the
+      // stages downstream so they can follow what they've forwarded.
+      tabs = [
+        _StatusTabSpec(DplDispatchSlipStatus.pendingDeo, 'Pending DEO',
+            totals.pendingDeo),
+        _StatusTabSpec(DplDispatchSlipStatus.pendingPdi, 'Pending PDI',
+            totals.pendingPdi),
+        _StatusTabSpec(DplDispatchSlipStatus.approved, 'Approved',
+            totals.approved),
+        _StatusTabSpec(DplDispatchSlipStatus.dispatched, 'Dispatched',
+            totals.dispatched),
+        _StatusTabSpec(DplDispatchSlipStatus.rejected, 'Rejected',
+            totals.rejected),
+        const _StatusTabSpec(null, 'All', null),
+      ];
+    } else if (AppConstants.isDplPdiRole(role) ||
+        AppConstants.isDplQaRole(role)) {
       tabs = [
         _StatusTabSpec(DplDispatchSlipStatus.pendingPdi, 'Pending PDI',
             totals.pendingPdi),
@@ -336,6 +361,8 @@ class _StatusTabs extends ConsumerWidget {
         // Pending QA chip hidden — QA approval step removed.
         // _StatusTabSpec(DplDispatchSlipStatus.pendingQa, 'Pending QA',
         //     totals.pendingQa),
+        _StatusTabSpec(DplDispatchSlipStatus.pendingDeo, 'Pending DEO',
+            totals.pendingDeo),
         _StatusTabSpec(DplDispatchSlipStatus.pendingPdi, 'Pending PDI',
             totals.pendingPdi),
         _StatusTabSpec(DplDispatchSlipStatus.approved, 'Approved',
@@ -787,6 +814,7 @@ class _StatusPip extends StatelessWidget {
   static ({Color bg, Color fg}) _pipPalette(String s) {
     switch (s) {
       case DplDispatchSlipStatus.pendingQa:
+      case DplDispatchSlipStatus.pendingDeo:
       case DplDispatchSlipStatus.pendingPdi:
         return (bg: DplColors.warningBg, fg: DplColors.warning);
       case DplDispatchSlipStatus.approved:

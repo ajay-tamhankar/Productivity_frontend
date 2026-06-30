@@ -1420,6 +1420,14 @@ class _DispatchPipelineRow extends ConsumerWidget {
               bg: DplColors.warningBg,
               onTap: () => jumpToSlipsTab(DplDispatchSlipStatus.pendingQa),
             ),
+          if (counts.pendingDeo.hasAny)
+            _PipelineChip(
+              label: 'Pending DEO',
+              entry: counts.pendingDeo,
+              fg: DplColors.warning,
+              bg: DplColors.warningBg,
+              onTap: () => jumpToSlipsTab(DplDispatchSlipStatus.pendingDeo),
+            ),
           if (counts.pendingPdi.hasAny)
             _PipelineChip(
               label: 'Pending PDI',

@@ -157,6 +157,12 @@ class DplPaths {
   static String dispatchTripPlan(int tripId, int planId) =>
       '/dispatch/trips/$tripId/plans/$planId';
 
+  /// `POST /dispatch/trips/:id/send-for-pdi` — DEO role. Stamps the
+  /// trip's invoice no, records the DEO actor, and transitions all the
+  /// trip's `pending_deo` slips to `pending_pdi` in one transaction.
+  static String dispatchTripSendForPdi(int id) =>
+      '/dispatch/trips/$id/send-for-pdi';
+
   // Dispatch slip workflow — Dispatch → QA → PDI three-step approval
   // pipeline with an HMAC-signed QR payload printed on the slip. Roles
   // are gated server-side; the verify endpoint is public.
@@ -298,11 +304,17 @@ class DplReportFormat {
 
 /// Lifecycle status values for `dpl.dpl_dispatch_slips`.
 ///
-/// Status machine:
-///   pending_qa → pending_pdi → approved → dispatched
-///              ↘ rejected ↙
+/// Status machine (trip-driven slips):
+///   pending_deo → pending_pdi → approved → dispatched
+///               ↘ ─── rejected ─── ↙
+///
+/// `pending_qa` is a legacy/dormant state kept for back-compat (the QA
+/// step was removed from the workflow). Trip-driven slips are now cut in
+/// `pending_deo` so the Dispatch DEO can stamp an invoice no before they
+/// reach PDI.
 class DplDispatchSlipStatus {
   static const String pendingQa = 'pending_qa';
+  static const String pendingDeo = 'pending_deo';
   static const String pendingPdi = 'pending_pdi';
   static const String approved = 'approved';
   static const String dispatched = 'dispatched';
@@ -310,6 +322,7 @@ class DplDispatchSlipStatus {
 
   static const List<String> all = <String>[
     pendingQa,
+    pendingDeo,
     pendingPdi,
     approved,
     dispatched,
@@ -321,6 +334,8 @@ class DplDispatchSlipStatus {
     switch (status) {
       case pendingQa:
         return 'Pending QA';
+      case pendingDeo:
+        return 'Pending DEO';
       case pendingPdi:
         return 'Pending PDI';
       case approved:
@@ -337,7 +352,9 @@ class DplDispatchSlipStatus {
 
   /// True while the slip is still moving through the approval pipeline.
   static bool isOpen(String status) =>
-      status == pendingQa || status == pendingPdi;
+      status == pendingQa ||
+      status == pendingDeo ||
+      status == pendingPdi;
 
   /// True once both quality gates have signed off (QR is populated).
   static bool isApproved(String status) => status == approved;

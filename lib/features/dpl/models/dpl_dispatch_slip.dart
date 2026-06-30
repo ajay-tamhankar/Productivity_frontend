@@ -205,8 +205,21 @@ class DplDispatchSlip {
   final DateTime? requestedAt;
 
   final DplDispatchSlipActor? qaApproval;
+
+  /// Dispatch DEO sign-off — set when the DEO stamps the trip's invoice
+  /// and forwards it to PDI. Carries the DEO's name + time (and the
+  /// invoice in `remarks`). `null` until the slip has cleared the DEO
+  /// stage. Mirrors the `qa_approval` / `pdi_approval` shape.
+  final DplDispatchSlipActor? deoApproval;
+
   final DplDispatchSlipActor? pdiApproval;
   final DplDispatchSlipRejection? rejection;
+
+  /// Per-slip invoice number the Dispatch DEO stamped when THIS slip's
+  /// batch was forwarded to PDI. Multi-batch: two slips on the same trip
+  /// can carry different invoices, so this is the slip's own value — not
+  /// the trip's latest-batch `invoice_no`. Empty until this slip is sent.
+  final String invoiceNo;
 
   final DateTime? dispatchedAt;
   final DplDispatchSlipActor? dispatchedBy;
@@ -242,8 +255,10 @@ class DplDispatchSlip {
     this.requestedBy,
     this.requestedAt,
     this.qaApproval,
+    this.deoApproval,
     this.pdiApproval,
     this.rejection,
+    this.invoiceNo = '',
     this.dispatchedAt,
     this.dispatchedBy,
     this.qrPayload,
@@ -253,6 +268,42 @@ class DplDispatchSlip {
     this.tripId,
     this.tripNumber,
   });
+
+  /// Returns a copy with selected fields overridden. Used by the DEO
+  /// send flow to reflect a freshly-stamped invoice + forwarded status
+  /// locally when the backend response doesn't echo the updated slips,
+  /// so the emailed PDF still carries them.
+  DplDispatchSlip copyWith({
+    String? status,
+    String? invoiceNo,
+    DplDispatchSlipActor? deoApproval,
+  }) {
+    return DplDispatchSlip(
+      id: id,
+      slipNo: slipNo,
+      organizationId: organizationId,
+      plant: plant,
+      vehicleNo: vehicleNo,
+      items: items,
+      totalQty: totalQty,
+      status: status ?? this.status,
+      requestedBy: requestedBy,
+      requestedAt: requestedAt,
+      qaApproval: qaApproval,
+      deoApproval: deoApproval ?? this.deoApproval,
+      pdiApproval: pdiApproval,
+      rejection: rejection,
+      invoiceNo: invoiceNo ?? this.invoiceNo,
+      dispatchedAt: dispatchedAt,
+      dispatchedBy: dispatchedBy,
+      qrPayload: qrPayload,
+      notes: notes,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      tripId: tripId,
+      tripNumber: tripNumber,
+    );
+  }
 
   factory DplDispatchSlip.fromJson(Map<String, dynamic> json) {
     // Items — preferred new shape. Fall back to synthesising a single
@@ -301,10 +352,17 @@ class DplDispatchSlip {
       qaApproval: DplDispatchSlipActor.fromJson(
         json['qa_approval'] ?? json['qaApproval'],
       ),
+      deoApproval: DplDispatchSlipActor.fromJson(
+        json['deo_approval'] ?? json['deoApproval'],
+      ),
       pdiApproval: DplDispatchSlipActor.fromJson(
         json['pdi_approval'] ?? json['pdiApproval'],
       ),
       rejection: DplDispatchSlipRejection.fromJson(json['rejection']),
+      // Per-slip invoice ONLY — read the flat slip value, never the nested
+      // `trip.invoice_no`. The trip's value is just its latest batch and
+      // would wrongly stamp that number onto a not-yet-invoiced slip.
+      invoiceNo: parseStringOr(json['invoice_no'] ?? json['invoiceNo']),
       dispatchedAt:
           parseDateTimeOrNull(json['dispatched_at'] ?? json['dispatchedAt']),
       dispatchedBy: DplDispatchSlipActor.fromJson(
@@ -429,6 +487,7 @@ enum DispatchStationState { pending, approved, rejected }
 /// production-summary banner can show qty-weighted totals too.
 class DplDispatchSlipTotals {
   final int pendingQa;
+  final int pendingDeo;
   final int pendingPdi;
   final int approved;
   final int rejected;
@@ -437,6 +496,7 @@ class DplDispatchSlipTotals {
   // Qty rollups — SUM(qty) for slips in each status, role-scoped and
   // filter-ignoring (same scope as the counts).
   final int pendingQaQty;
+  final int pendingDeoQty;
   final int pendingPdiQty;
   final int approvedQty;
   final int rejectedQty;
@@ -444,11 +504,13 @@ class DplDispatchSlipTotals {
 
   const DplDispatchSlipTotals({
     this.pendingQa = 0,
+    this.pendingDeo = 0,
     this.pendingPdi = 0,
     this.approved = 0,
     this.rejected = 0,
     this.dispatched = 0,
     this.pendingQaQty = 0,
+    this.pendingDeoQty = 0,
     this.pendingPdiQty = 0,
     this.approvedQty = 0,
     this.rejectedQty = 0,
@@ -458,6 +520,8 @@ class DplDispatchSlipTotals {
   factory DplDispatchSlipTotals.fromJson(Map<String, dynamic> json) {
     return DplDispatchSlipTotals(
       pendingQa: parseIntOr(json['pending_qa_count'] ?? json['pendingQaCount']),
+      pendingDeo:
+          parseIntOr(json['pending_deo_count'] ?? json['pendingDeoCount']),
       pendingPdi:
           parseIntOr(json['pending_pdi_count'] ?? json['pendingPdiCount']),
       approved: parseIntOr(json['approved_count'] ?? json['approvedCount']),
@@ -466,6 +530,8 @@ class DplDispatchSlipTotals {
           parseIntOr(json['dispatched_count'] ?? json['dispatchedCount']),
       pendingQaQty:
           parseIntOr(json['pending_qa_qty'] ?? json['pendingQaQty']),
+      pendingDeoQty:
+          parseIntOr(json['pending_deo_qty'] ?? json['pendingDeoQty']),
       pendingPdiQty:
           parseIntOr(json['pending_pdi_qty'] ?? json['pendingPdiQty']),
       approvedQty: parseIntOr(json['approved_qty'] ?? json['approvedQty']),
@@ -475,9 +541,10 @@ class DplDispatchSlipTotals {
     );
   }
 
-  /// Qty currently moving through QA + PDI + approved-but-not-yet-shipped
+  /// Qty currently moving through DEO + PDI + approved-but-not-yet-shipped
   /// — the "In pipeline" tile on the totals banner.
-  int get inPipelineQty => pendingQaQty + pendingPdiQty + approvedQty;
+  int get inPipelineQty =>
+      pendingQaQty + pendingDeoQty + pendingPdiQty + approvedQty;
 }
 
 /// One page of slips + pagination + role-aware totals.

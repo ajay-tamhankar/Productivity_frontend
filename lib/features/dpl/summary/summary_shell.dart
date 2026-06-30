@@ -159,6 +159,9 @@ class DplSummaryShell extends ConsumerWidget {
     if (AppConstants.isDplDispatchRole(role)) {
       return 'Dispatch — Select Plant';
     }
+    if (AppConstants.isDplDeoRole(role)) {
+      return 'DEO — Select Plant';
+    }
     // QA approval step removed from the workflow — QA users land on
     // the PDI-style screen.
     if (AppConstants.isDplQaRole(role) || AppConstants.isDplPdiRole(role)) {
@@ -169,6 +172,7 @@ class DplSummaryShell extends ConsumerWidget {
 
   String _slipsTitleForRole(String role) {
     if (AppConstants.isDplDispatchRole(role)) return 'My Dispatch Slips';
+    if (AppConstants.isDplDeoRole(role)) return 'DEO — Dispatch Slips';
     // QA users see the PDI inbox view.
     if (AppConstants.isDplQaRole(role) || AppConstants.isDplPdiRole(role)) {
       return 'PDI — Dispatch Slips';
@@ -188,16 +192,20 @@ class DplSummaryShell extends ConsumerWidget {
     if (response == null || !response.isOk) return 0;
     final totals = response.data?.totals;
     if (totals == null) return 0;
+    // DEO's badge counts the trips waiting for an invoice.
+    if (AppConstants.isDplDeoRole(role)) {
+      return totals.pendingDeo;
+    }
     // QA approval step removed — QA users see the PDI pending count.
     if (AppConstants.isDplQaRole(role) ||
         AppConstants.isDplPdiRole(role)) {
       return totals.pendingPdi;
     }
     if (AppConstants.isDplDispatchRole(role)) {
-      // Dispatch cares about both queues since they're the requester.
-      return totals.pendingQa + totals.pendingPdi;
+      // Dispatch cares about the whole pipeline they kicked off.
+      return totals.pendingDeo + totals.pendingPdi;
     }
     // Manager fallback.
-    return totals.pendingQa + totals.pendingPdi;
+    return totals.pendingDeo + totals.pendingPdi;
   }
 }

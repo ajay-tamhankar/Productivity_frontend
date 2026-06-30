@@ -2834,6 +2834,51 @@ class DplApiService {
     );
   }
 
+  /// `POST /dispatch/trips/:id/send-for-pdi` — Dispatch DEO role.
+  ///
+  /// Stamps [invoiceNo] on the trip, records the DEO actor + timestamp,
+  /// and transitions every `pending_deo` slip on the trip to
+  /// `pending_pdi` in one transaction. Returns the updated slips so the
+  /// caller can re-render the invoice-stamped PDF and email the trip.
+  ///
+  /// Errors to expect: `INVALID_STATUS` (no pending_deo slips left),
+  /// `FORBIDDEN` (caller isn't DEO/manager), `VALIDATION_ERROR`
+  /// (invoice missing).
+  Future<DplApiResponse<List<DplDispatchSlip>>> sendTripForPdi(
+    int tripId, {
+    required String invoiceNo,
+  }) {
+    return _send<List<DplDispatchSlip>>(
+      () => _dio.post(
+        DplPaths.dispatchTripSendForPdi(tripId),
+        data: {'invoice_no': invoiceNo.trim()},
+      ),
+      fallback: 'Failed to send the trip for PDI.',
+      fromJson: (data) {
+        // Tolerate a few response shapes: a bare list, `{slips:[…]}`,
+        // `{items:[…]}`, `{data:[…]}`, or a single `{slip:{…}}`.
+        List? rawList;
+        if (data is List) {
+          rawList = data;
+        } else if (data is Map) {
+          final m = Map<String, dynamic>.from(data);
+          final candidate = m['slips'] ?? m['items'] ?? m['data'];
+          if (candidate is List) {
+            rawList = candidate;
+          } else if (m['slip'] is Map) {
+            rawList = [m['slip']];
+          }
+        }
+        if (rawList == null) return const <DplDispatchSlip>[];
+        return rawList
+            .whereType<Map>()
+            .map((e) =>
+                DplDispatchSlip.fromJson(Map<String, dynamic>.from(e)))
+            .toList(growable: false);
+      },
+    );
+  }
+
   /// `POST /dispatch/slips/bulk` — Manager + Dispatch.
   ///
   /// Atomic — every slip in [slips] is committed in a single DB

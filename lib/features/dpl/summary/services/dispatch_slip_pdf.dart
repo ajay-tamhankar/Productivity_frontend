@@ -95,6 +95,17 @@ class DispatchSlipPdfBuilder {
   <path d="m9 9 6 6"/>
 </svg>
 ''';
+  // Invoice / DEO entry icon (file-text) — used for the Dispatch DEO
+  // activity row where the trip's invoice no is stamped.
+  static const _receiptSvg = '''
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+  <path d="M14 2v6h6"/>
+  <path d="M16 13H8"/>
+  <path d="M16 17H8"/>
+  <path d="M10 9H8"/>
+</svg>
+''';
 
   // Soft purple tint for the activity badge background — pre-blended
   // (no alpha) so it survives print rasterisation, matching the on-screen
@@ -370,6 +381,8 @@ class DispatchSlipPdfBuilder {
     final timeStr = referenceTime == null
         ? null
         : '${timeFmt.format(referenceTime.toLocal())} IST';
+    final invoiceStr =
+        slip.invoiceNo.trim().isEmpty ? '-' : slip.invoiceNo.trim();
 
     return pw.Container(
       decoration: const pw.BoxDecoration(
@@ -411,6 +424,10 @@ class DispatchSlipPdfBuilder {
             child: _idCell(
               child: _platePartCell(fonts, partDescription, partSub),
             ),
+          ),
+          pw.Expanded(
+            flex: 10,
+            child: _idCell(child: _labelValue(fonts, 'INVOICE', invoiceStr)),
           ),
           pw.Expanded(
             flex: 10,
@@ -1296,6 +1313,16 @@ class DispatchSlipPdfBuilder {
           svg: _sendSvg,
           label: 'Requested by $requestedName',
           at: slip.requestedAt,
+        ),
+      if (slip.deoApproval != null)
+        _ActivityEntry(
+          svg: _receiptSvg,
+          label: slip.invoiceNo.trim().isNotEmpty
+              ? 'Invoice ${slip.invoiceNo.trim()} added by '
+                  '${_actorName(slip.deoApproval!.name)}'
+              : 'Sent for PDI by ${_actorName(slip.deoApproval!.name)}',
+          at: slip.deoApproval!.at,
+          remarks: slip.deoApproval!.remarks,
         ),
       if (slip.pdiApproval != null)
         _ActivityEntry(

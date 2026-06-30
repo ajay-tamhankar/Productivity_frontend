@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 
 import '../../core/design/dpl_theme.dart';
 import '../../core/dpl_api_service.dart';
-import '../../core/dpl_organization_provider.dart';
 import '../../core/widgets/dpl_snack.dart';
 import '../../manager/widgets/error_retry.dart';
 import '../../models/dpl_dispatch_slip.dart';
@@ -14,13 +13,14 @@ import '../../models/dpl_production_summary.dart';
 import '../providers/dispatch_slips_provider.dart';
 import '../providers/dispatch_trips_provider.dart';
 import '../providers/production_summary_provider.dart';
-import '../services/dispatch_slip_pdf.dart';
 
 /// Top-of-landing section that lists today's open + partial trips
 /// the manager has submitted. Each trip card lets the dispatcher
 /// multi-select plans + optionally edit qty (decrease only, with a
-/// variance note), then "Send for PDI" cuts a slip from the chosen
+/// variance note), then "Send to DEO" cuts a slip from the chosen
 /// plans via `POST /dispatch/slips` with `trip_id` + `trip_plan_ids`.
+/// The slips land in `pending_deo` — the Dispatch DEO then stamps the
+/// trip's invoice number and forwards the whole trip to PDI (+ email).
 ///
 /// This is the *new* slip-creation entry point. The legacy per-plant
 /// manual machine-picker form (in `PlantCard`) remains visible during
@@ -252,13 +252,13 @@ class _OpenTripCardState extends ConsumerState<_OpenTripCard> {
 
   Future<void> _onSend() async {
     if (_selected.isEmpty) {
-      DplSnacks.error(context, 'Tick at least one plan to send for PDI.');
+      DplSnacks.error(context, 'Tick at least one plan to send to DEO.');
       return;
     }
     if (_vehicleMissing) {
       DplSnacks.error(
         context,
-        'Vehicle no is required before sending for PDI.',
+        'Vehicle no is required before sending to DEO.',
       );
       return;
     }
@@ -307,11 +307,10 @@ class _OpenTripCardState extends ConsumerState<_OpenTripCard> {
     // didn't, and keep the still-pending plans selected so the user
     // can retry just those.
     //
-    // We collect the FULL slip objects (not just slipNos) so that
-    // once the loop succeeds we can render them into a single
-    // multi-page PDF and email the whole trip in one shot — same
-    // logic the Trip Slips screen uses. Stops the "5 plans = 5
-    // emails" problem at the source.
+    // The slips land in `pending_deo`, NOT `pending_pdi` — emailing now
+    // happens at the DEO "Send for PDI" step (once the invoice no is
+    // stamped), so Dispatch no longer emails anything here. We still
+    // collect the created slips so the success snack can name them.
     final pendingIds = _selected.toList(growable: false);
     final createdSlips = <DplDispatchSlip>[];
     String? failedError;
@@ -386,102 +385,11 @@ class _OpenTripCardState extends ConsumerState<_OpenTripCard> {
       context,
       n == 1
           ? 'Slip ${slipNos.first} created from '
-              'Trip ${widget.trip.tripNumber}. Now in PDI queue.'
+              'Trip ${widget.trip.tripNumber}. Now with Dispatch DEO '
+              'for invoicing.'
           : '$n slips created from Trip ${widget.trip.tripNumber}. '
-              'Now in PDI queue.',
+              'Now with Dispatch DEO for invoicing.',
     );
-
-    // Auto-email the freshly-cut slip stack as a single PDF. Done as
-    // a follow-up snack so the "created" success above remains the
-    // hero confirmation — the email outcome is informational.
-    if (createdSlips.isNotEmpty) {
-      await _emailCreatedSlipsAsBatch(createdSlips);
-    }
-  }
-
-  /// Renders the just-created slips into ONE multi-page PDF (one A4
-  /// page per slip via [DispatchSlipPdfBuilder.buildBatch]) and POSTs
-  /// it once to `POST /dispatch/slips/<first id>/email`. Result is a
-  /// single email with a single PDF attachment regardless of how many
-  /// slips were cut — mirrors the Trip Slips screen "Email all"
-  /// behavior so the recipient inbox stays clean.
-  ///
-  /// Endpoint quirk: the email endpoint is keyed by slip id (no
-  /// trip-level email endpoint), so the server-generated subject +
-  /// canonical filename reference the first slip's metadata. We set
-  /// `subject_suffix=Trip #N (M slips)` to mark it as a batch and pass
-  /// `slip_ids` (every slip cut) so the server can build the details
-  /// table from the whole trip once it reads that field.
-  Future<void> _emailCreatedSlipsAsBatch(
-    List<DplDispatchSlip> slips,
-  ) async {
-    final api = ref.read(dplApiServiceProvider);
-    final orgLabel = ref.read(dplActiveOrganizationProvider)?.displayLabel;
-    final anchor = slips.first;
-    final tripNumber = widget.trip.tripNumber;
-    final plantCode = widget.trip.plantCode;
-    final suffix = slips.length == 1
-        ? 'Trip #$tripNumber'
-        : 'Trip #$tripNumber (${slips.length} slips)';
-    final filename = slips.length == 1
-        ? '${anchor.slipNo}.pdf'
-        : 'Trip-$tripNumber-'
-            '${plantCode.isEmpty ? "slips" : plantCode}.pdf';
-
-    Uint8List bytes;
-    try {
-      bytes = await DispatchSlipPdfBuilder.buildBatch(
-        slips,
-        organizationLabel: orgLabel,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      DplSnacks.error(context, 'Slip PDF render failed for email: $e');
-      return;
-    }
-
-    final res = await api.sendDispatchSlipEmail(
-      anchor.id,
-      pdfBytes: bytes,
-      filename: filename,
-      subjectSuffix: suffix,
-      // Send every slip id so the server can build the email details
-      // table from the whole trip, not just the anchor slip in the path.
-      slipIds: slips.map((s) => s.id).toList(),
-    );
-
-    if (!mounted) return;
-
-    if (res.isError) {
-      DplSnacks.error(
-        context,
-        'Slip${slips.length == 1 ? "" : "s"} created but email failed: '
-        '${res.error ?? "unknown error"}',
-      );
-      return;
-    }
-    final data = res.data;
-    if (data == null) return;
-    if (data.sent) {
-      final toLabel =
-          data.to.isNotEmpty ? data.to.first : 'Dispatch';
-      DplSnacks.success(
-        context,
-        slips.length == 1
-            ? 'Slip emailed to $toLabel.'
-            : '${slips.length} slips emailed to $toLabel in one PDF.',
-      );
-    } else if (data.skipped) {
-      DplSnacks.warning(
-        context,
-        'Email skipped — SMTP is not configured on this deploy.',
-      );
-    } else {
-      DplSnacks.error(
-        context,
-        'Email not sent: ${data.reason ?? "unknown reason"}',
-      );
-    }
   }
 
   @override
@@ -620,7 +528,7 @@ class _OpenTripCardState extends ConsumerState<_OpenTripCard> {
                             ),
                           )
                         : const Icon(Icons.send_rounded, size: 16),
-                    label: Text(_submitting ? 'Sending…' : 'Send for PDI'),
+                    label: Text(_submitting ? 'Sending…' : 'Send to DEO'),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 12),

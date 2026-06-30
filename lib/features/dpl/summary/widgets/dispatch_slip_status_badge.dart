@@ -43,6 +43,7 @@ class DispatchSlipStatusBadge extends StatelessWidget {
   _StatusPalette _paletteFor(String status) {
     switch (status) {
       case DplDispatchSlipStatus.pendingQa:
+      case DplDispatchSlipStatus.pendingDeo:
       case DplDispatchSlipStatus.pendingPdi:
         return const _StatusPalette(DplColors.warning, DplColors.warningBg);
       case DplDispatchSlipStatus.approved:

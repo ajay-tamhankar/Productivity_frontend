@@ -706,6 +706,45 @@ class _SlipBand extends StatelessWidget {
             ),
           ),
         ),
+        // Invoice chip — same shape as the slip-no badge but a softer
+        // fill + a small "INVOICE" caption so it reads as an attribute
+        // of the slip, not a second identifier. Mounts only once the
+        // DEO has stamped the trip's invoice.
+        if (slip.invoiceNo.trim().isNotEmpty) ...[
+          const SizedBox(height: 7),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'INVOICE',
+                  style: _uiStyle(
+                    size: 8.5,
+                    weight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.72),
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  slip.invoiceNo.trim(),
+                  style: _monoStyle(
+                    size: 11.5,
+                    weight: FontWeight.w600,
+                    color: Colors.white,
+                    letterSpacing: 0.13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1705,6 +1744,8 @@ class _VerifySection extends StatelessWidget {
     final fmt = NumberFormat.decimalPattern();
     final cells = <_KvCell>[
       _KvCell('Slip no', slip.slipNo, mono: true),
+      if (slip.invoiceNo.trim().isNotEmpty)
+        _KvCell('Invoice no', slip.invoiceNo.trim(), mono: true),
       _KvCell('Plant', slip.plant.name.isEmpty ? '-' : slip.plant.name),
       _KvCell('Machine', _IdentityStrip._machineLabel(slip)),
       _KvCell('Vehicle', slip.vehicleNo.isEmpty ? '-' : slip.vehicleNo),
@@ -1983,6 +2024,16 @@ class _Timeline extends StatelessWidget {
       //     at: slip.qaApproval!.at,
       //     remarks: slip.qaApproval!.remarks,
       //   ),
+      if (slip.deoApproval != null)
+        _TimelineEntry(
+          icon: Icons.receipt_long_outlined,
+          label: slip.invoiceNo.trim().isNotEmpty
+              ? 'Invoice ${slip.invoiceNo.trim()} added by '
+                  '${slip.deoApproval!.name}'
+              : 'Sent for PDI by ${slip.deoApproval!.name}',
+          at: slip.deoApproval!.at,
+          remarks: slip.deoApproval!.remarks,
+        ),
       if (slip.pdiApproval != null)
         _TimelineEntry(
           icon: Icons.check_circle_outline,
