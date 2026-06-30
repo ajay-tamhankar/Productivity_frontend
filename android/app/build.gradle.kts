@@ -35,6 +35,17 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            // Drop the x86_64 ABI from RELEASE builds — it's only used by
+            // emulators, so shipping it just bloats the APK on real devices
+            // (~31 MB of the fat APK). Real hardware is arm64-v8a (modern)
+            // or armeabi-v7a (older 32-bit). Debug builds are untouched, so
+            // x86_64 emulators still work during development. For the
+            // smallest single-device APK, also build with
+            // `--target-platform android-arm64` or `--split-per-abi`.
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
         }
     }
 }

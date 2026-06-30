@@ -60,13 +60,17 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
 
   /// Mutable working copy of the trip's slips. Starts as the snapshot
   /// the inbox passed in; replaced with the server's updated slips once
-  /// the DEO sends the trip for PDI (so the invoice + new status render
+  /// the DEO sends a batch for PDI (so the invoice + new status render
   /// without a round-trip).
   late List<DplDispatchSlip> _slips;
 
-  /// Invoice no the DEO is entering for the trip. Pre-filled from the
-  /// trip's existing invoice (if any slip already carries one).
-  late final TextEditingController _invoiceCtrl;
+  /// One invoice controller per pending_deo slip id — multi-batch, each
+  /// slip the DEO forwards carries its OWN invoice. Created lazily and
+  /// disposed together at teardown.
+  final Map<int, TextEditingController> _invoiceCtrls = {};
+
+  /// Optional DEO remarks applied to the whole batch.
+  final TextEditingController _remarksCtrl = TextEditingController();
 
   /// Guards the DEO "Send for PDI" action against double taps.
   bool _sending = false;
@@ -75,20 +79,39 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
   void initState() {
     super.initState();
     _slips = List.of(widget.slips);
-    // Start empty — each DEO batch gets its own invoice (multi-batch), so
-    // we never pre-fill from a prior batch's number.
-    _invoiceCtrl = TextEditingController();
   }
 
   @override
   void dispose() {
-    _invoiceCtrl.dispose();
+    for (final c in _invoiceCtrls.values) {
+      c.dispose();
+    }
+    _remarksCtrl.dispose();
     super.dispose();
+  }
+
+  /// Lazily-created (and cached) invoice controller for one slip.
+  TextEditingController _invoiceCtrlFor(int slipId) =>
+      _invoiceCtrls.putIfAbsent(slipId, () => TextEditingController());
+
+  /// The pending_deo slips the DEO has typed an invoice for — the batch
+  /// "Send for PDI" will forward. Blank slips are excluded so the DEO can
+  /// send a subset and leave the rest for a later batch.
+  List<DeoSlipInvoice> _filledBatch() {
+    final out = <DeoSlipInvoice>[];
+    for (final s in _slips) {
+      if (s.status != DplDispatchSlipStatus.pendingDeo) continue;
+      final inv = _invoiceCtrls[s.id]?.text.trim() ?? '';
+      if (inv.isNotEmpty) {
+        out.add(DeoSlipInvoice(slipId: s.id, invoiceNo: inv));
+      }
+    }
+    return out;
   }
 
   /// True when the current user is a Dispatch DEO and this trip still
   /// has at least one slip waiting in `pending_deo` — i.e. the DEO can
-  /// stamp an invoice and forward it.
+  /// stamp invoices and forward them.
   bool _deoCanAct(String role) =>
       AppConstants.isDplDeoRole(role) &&
       _slips.any((s) => s.status == DplDispatchSlipStatus.pendingDeo);
@@ -154,11 +177,18 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
                   );
                 }
                 final slip = slips[i - 1];
+                final deoEditable = showDeoPanel &&
+                    slip.status == DplDispatchSlipStatus.pendingDeo;
                 return _SlipDetailTile(
                   slip: slip,
                   index: i,
                   total: slips.length,
                   fmt: fmt,
+                  invoiceController:
+                      deoEditable ? _invoiceCtrlFor(slip.id) : null,
+                  onInvoiceChanged:
+                      deoEditable ? (_) => setState(() {}) : null,
+                  invoiceEnabled: !_sending,
                 );
               },
             ),
@@ -168,13 +198,18 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
     );
   }
 
-  /// DEO action card pinned above the slip list — invoice-no field +
-  /// "Send for PDI" button. Stamping the invoice + forwarding the whole
-  /// trip to PDI (and emailing it) happens in one tap.
+  /// DEO action card pinned above the slip list. Each pending_deo slip
+  /// gets its own invoice field down in the list (multi-batch); this card
+  /// carries the progress count, an optional remarks note, and the Send
+  /// button. "Send" forwards only the slips that have an invoice typed —
+  /// blank ones stay in the DEO queue for a later batch.
   Widget _buildDeoPanel() {
-    final pendingCount = _slips
+    final total = _slips
         .where((s) => s.status == DplDispatchSlipStatus.pendingDeo)
         .length;
+    final filled = _filledBatch().length;
+    final allFilled = filled == total;
+    final canSend = !_sending && filled > 0;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -194,7 +229,7 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Add invoice & send for PDI',
+                  'Add invoices & send for PDI',
                   style: DplText.h3(),
                 ),
               ),
@@ -202,13 +237,15 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: DplColors.warningBg,
+                  color: allFilled
+                      ? DplColors.successBg
+                      : DplColors.warningBg,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  '$pendingCount waiting',
-                  style: const TextStyle(
-                    color: DplColors.warning,
+                  '$filled / $total invoiced',
+                  style: TextStyle(
+                    color: allFilled ? DplColors.success : DplColors.warning,
                     fontWeight: FontWeight.w800,
                     fontSize: 10.5,
                   ),
@@ -218,8 +255,9 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
           ),
           const SizedBox(height: 4),
           const Text(
-            'The invoice is stamped on every slip in this trip, printed on '
-            'each, then the trip is forwarded to PDI and emailed.',
+            'Enter an invoice no for each slip below, then send. Each slip '
+            'keeps its own invoice; slips left blank stay in the DEO queue '
+            'for a later batch.',
             style: TextStyle(
               color: DplColors.textSecondary,
               fontWeight: FontWeight.w600,
@@ -229,15 +267,14 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
           ),
           const SizedBox(height: 10),
           TextField(
-            controller: _invoiceCtrl,
-            textCapitalization: TextCapitalization.characters,
-            maxLength: 64,
+            controller: _remarksCtrl,
+            maxLength: 200,
+            maxLines: 1,
             enabled: !_sending,
-            onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
               isDense: true,
-              prefixIcon: const Icon(Icons.tag_rounded, size: 18),
-              labelText: 'Invoice no *',
+              prefixIcon: const Icon(Icons.notes_outlined, size: 18),
+              labelText: 'Remarks (optional)',
               counterText: '',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
@@ -246,9 +283,7 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
           ),
           const SizedBox(height: 10),
           FilledButton.icon(
-            onPressed: (_sending || _invoiceCtrl.text.trim().isEmpty)
-                ? null
-                : () => _sendForPdi(),
+            onPressed: canSend ? () => _sendForPdi() : null,
             icon: _sending
                 ? const SizedBox(
                     width: 16,
@@ -259,7 +294,13 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
                     ),
                   )
                 : const Icon(Icons.send_rounded, size: 18),
-            label: Text(_sending ? 'Sending…' : 'Send for PDI'),
+            label: Text(
+              _sending
+                  ? 'Sending…'
+                  : filled > 0
+                      ? 'Send $filled for PDI'
+                      : 'Send for PDI',
+            ),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 12),
             ),
@@ -269,15 +310,12 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
     );
   }
 
-  /// Stamps the invoice on the trip, moves its `pending_deo` slips to
-  /// `pending_pdi`, then emails the (now invoice-stamped) trip PDF to
-  /// PDI. On success pops back to the DEO queue.
+  /// Forwards the DEO's filled batch — each pending_deo slip with an
+  /// invoice typed — to PDI: stamps the per-slip invoices, transitions
+  /// those slips to `pending_pdi`, then emails the batch PDF to PDI.
+  /// Stays on the trip (the panel hides once nothing is left in
+  /// pending_deo) so the DEO can forward another batch later.
   Future<void> _sendForPdi() async {
-    final invoice = _invoiceCtrl.text.trim();
-    if (invoice.isEmpty) {
-      DplSnacks.error(context, 'Enter an invoice no before sending for PDI.');
-      return;
-    }
     final tripId = widget.tripId;
     if (tripId == null) {
       DplSnacks.error(
@@ -286,27 +324,33 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
       );
       return;
     }
-
-    // Count the slips this batch forwards (the pending_deo ones) before we
-    // mutate _slips — used for the success message.
-    final batchCount = _slips
-        .where((s) => s.status == DplDispatchSlipStatus.pendingDeo)
-        .length;
+    final batch = _filledBatch();
+    if (batch.isEmpty) {
+      DplSnacks.error(
+        context,
+        'Enter an invoice no for at least one slip before sending.',
+      );
+      return;
+    }
+    final batchIds = {for (final b in batch) b.slipId};
+    final remarks = _remarksCtrl.text.trim();
 
     setState(() => _sending = true);
     final api = ref.read(dplApiServiceProvider);
-    final res = await api.sendTripForPdi(tripId, invoiceNo: invoice);
+    final res = await api.sendTripForPdi(
+      tripId,
+      slipInvoices: batch,
+      remarks: remarks.isEmpty ? null : remarks,
+    );
     if (!mounted) return;
 
     if (res.isError) {
       setState(() => _sending = false);
-      // The only conflict from send-for-pdi is NO_PENDING_SLIPS: the
-      // trip's pending_deo queue was already drained (e.g. a double-tap,
-      // or another DEO forwarded the last batch). Treat it as done —
-      // refresh the queue, mark this screen's pending_deo slips forwarded
-      // so the panel hides, and stay put (no auto-navigate).
       final code = (res.code ?? '').toUpperCase();
-      if (code == 'NO_PENDING_SLIPS' || res.statusCode == 409) {
+      // NO_PENDING_SLIPS: the trip's DEO queue is already drained. Mark
+      // the local pending_deo slips forwarded so the panel hides, refresh
+      // the queue, and stay.
+      if (code == 'NO_PENDING_SLIPS') {
         ref.invalidate(dplDispatchSlipsProvider);
         setState(() {
           _slips = [
@@ -322,20 +366,29 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
         );
         return;
       }
-      // Genuine failure (network / validation) — keep the DEO on the
-      // screen with their typed invoice so they can retry.
-      DplSnacks.error(
-        context,
-        'Send for PDI failed: ${res.error ?? "unknown error"}',
-      );
+      // INVALID_STATUS: a listed slip changed status under us (another
+      // DEO moved it). Refresh the queue and ask the DEO to reopen with
+      // fresh state before re-sending.
+      if (code == 'INVALID_STATUS') {
+        ref.invalidate(dplDispatchSlipsProvider);
+        DplSnacks.warning(
+          context,
+          res.error ??
+              'A slip changed status — refresh and re-select before sending.',
+        );
+        return;
+      }
+      // VALIDATION_ERROR (or anything else) — surface verbatim and stay so
+      // the DEO can fix the input.
+      DplSnacks.error(context, res.error ?? 'Send for PDI failed.');
       return;
     }
 
     // Merge the server's updated slips (this batch, now pending_pdi with
-    // their invoice) into the on-screen list BY ID, so slips forwarded in
-    // earlier batches on the same trip are preserved. If the backend
-    // didn't echo them, stamp the invoice + forwarded status locally so
-    // the emailed PDF is still correct.
+    // their own invoice) into the on-screen list BY ID, preserving slips
+    // forwarded in earlier batches. If the backend didn't echo them, stamp
+    // each slip's own invoice + forwarded status locally so the emailed
+    // PDF is still correct.
     final updated = res.data ?? const <DplDispatchSlip>[];
     if (updated.isNotEmpty) {
       final byId = {for (final s in updated) s.id: s};
@@ -347,12 +400,13 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
         ];
       });
     } else {
+      final invById = {for (final b in batch) b.slipId: b.invoiceNo};
       setState(() {
         _slips = [
           for (final s in _slips)
-            s.status == DplDispatchSlipStatus.pendingDeo
+            invById.containsKey(s.id)
                 ? s.copyWith(
-                    invoiceNo: invoice,
+                    invoiceNo: invById[s.id],
                     status: DplDispatchSlipStatus.pendingPdi,
                   )
                 : s,
@@ -360,11 +414,9 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
       });
     }
 
-    // Email JUST this batch (the slips now carrying this invoice), not the
-    // whole trip — earlier batches were already emailed under their own
-    // invoice. Recipient is server-side config (PDI for the DEO step).
-    final batchSlips =
-        _slips.where((s) => s.invoiceNo.trim() == invoice).toList();
+    // Email JUST this batch (the slips just forwarded, by id) — earlier
+    // batches were already emailed. Recipient is server-side config (PDI).
+    final batchSlips = _slips.where((s) => batchIds.contains(s.id)).toList();
     final emailResp = await _renderAndEmail(
       batchSlips.isNotEmpty ? batchSlips : _slips,
     );
@@ -374,7 +426,7 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
     if (!mounted) return;
     // Refresh the inbox so the forwarded slips leave the DEO queue.
     ref.invalidate(dplDispatchSlipsProvider);
-    _invoiceCtrl.clear();
+    _remarksCtrl.clear();
     setState(() => _sending = false);
 
     final emailData = emailResp?.data;
@@ -390,11 +442,11 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
                         ? ' · email skipped (SMTP not configured)'
                         : ' · email not sent';
     // Stay on the trip (no auto-navigate) — the DEO may forward another
-    // batch. The panel auto-hides now that no pending_deo slips remain.
+    // batch. The panel auto-hides once no pending_deo slips remain.
     DplSnacks.success(
       context,
-      'Batch of $batchCount slip${batchCount == 1 ? "" : "s"} sent for PDI '
-      '· invoice $invoice$mailNote.',
+      'Batch of ${batch.length} slip${batch.length == 1 ? "" : "s"} '
+      'sent for PDI$mailNote.',
     );
   }
 
@@ -636,11 +688,22 @@ class _SlipDetailTile extends StatelessWidget {
   final int total;
   final NumberFormat fmt;
 
+  /// When non-null, the DEO is acting on this (pending_deo) slip — the
+  /// tile renders an editable per-slip invoice field wired to this
+  /// controller. Null for every other slip/role, which instead shows the
+  /// stamped invoice read-only (when present).
+  final TextEditingController? invoiceController;
+  final ValueChanged<String>? onInvoiceChanged;
+  final bool invoiceEnabled;
+
   const _SlipDetailTile({
     required this.slip,
     required this.index,
     required this.total,
     required this.fmt,
+    this.invoiceController,
+    this.onInvoiceChanged,
+    this.invoiceEnabled = true,
   });
 
   @override
@@ -735,6 +798,49 @@ class _SlipDetailTile extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       slip.vehicleNo,
+                      style: const TextStyle(
+                        color: DplColors.textSecondary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11.5,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              // Per-slip invoice. The DEO gets an editable field on
+              // pending_deo slips; everyone else (and forwarded slips)
+              // sees the stamped invoice read-only.
+              if (invoiceController != null) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: invoiceController,
+                  enabled: invoiceEnabled,
+                  textCapitalization: TextCapitalization.characters,
+                  maxLength: 64,
+                  onChanged: onInvoiceChanged,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    prefixIcon: const Icon(Icons.tag_rounded, size: 16),
+                    labelText: 'Invoice no for this slip *',
+                    counterText: '',
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ] else if (slip.invoiceNo.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(Icons.receipt_long_outlined,
+                        size: 13, color: DplColors.textSecondary),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Invoice ${slip.invoiceNo.trim()}',
                       style: const TextStyle(
                         color: DplColors.textSecondary,
                         fontWeight: FontWeight.w700,

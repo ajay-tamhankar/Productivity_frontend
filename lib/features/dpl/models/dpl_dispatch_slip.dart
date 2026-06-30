@@ -87,6 +87,21 @@ class DispatchSlipItemRequest {
       };
 }
 
+/// One `{slip_id, invoice_no}` entry in the Dispatch DEO send-for-pdi
+/// payload. Each pending_deo slip the DEO forwards carries its OWN
+/// invoice number (multi-batch), so the request is a list of these.
+class DeoSlipInvoice {
+  final int slipId;
+  final String invoiceNo;
+
+  const DeoSlipInvoice({required this.slipId, required this.invoiceNo});
+
+  Map<String, dynamic> toJson() => {
+        'slip_id': slipId,
+        'invoice_no': invoiceNo,
+      };
+}
+
 /// One line on a multi-item dispatch slip — a `(machine, part, qty)`
 /// triplet hydrated server-side with display fields. As of PR 3 the
 /// backend returns one of these for every machine/part combination in

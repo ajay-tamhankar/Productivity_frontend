@@ -2836,22 +2836,31 @@ class DplApiService {
 
   /// `POST /dispatch/trips/:id/send-for-pdi` — Dispatch DEO role.
   ///
-  /// Stamps [invoiceNo] on the trip, records the DEO actor + timestamp,
-  /// and transitions every `pending_deo` slip on the trip to
-  /// `pending_pdi` in one transaction. Returns the updated slips so the
-  /// caller can re-render the invoice-stamped PDF and email the trip.
+  /// Stamps a PER-SLIP invoice on each slip in [slipInvoices], records
+  /// the DEO actor + timestamp (+ optional [remarks]), and transitions
+  /// those `pending_deo` slips to `pending_pdi` in one transaction.
+  /// Slips not listed stay `pending_deo` for a later batch. Returns the
+  /// updated slips so the caller can re-render + email this batch.
   ///
-  /// Errors to expect: `INVALID_STATUS` (no pending_deo slips left),
-  /// `FORBIDDEN` (caller isn't DEO/manager), `VALIDATION_ERROR`
-  /// (invoice missing).
+  /// Errors to expect:
+  ///   * `VALIDATION_ERROR` (400) — empty list, duplicate `slip_id`, a
+  ///     `slip_id` not on the trip, or a blank/invalid `invoice_no`.
+  ///   * `INVALID_STATUS` (409) — a listed slip is no longer pending_deo
+  ///     (another DEO moved it).
+  ///   * `NO_PENDING_SLIPS` (409) — the trip has no pending_deo slips.
   Future<DplApiResponse<List<DplDispatchSlip>>> sendTripForPdi(
     int tripId, {
-    required String invoiceNo,
+    required List<DeoSlipInvoice> slipInvoices,
+    String? remarks,
   }) {
     return _send<List<DplDispatchSlip>>(
       () => _dio.post(
         DplPaths.dispatchTripSendForPdi(tripId),
-        data: {'invoice_no': invoiceNo.trim()},
+        data: {
+          'slip_invoices': [for (final si in slipInvoices) si.toJson()],
+          if (remarks != null && remarks.trim().isNotEmpty)
+            'remarks': remarks.trim(),
+        },
       ),
       fallback: 'Failed to send the trip for PDI.',
       fromJson: (data) {
