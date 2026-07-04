@@ -114,6 +114,16 @@ class DplMastersHubScreen extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           _OptionCard(
+            icon: Icons.warehouse_outlined,
+            color: const Color(0xFF1D4ED8),
+            title: 'Opening Stock at GA',
+            subtitle:
+                'Opening stock held at GA per part. Refresh monthly — '
+                'seeds the buffer report\'s "Opn Stock at GA" column.',
+            onTap: () => context.push('/dpl/manager/ga-opening-stocks'),
+          ),
+          const SizedBox(height: 10),
+          _OptionCard(
             icon: Icons.all_inbox_outlined,
             color: const Color(0xFF0E7C66),
             title: 'Packaging Qty',

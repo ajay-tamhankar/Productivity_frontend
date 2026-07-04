@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../core/dpl_api_service.dart';
 import '../../core/dpl_constants.dart';
 import '../../manager/services/dpl_excel_style.dart';
+import '../../models/dpl_part_field.dart';
 import '../../models/dpl_plant.dart';
 
 /// One part identity row in the monthly Buffer Creation Plan.
@@ -223,6 +224,22 @@ class DplBufferPlanWorkbook {
     }
     tick();
 
+    // ---- 1b. GA opening-stock master (manual, monthly per-part) ----
+    // The manager enters these in Settings → "Opening Stock at GA". We use
+    // them as the seed for the report's "Opn Stock at GA" roll-forward,
+    // overriding the value the inputs endpoint returns. Best-effort: if a
+    // part isn't configured — or this endpoint isn't reachable/authorised
+    // yet — that part falls back to the inputs `ga_opening_stock` so the
+    // report never regresses to a blank column.
+    final gaMaster = <int, int>{};
+    final gaRes = await api.listPartField(DplPartFieldKind.gaOpeningStock);
+    if (!gaRes.isError && gaRes.data != null) {
+      for (final e in gaRes.data!.entries) {
+        final v = e.value;
+        if (v != null) gaMaster[e.partId] = v;
+      }
+    }
+
     // ---- 2. Per-plant inputs (Opn Stock TML / Production / Customer Plan) ----
     var failedInputCount = 0;
     final plantAccs = <_PlantAcc>[];
@@ -260,7 +277,9 @@ class DplBufferPlanWorkbook {
               partName: row.partName,
             );
             acc.tml[dayIdx] = row.tmlOpeningStock;
-            acc.ga[dayIdx] = row.gaOpeningStock;
+            // Prefer the manual GA opening-stock master; fall back to the
+            // inputs endpoint's value when a part isn't configured there.
+            acc.ga[dayIdx] = gaMaster[row.partId] ?? row.gaOpeningStock;
             // Treat 0 production as a blank cell so the sheet stays readable.
             acc.prod[dayIdx] =
                 row.gaProductionToday == 0 ? null : row.gaProductionToday;

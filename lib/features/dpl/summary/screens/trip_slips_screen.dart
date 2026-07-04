@@ -749,6 +749,33 @@ class _SlipDetailTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  // Short part-description code (e.g. "106D1") — surfaced
+                  // so the DEO/PDI can identify the part at a glance while
+                  // invoicing. Bordered to read distinctly from the index
+                  // chip. Hidden on the rare slip with no description.
+                  if (slip.description.trim().isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: DplColors.primaryTint,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: DplColors.primary.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Text(
+                        slip.description.trim(),
+                        style: const TextStyle(
+                          color: DplColors.primaryDark,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 11.5,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   Expanded(
                     child: Text(
                       slip.slipNo,

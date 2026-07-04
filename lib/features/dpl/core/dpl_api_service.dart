@@ -2639,6 +2639,8 @@ class DplApiService {
         return DplPaths.customerTodaysPlans;
       case DplPartFieldKind.packagingQty:
         return DplPaths.packagingQtys;
+      case DplPartFieldKind.gaOpeningStock:
+        return DplPaths.gaOpeningStocks;
     }
   }
 

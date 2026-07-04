@@ -28,7 +28,16 @@ enum DplPartFieldKind {
   /// on every dispatch surface. Configured once per part — backend
   /// does NOT enforce qty as a multiple; partial packs are valid for
   /// stock-short or pilot scenarios.
-  packagingQty('packaging_qty', 'Packaging Qty', 'Update once');
+  packagingQty('packaging_qty', 'Packaging Qty', 'Update once'),
+
+  /// Refreshed MONTHLY. Opening stock currently held at GA (Grupo
+  /// Antolin) per part — the manual seed for the buffer report's
+  /// "Opn Stock at GA" roll-forward column.
+  gaOpeningStock(
+    'ga_opening_stock',
+    'Opening Stock at GA',
+    'Update monthly',
+  );
 
   /// The backend's `field` discriminator string + the per-entry value
   /// key. Used both for parsing the GET response and for building the
@@ -42,6 +51,18 @@ enum DplPartFieldKind {
   final String cadence;
 
   const DplPartFieldKind(this.apiField, this.label, this.cadence);
+
+  /// The per-part fields that feed the DAILY dispatch formula + planning
+  /// readiness. Excludes [gaOpeningStock], which only seeds the buffer
+  /// report's "Opn Stock at GA" column and must NOT gate daily dispatch
+  /// readiness or be prefetched by the dispatch-planning screens. Those
+  /// screens iterate this list instead of [values].
+  static const List<DplPartFieldKind> dispatchPlanningKinds = [
+    stockingNorm,
+    customerOpeningStock,
+    customerTodayPlan,
+    packagingQty,
+  ];
 }
 
 /// One row in the per-part field listing. `value` is `null` when the

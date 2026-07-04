@@ -213,6 +213,11 @@ class DplPaths {
   static const String customerOpeningStocks = '/manager/customer-opening-stocks';
   static const String customerTodaysPlans = '/manager/customer-todays-plans';
 
+  // GA Opening Stock — per-part opening stock held at GA, refreshed
+  // monthly. Manual master seeding the buffer report's "Opn Stock at GA"
+  // column (the Dispatch role that runs the report must be able to read it).
+  static const String gaOpeningStocks = '/manager/ga-opening-stocks';
+
   // Packaging Qty — customer-supplied units per pack (migration 049).
   // Drives the "Pack: N NOS" hint on every qty input across the
   // dispatch flow. Not enforced by backend; partial packs are valid.

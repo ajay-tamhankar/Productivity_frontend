@@ -210,6 +210,12 @@ GoRouter appRouter(Ref ref) {
             ),
           ),
           GoRoute(
+            path: 'ga-opening-stocks',
+            builder: (context, state) => const PartFieldEditScreen(
+              kind: DplPartFieldKind.gaOpeningStock,
+            ),
+          ),
+          GoRoute(
             path: 'dispatch-plan-view',
             builder: (context, state) => const DispatchPlanViewScreen(),
           ),

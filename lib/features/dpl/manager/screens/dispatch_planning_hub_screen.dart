@@ -27,7 +27,7 @@ class DispatchPlanningHubScreen extends ConsumerWidget {
         actions: [
           DplRefreshIconButton(
             onRefresh: () async {
-              for (final k in DplPartFieldKind.values) {
+              for (final k in DplPartFieldKind.dispatchPlanningKinds) {
                 ref.invalidate(dplPartFieldPageProvider(k));
               }
             },
@@ -233,6 +233,8 @@ class _MasterFieldCard extends ConsumerWidget {
         return 'customer-todays-plans';
       case DplPartFieldKind.packagingQty:
         return 'packaging-qtys';
+      case DplPartFieldKind.gaOpeningStock:
+        return 'ga-opening-stocks';
     }
   }
 
@@ -246,6 +248,8 @@ class _MasterFieldCard extends ConsumerWidget {
         return Icons.today_outlined;
       case DplPartFieldKind.packagingQty:
         return Icons.all_inbox_outlined;
+      case DplPartFieldKind.gaOpeningStock:
+        return Icons.warehouse_outlined;
     }
   }
 
@@ -259,6 +263,8 @@ class _MasterFieldCard extends ConsumerWidget {
         return DplColors.infoBg;
       case DplPartFieldKind.packagingQty:
         return DplColors.successBg;
+      case DplPartFieldKind.gaOpeningStock:
+        return DplColors.infoBg;
     }
   }
 
@@ -272,6 +278,8 @@ class _MasterFieldCard extends ConsumerWidget {
         return DplColors.info;
       case DplPartFieldKind.packagingQty:
         return DplColors.success;
+      case DplPartFieldKind.gaOpeningStock:
+        return DplColors.info;
     }
   }
 }
@@ -317,7 +325,7 @@ class _ViewPlanCard extends ConsumerWidget {
     // set on the current cached responses. If any provider isn't
     // loaded yet, show a "loading…" placeholder.
     final pages = <DplPartFieldKind, DplPartFieldPage?>{};
-    for (final k in DplPartFieldKind.values) {
+    for (final k in DplPartFieldKind.dispatchPlanningKinds) {
       final async = ref.watch(dplPartFieldPageProvider(k));
       pages[k] = async.asData?.value.data;
     }
@@ -339,7 +347,7 @@ class _ViewPlanCard extends ConsumerWidget {
       };
       for (final pid in partIds) {
         final set = byPart[pid] ?? const {};
-        if (set.length == DplPartFieldKind.values.length) {
+        if (set.length == DplPartFieldKind.dispatchPlanningKinds.length) {
           readyParts++;
         } else {
           blockedParts++;
