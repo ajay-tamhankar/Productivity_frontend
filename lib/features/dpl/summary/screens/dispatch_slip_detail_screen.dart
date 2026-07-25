@@ -2198,19 +2198,16 @@ class _RoleActions extends ConsumerWidget {
     // final isQa = AppConstants.isDplQaRole(role);
     final isPdi = AppConstants.isDplPdiRole(role);
     final isDispatch = AppConstants.isDplDispatchRole(role);
-    final isManager = AppConstants.isDplManagerRole(role);
 
-    // QA approve/reject is no longer offered — `canQaAct` would
-    // require backend changes to make sense. PDI now handles
-    // first-pass approval directly. Keeping the line commented for
-    // re-enable if QA comes back.
-    // final canQaAct =
-    //     (isQa || isManager) && slip.status == DplDispatchSlipStatus.pendingQa;
+    // Manager is VIEW-ONLY on the Dispatch dashboard (reached via the
+    // Production⇄Dispatch toggle): the old `|| isManager` override was
+    // dropped so a manager can read slips but not PDI-approve/reject or
+    // mark-dispatched. Approval/dispatch authority stays with the actual
+    // PDI / Dispatch roles.
     final canPdiAct =
-        (isPdi || isManager) && slip.status == DplDispatchSlipStatus.pendingPdi;
+        isPdi && slip.status == DplDispatchSlipStatus.pendingPdi;
     final canDispatch =
-        (isDispatch || isManager) &&
-        slip.status == DplDispatchSlipStatus.approved;
+        isDispatch && slip.status == DplDispatchSlipStatus.approved;
 
     if (!canPdiAct && !canDispatch) {
       return const SizedBox.shrink();

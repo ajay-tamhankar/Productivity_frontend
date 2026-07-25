@@ -863,8 +863,12 @@ class SummaryBucketCard extends ConsumerWidget {
     final pctText = '${pct.toStringAsFixed(0)}%';
 
     final role = ref.watch(authControllerProvider).asData?.value?.role ?? '';
-    final canRequestSlip = AppConstants.isDplDispatchRole(role) ||
-        AppConstants.isDplManagerRole(role);
+    final isDispatch = AppConstants.isDplDispatchRole(role);
+    // Read-only pipeline chips are useful oversight for a manager too;
+    // the "Request" write action (Available banner) is dispatch-only.
+    final canViewPipeline =
+        isDispatch || AppConstants.isDplManagerRole(role);
+    final canRequestSlip = isDispatch;
 
     return Material(
       color: Colors.transparent,
@@ -1072,9 +1076,14 @@ class SummaryBucketCard extends ConsumerWidget {
           // many of their slips for this exact (machine, part) are
           // already queued at QA, PDI, ready to ship, or shipped — same
           // colour palette as the QA / PDI inbox status badges.
-          if (canRequestSlip) ...[
+          // Pipeline chips (read-only oversight) — dispatch actors AND
+          // managers. The Available banner carries the "Request" write
+          // action, so it stays dispatch-only (managers are view-only).
+          if (canViewPipeline) ...[
             const SizedBox(height: 12),
             _DispatchPipelineRow(item: item),
+          ],
+          if (canRequestSlip) ...[
             const SizedBox(height: 10),
             _AvailableBanner(item: item),
           ],

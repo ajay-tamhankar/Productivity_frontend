@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/widgets/shimmer_skeleton.dart';
+import '../../../auth/auth_provider.dart';
 import '../../core/design/dpl_theme.dart';
 import '../../manager/widgets/empty_state.dart';
 import '../../manager/widgets/error_retry.dart';
+import '../../models/dpl_dispatch_plan_actual.dart';
 import '../../models/dpl_plant.dart';
+import '../providers/dispatch_plan_actual_provider.dart';
 import '../providers/dispatch_trips_provider.dart';
 import '../providers/plants_provider.dart';
 import '../providers/production_summary_provider.dart';
 import '../widgets/open_trips_section.dart';
 import '../widgets/plant_card.dart';
+import 'dispatch_plan_actual_screen.dart';
 import 'production_summary_screen.dart';
 
 /// New "select a plant first" landing screen for the Dispatch / QA /
@@ -27,6 +33,12 @@ class PlantLandingScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final plantsAsync = ref.watch(dplPlantsProvider);
+    // A manager reaches this shell view-only via the dashboard toggle —
+    // the Open Trips section is the dispatcher's "cut slips" action queue,
+    // so it's hidden for managers (they still get the read-only totals,
+    // plant cards and the slip pipeline tab).
+    final role = ref.watch(authControllerProvider).asData?.value?.role ?? '';
+    final isManager = AppConstants.isDplManagerRole(role);
 
     final body = RefreshIndicator(
       onRefresh: () async {
@@ -51,13 +63,20 @@ class PlantLandingScreen extends ConsumerWidget {
           // widget the production summary tab uses, so the numbers
           // stay perfectly consistent across both screens.
           const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          // Dispatch Plan-vs-Actual summary (Today / MTD / Till-date) —
+          // tap to open the full breakdown with filters + sort. Hides
+          // itself until the report is available.
+          const SliverToBoxAdapter(child: _DispatchPvaLandingCard()),
           const SliverToBoxAdapter(child: ProductionTotalsBanner()),
           const SliverToBoxAdapter(child: SizedBox(height: 6)),
           // Open trips section — manager-submitted trips waiting to be
           // slipped. This is the new dispatch entry point introduced in
           // migration 048; the per-plant manual machine-picker form
           // (in `PlantCard`) stays below as fallback during transition.
-          const SliverToBoxAdapter(child: OpenTripsSection()),
+          // Hidden for the view-only manager (it carries the Send-to-DEO
+          // write action).
+          if (!isManager)
+            const SliverToBoxAdapter(child: OpenTripsSection()),
           // Then — landing header + plant selection cards.
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
@@ -230,6 +249,150 @@ class _LandingHeader extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Compact Dispatch Plan-vs-Actual summary on the landing top. Shows the
+/// three period actuals-vs-plan at a glance and opens the full breakdown
+/// (with filters + sort) on tap. Renders nothing until a non-empty report
+/// is available, so the landing stays clean while loading / if the report
+/// endpoint isn't live yet.
+class _DispatchPvaLandingCard extends ConsumerWidget {
+  const _DispatchPvaLandingCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final report =
+        ref.watch(dplDispatchPlanActualProvider).asData?.value.data;
+    if (report == null || report.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const DispatchPlanActualScreen(),
+            ),
+          ),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: DplColors.cardBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: DplColors.divider),
+              boxShadow: DplShadows.card,
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.local_shipping_rounded,
+                        size: 18, color: DplColors.primaryDark),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text('Dispatch — Plan vs Actual',
+                          style: DplText.h3()),
+                    ),
+                    const Text(
+                      'Details',
+                      style: TextStyle(
+                        color: DplColors.primaryDark,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded,
+                        size: 18, color: DplColors.primaryDark),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    for (final p in DplPvaPeriod.values) ...[
+                      Expanded(child: _PvaMiniStat(period: p, report: report)),
+                      if (p != DplPvaPeriod.values.last)
+                        Container(
+                          width: 1,
+                          height: 30,
+                          color: DplColors.divider,
+                        ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PvaMiniStat extends StatelessWidget {
+  final DplPvaPeriod period;
+  final DplDispatchPlanActualReport report;
+  const _PvaMiniStat({required this.period, required this.report});
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat.decimalPattern();
+    final plan = report.planTotal(period);
+    final actual = report.actualTotal(period);
+    final pct = plan <= 0 ? null : (actual / plan * 100).round();
+    final ink = pct == null
+        ? DplColors.textSecondary
+        : (pct >= 100
+            ? DplColors.success
+            : (pct >= 70 ? DplColors.warning : DplColors.error));
+
+    return Column(
+      children: [
+        Text(
+          period.label.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.6,
+            color: DplColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 3),
+        RichText(
+          textAlign: TextAlign.center,
+          text: TextSpan(
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
+              color: ink,
+            ),
+            children: [
+              TextSpan(text: fmt.format(actual)),
+              TextSpan(
+                text: ' / ${fmt.format(plan)}',
+                style: const TextStyle(
+                  color: DplColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 11.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          pct == null ? 'no plan' : '$pct%',
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w700,
+            color: ink,
+          ),
+        ),
+      ],
     );
   }
 }

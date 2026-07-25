@@ -36,8 +36,10 @@ class BucketDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final role = ref.watch(authControllerProvider).asData?.value?.role ?? '';
-    final canRequestSlip = AppConstants.isDplDispatchRole(role) ||
-        AppConstants.isDplManagerRole(role);
+    // Dispatch-only — the "Request" slip action + its Available banner are
+    // a write surface. A manager viewing this via the dashboard toggle is
+    // read-only, so they don't see it.
+    final canRequestSlip = AppConstants.isDplDispatchRole(role);
     final slipsAsync = ref.watch(
       dplBucketSlipsProvider(
         (machineId: bucket.machineId, partId: bucket.partId),

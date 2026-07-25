@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../core/widgets/dpl_app_bar.dart';
+import '../../core/widgets/dpl_dashboard_switcher.dart';
 import '../../models/dpl_dashboard_summary.dart';
 import '../providers/dpl_dashboard_provider.dart';
 import '../providers/dpl_viewer_only_provider.dart';
@@ -96,6 +97,11 @@ class _DplManagerDashboardScreenState
       appBar: DplAppBar(
         title: 'Daily Production',
         subtitle: _LiveIndicator(lastTick: _lastTick),
+        // Full-width Production⇄Dispatch toggle band directly under the
+        // nav bar. Manager-only — hidden for the read-only Customer viewer.
+        bottom: viewerOnly
+            ? null
+            : const DplDashboardSwitcher(current: DplDashboardMode.production),
         actions: [
           // DPL Customer is read-only — Upload Plan is a write action so
           // it's stripped from the app bar entirely. The calendar picker

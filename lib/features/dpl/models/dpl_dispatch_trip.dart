@@ -194,6 +194,14 @@ class DplTrip {
   final String? cancelReason;
   final List<DplTripPlan> plans;
 
+  // Driver assignment (migration 091). Set by dispatch/manager via
+  // PATCH /dispatch/trips/:id/driver. Required before a driver can
+  // interact with the post-dispatched journey (TATA gate-in etc.).
+  final int? driverUserId;
+  final String? driverName;
+  final DateTime? driverAssignedAt;
+  final String? driverAssignedByName;
+
   // Rolled-up counts the backend computes for the list view. Optional
   // because POST /dispatch/trips may omit them (FE derives from plans).
   final int? planCount;
@@ -233,6 +241,10 @@ class DplTrip {
     this.slippedQty,
     this.dispatchedQty,
     this.cancelledQty,
+    this.driverUserId,
+    this.driverName,
+    this.driverAssignedAt,
+    this.driverAssignedByName,
   });
 
   factory DplTrip.fromJson(Map<String, dynamic> json) {
@@ -296,6 +308,21 @@ class DplTrip {
           parseIntOrNull(json['dispatched_qty'] ?? json['dispatchedQty']),
       cancelledQty:
           parseIntOrNull(json['cancelled_qty'] ?? json['cancelledQty']),
+      driverUserId:
+          parseIntOrNull(json['driver_user_id'] ?? json['driverUserId']),
+      driverName: json['driver_name'] is String
+          ? json['driver_name'] as String
+          : (json['driverName'] is String
+              ? json['driverName'] as String
+              : null),
+      driverAssignedAt: parseDateTimeOrNull(
+        json['driver_assigned_at'] ?? json['driverAssignedAt'],
+      ),
+      driverAssignedByName: json['driver_assigned_by_name'] is String
+          ? json['driver_assigned_by_name'] as String
+          : (json['driverAssignedByName'] is String
+              ? json['driverAssignedByName'] as String
+              : null),
     );
   }
 }

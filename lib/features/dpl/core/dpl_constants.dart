@@ -157,6 +157,24 @@ class DplPaths {
   static String dispatchTripPlan(int tripId, int planId) =>
       '/dispatch/trips/$tripId/plans/$planId';
 
+  // Dispatch trips — consolidated slip + gate/dock journey (gate cutover).
+  // Consolidated-slip aggregates every slip on a trip into a single
+  // printable/emailable payload. The journey feed captures the security /
+  // driver / QRE events (gate-out, tata-gate-in, tata-dock-in/out, tata-
+  // gate-out) that follow the DEO invoice step. `driver` assignment is
+  // done manager-side after the trip is planned; `driverMyTrips` is the
+  // driver-role list of trips currently assigned to the caller.
+  static const String driverMyTrips = '/driver/my-trips';
+  static String tripConsolidatedSlip(int id) =>
+      '/dispatch/trips/$id/consolidated-slip';
+  static String tripJourney(int id) => '/dispatch/trips/$id/journey';
+  static String tripDriver(int id) => '/dispatch/trips/$id/driver';
+  static String tripGateOut(int id) => '/dispatch/trips/$id/gate-out';
+  static String tripTataGateIn(int id) => '/dispatch/trips/$id/tata-gate-in';
+  static String tripTataDockIn(int id) => '/dispatch/trips/$id/tata-dock-in';
+  static String tripTataDockOut(int id) => '/dispatch/trips/$id/tata-dock-out';
+  static String tripTataGateOut(int id) => '/dispatch/trips/$id/tata-gate-out';
+
   /// `POST /dispatch/trips/:id/send-for-pdi` — DEO role. Stamps the
   /// trip's invoice no, records the DEO actor, and transitions all the
   /// trip's `pending_deo` slips to `pending_pdi` in one transaction.
@@ -180,6 +198,13 @@ class DplPaths {
       '/dispatch/slips/$id/mark-dispatched';
   static String dispatchSlipEmail(int id) => '/dispatch/slips/$id/email';
   static const String dispatchSlipVerify = '/dispatch/slips/verify';
+
+  /// `GET /dispatch/reports/plan-vs-actual` — Dispatch + Manager. Returns
+  /// the per-(plant, machine, part) breakdown of planned dispatch (Σ trip
+  /// plan qty by trip date) vs actual dispatch (Σ dispatched-slip qty by
+  /// dispatch date) for Today / MTD / Till-date. The FE filters, sorts and
+  /// re-aggregates client-side.
+  static const String dispatchPlanVsActual = '/dispatch/reports/plan-vs-actual';
 
   // ---------------------------------------------------------------------------
   // Auto Dispatch Plan (migration 045) — JIT buffer-replenishment calculator

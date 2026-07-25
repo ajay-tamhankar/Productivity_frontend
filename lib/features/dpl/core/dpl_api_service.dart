@@ -27,10 +27,13 @@ import '../models/dpl_carry_candidate.dart';
 import '../models/_json_helpers.dart';
 import '../models/dpl_buffer_norm.dart';
 import '../models/dpl_customer_snapshot.dart';
+import '../models/dpl_dispatch_plan_actual.dart';
 import '../models/dpl_dispatch_plan_inputs.dart';
+import '../models/dpl_consolidated_slip.dart';
 import '../models/dpl_dispatch_slip.dart';
 import '../models/dpl_dispatch_slips_bulk.dart';
 import '../models/dpl_dispatch_trip.dart';
+import '../models/dpl_trip_journey_event.dart';
 import '../models/dpl_identity.dart';
 import '../models/dpl_part_field.dart';
 import '../models/dpl_plant.dart';
@@ -2836,6 +2839,32 @@ class DplApiService {
     );
   }
 
+  /// `GET /dispatch/reports/plan-vs-actual` — Dispatch + Manager.
+  ///
+  /// Returns the per-(plant, machine, part) breakdown of planned vs actual
+  /// dispatch for Today / MTD / Till-date. Plan = Σ trip plan qty (by trip
+  /// date); Actual = Σ dispatched-slip item qty (by dispatch date). The FE
+  /// filters / sorts / re-aggregates client-side, so no query params are
+  /// required — the endpoint returns the whole org breakdown.
+  Future<DplApiResponse<DplDispatchPlanActualReport>>
+      getDispatchPlanVsActual() {
+    return _send<DplDispatchPlanActualReport>(
+      () => _dio.get(DplPaths.dispatchPlanVsActual),
+      fallback: 'Failed to load the dispatch plan-vs-actual report.',
+      fromJson: (data) {
+        if (data is Map) {
+          return DplDispatchPlanActualReport.fromJson(
+            Map<String, dynamic>.from(data),
+          );
+        }
+        if (data is List) {
+          return DplDispatchPlanActualReport.fromJson({'breakdown': data});
+        }
+        return const DplDispatchPlanActualReport();
+      },
+    );
+  }
+
   /// `POST /dispatch/trips/:id/send-for-pdi` — Dispatch DEO role.
   ///
   /// Stamps a PER-SLIP invoice on each slip in [slipInvoices], records
@@ -2923,6 +2952,263 @@ class DplApiService {
         }
         throw const FormatException('Expected object response.');
       },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dispatch trips — consolidated slip + gate/dock journey (gate cutover).
+  //
+  // These endpoints back the post-DEO leg of a trip: a single consolidated
+  // slip payload that gates + drivers scan, and the sequential journey
+  // events (gate-out, tata-gate-in, tata-dock-in/out, tata-gate-out) that
+  // move the trip through security, the Tata plant, and back out. Driver
+  // assignment (`PATCH .../driver`) is manager-side; `driver/my-trips` is
+  // the driver-role inbox for whatever's currently on their plate.
+  // ---------------------------------------------------------------------------
+
+  /// `GET /dispatch/trips/:id/consolidated-slip` — one aggregated payload
+  /// that rolls every slip on a trip into the single-page printable /
+  /// emailable view scanned at the security gate. Any role that can see
+  /// the trip can read this.
+  Future<DplApiResponse<DplConsolidatedSlip>> getConsolidatedSlip(int tripId) {
+    return _send<DplConsolidatedSlip>(
+      () => _dio.get(DplPaths.tripConsolidatedSlip(tripId)),
+      fallback: 'Failed to load consolidated slip.',
+      fromJson: (data) {
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          final inner = map['consolidated_slip'] ?? map['slip'];
+          if (inner is Map) {
+            return DplConsolidatedSlip.fromJson(
+              Map<String, dynamic>.from(inner),
+            );
+          }
+          return DplConsolidatedSlip.fromJson(map);
+        }
+        throw const FormatException(
+          'Expected object response for consolidated slip.',
+        );
+      },
+    );
+  }
+
+  /// `GET /dispatch/trips/:id/journey` — ordered feed of every journey
+  /// event (gate-out → tata-gate-in → tata-dock-in/out → tata-gate-out)
+  /// recorded against the trip. Server sorts oldest-first so callers can
+  /// render a timeline without post-processing.
+  Future<DplApiResponse<List<DplTripJourneyEvent>>> listTripJourney(
+    int tripId,
+  ) {
+    return _send<List<DplTripJourneyEvent>>(
+      () => _dio.get(DplPaths.tripJourney(tripId)),
+      fallback: 'Failed to load trip journey.',
+      fromJson: (data) {
+        List<dynamic>? raw;
+        if (data is List) {
+          raw = data;
+        } else if (data is Map) {
+          for (final key in const [
+            'events',
+            'journey',
+            'items',
+            'data',
+            'rows',
+          ]) {
+            final v = data[key];
+            if (v is List) {
+              raw = v;
+              break;
+            }
+          }
+        }
+        if (raw == null) return const <DplTripJourneyEvent>[];
+        return raw
+            .whereType<Map>()
+            .map((e) =>
+                DplTripJourneyEvent.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      },
+    );
+  }
+
+  /// `PATCH /dispatch/trips/:id/driver` — Manager. Assigns / reassigns
+  /// the app user who'll drive this trip. Backend enforces that
+  /// [driverUserId] resolves to a `dpl_driver` role.
+  Future<DplApiResponse<DplTrip>> assignTripDriver(
+    int tripId, {
+    required int driverUserId,
+  }) {
+    return _send<DplTrip>(
+      () => _dio.patch(
+        DplPaths.tripDriver(tripId),
+        data: {'driver_user_id': driverUserId},
+      ),
+      fallback: 'Failed to assign driver.',
+      fromJson: (data) {
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          final raw = map['trip'] is Map
+              ? Map<String, dynamic>.from(map['trip'] as Map)
+              : map;
+          return DplTrip.fromJson(raw);
+        }
+        throw const FormatException('Expected object response.');
+      },
+    );
+  }
+
+  /// `POST /dispatch/trips/:id/gate-out` — role: `dpl_security`.
+  ///
+  /// Security scans the consolidated-slip QR ([qrToken]) at the gate to
+  /// release the truck. Returns the persisted journey event so the caller
+  /// can update the timeline in place.
+  Future<DplApiResponse<DplTripJourneyEvent>> gateOutTrip(
+    int tripId, {
+    required String qrToken,
+  }) {
+    return _send<DplTripJourneyEvent>(
+      () => _dio.post(
+        DplPaths.tripGateOut(tripId),
+        data: {'qr_token': qrToken},
+      ),
+      fallback: 'Failed to gate-out trip.',
+      fromJson: _oneJourneyEvent,
+    );
+  }
+
+  /// `POST /dispatch/trips/:id/tata-gate-in` — role: `dpl_driver`.
+  ///
+  /// Driver arrives at the Tata plant gate and enters the LECI details
+  /// (barcode + truck no; [leciNo] and [leciRfid] optional depending on
+  /// the gate's process).
+  Future<DplApiResponse<DplTripJourneyEvent>> tataGateInTrip(
+    int tripId, {
+    required String leciBarcode,
+    required String leciTruckNo,
+    String? leciNo,
+    String? leciRfid,
+  }) {
+    return _send<DplTripJourneyEvent>(
+      () => _dio.post(
+        DplPaths.tripTataGateIn(tripId),
+        data: {
+          'leci_barcode': leciBarcode,
+          'leci_truck_no': leciTruckNo,
+          if (leciNo != null && leciNo.trim().isNotEmpty)
+            'leci_no': leciNo.trim(),
+          if (leciRfid != null && leciRfid.trim().isNotEmpty)
+            'leci_rfid': leciRfid.trim(),
+        },
+      ),
+      fallback: 'Failed to record Tata gate-in.',
+      fromJson: _oneJourneyEvent,
+    );
+  }
+
+  /// `POST /dispatch/trips/:id/tata-dock-in` — role: `dpl_qre`.
+  ///
+  /// QRE scans the consolidated-slip QR ([qrToken]) at the dock to
+  /// receive the truck.
+  Future<DplApiResponse<DplTripJourneyEvent>> tataDockInTrip(
+    int tripId, {
+    required String qrToken,
+  }) {
+    return _send<DplTripJourneyEvent>(
+      () => _dio.post(
+        DplPaths.tripTataDockIn(tripId),
+        data: {'qr_token': qrToken},
+      ),
+      fallback: 'Failed to record Tata dock-in.',
+      fromJson: _oneJourneyEvent,
+    );
+  }
+
+  /// `POST /dispatch/trips/:id/tata-dock-out` — role: `dpl_qre`.
+  ///
+  /// Unload complete; QRE records how many empty trolleys are being
+  /// returned in [emptyTrolleyCount], optionally with [remarks].
+  Future<DplApiResponse<DplTripJourneyEvent>> tataDockOutTrip(
+    int tripId, {
+    required int emptyTrolleyCount,
+    String? remarks,
+  }) {
+    return _send<DplTripJourneyEvent>(
+      () => _dio.post(
+        DplPaths.tripTataDockOut(tripId),
+        data: {
+          'empty_trolley_count': emptyTrolleyCount,
+          if (remarks != null && remarks.trim().isNotEmpty)
+            'remarks': remarks.trim(),
+        },
+      ),
+      fallback: 'Failed to record Tata dock-out.',
+      fromJson: _oneJourneyEvent,
+    );
+  }
+
+  /// `POST /dispatch/trips/:id/tata-gate-out` — role: `dpl_driver`.
+  ///
+  /// Driver leaves the Tata plant; closes the on-plant leg of the trip.
+  Future<DplApiResponse<DplTripJourneyEvent>> tataGateOutTrip(int tripId) {
+    return _send<DplTripJourneyEvent>(
+      () => _dio.post(DplPaths.tripTataGateOut(tripId)),
+      fallback: 'Failed to record Tata gate-out.',
+      fromJson: _oneJourneyEvent,
+    );
+  }
+
+  /// `GET /driver/my-trips` — role: `dpl_driver`. Trips currently
+  /// assigned to the calling driver. Backend scopes the list to the
+  /// driver's actionable subset (not yet fully gated out).
+  Future<DplApiResponse<List<DplTrip>>> getMyDriverTrips() {
+    return _send<List<DplTrip>>(
+      () => _dio.get(DplPaths.driverMyTrips),
+      fallback: 'Failed to load my trips.',
+      fromJson: (data) {
+        List<dynamic>? raw;
+        if (data is List) {
+          raw = data;
+        } else if (data is Map) {
+          for (final key in const [
+            'trips',
+            'items',
+            'data',
+            'rows',
+            'results',
+          ]) {
+            final v = data[key];
+            if (v is List) {
+              raw = v;
+              break;
+            }
+          }
+        }
+        if (raw == null) return const <DplTrip>[];
+        return raw
+            .whereType<Map>()
+            .map((e) => DplTrip.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      },
+    );
+  }
+
+  /// Shared fromJson for every single-journey-event endpoint. Tolerates
+  /// both the envelope-stripped shape and an `{ event: { ... } }` wrapper.
+  DplTripJourneyEvent _oneJourneyEvent(dynamic data) {
+    if (data is Map) {
+      final map = Map<String, dynamic>.from(data);
+      for (final key in const ['event', 'journey_event', 'journeyEvent']) {
+        final inner = map[key];
+        if (inner is Map) {
+          return DplTripJourneyEvent.fromJson(
+            Map<String, dynamic>.from(inner),
+          );
+        }
+      }
+      return DplTripJourneyEvent.fromJson(map);
+    }
+    throw const FormatException(
+      'Expected object response for journey event.',
     );
   }
 }

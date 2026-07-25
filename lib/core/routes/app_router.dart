@@ -7,6 +7,9 @@ import '../../features/auth/login_screen.dart';
 import '../../features/dashboard/admin_dashboard_screen.dart';
 import '../../features/dashboard/brin_dashboard_screen.dart';
 import '../../features/dashboard/operator_dashboard_screen.dart';
+import '../../features/dpl/journey/screens/driver_home_screen.dart';
+import '../../features/dpl/journey/screens/qre_scanner_screen.dart';
+import '../../features/dpl/journey/screens/security_scanner_screen.dart';
 import '../../features/dpl/manager/manager_shell.dart';
 import '../../features/dpl/manager/screens/masters/downtime_reasons_master_screen.dart';
 import '../../features/dpl/manager/screens/masters/machines_master_screen.dart';
@@ -51,6 +54,9 @@ GoRouter appRouter(Ref ref) {
       const dplManagerPath = '/dpl/manager';
       const dplSupervisorPath = '/dpl/supervisor';
       const dplSummaryPath = '/dpl/summary';
+      const dplSecurityPath = '/dpl/security';
+      const dplQrePath = '/dpl/qre';
+      const dplDriverPath = '/dpl/driver';
 
       final isAuth = authState.value != null;
       final isLoggingIn = state.matchedLocation == loginPath;
@@ -62,6 +68,9 @@ GoRouter appRouter(Ref ref) {
       final isDplCustomerRole = AppConstants.isDplCustomerRole(role);
       final isDplSummaryViewerRole =
           AppConstants.isDplSummaryViewerRole(role);
+      final isDplSecurityRole = AppConstants.isDplSecurityRole(role);
+      final isDplQreRole = AppConstants.isDplQreRole(role);
+      final isDplDriverRole = AppConstants.isDplDriverRole(role);
 
       final defaultDashboardPath = isDplManagerRole
           ? dplManagerPath
@@ -71,11 +80,17 @@ GoRouter appRouter(Ref ref) {
                   ? dplManagerPath
                   : isDplSummaryViewerRole
                       ? dplSummaryPath
-                      : isAdminRole
-                          ? adminDashboardPath
-                          : isBrinRole
-                              ? brinDashboardPath
-                              : operatorDashboardPath;
+                      : isDplSecurityRole
+                          ? dplSecurityPath
+                          : isDplQreRole
+                              ? dplQrePath
+                              : isDplDriverRole
+                                  ? dplDriverPath
+                                  : isAdminRole
+                                      ? adminDashboardPath
+                                      : isBrinRole
+                                          ? brinDashboardPath
+                                          : operatorDashboardPath;
 
       // If still loading init state, don't redirect aggressively
       if (authState.isLoading && !isAuth) return null;
@@ -101,7 +116,20 @@ GoRouter appRouter(Ref ref) {
               isDplManagerRole ||
               isDplSupervisorRole ||
               isDplCustomerRole ||
-              isDplSummaryViewerRole)) {
+              isDplSummaryViewerRole ||
+              isDplSecurityRole ||
+              isDplQreRole ||
+              isDplDriverRole)) {
+        return defaultDashboardPath;
+      }
+      // Sandbox each new journey shell to only its own role.
+      if (state.matchedLocation.startsWith(dplSecurityPath) && !isDplSecurityRole) {
+        return defaultDashboardPath;
+      }
+      if (state.matchedLocation.startsWith(dplQrePath) && !isDplQreRole) {
+        return defaultDashboardPath;
+      }
+      if (state.matchedLocation.startsWith(dplDriverPath) && !isDplDriverRole) {
         return defaultDashboardPath;
       }
       if (state.matchedLocation == newEntryPath && isBrinRole) {
@@ -128,11 +156,12 @@ GoRouter appRouter(Ref ref) {
           !isDplSupervisorRole) {
         return defaultDashboardPath;
       }
-      // Sandbox the Production Summary shell to the three summary-only
-      // roles. Manager / Supervisor / Customer have their own shells —
-      // they should never end up under /dpl/summary.
+      // Sandbox the Production Summary (Dispatch) shell to the summary-only
+      // roles PLUS the Manager — the manager can toggle into the Dispatch
+      // dashboard for quick oversight via the AppBar switcher. Supervisor /
+      // Customer still have no business here and are bounced to their shell.
       if (state.matchedLocation.startsWith('/dpl/summary') &&
-          !isDplSummaryViewerRole) {
+          !(isDplSummaryViewerRole || isDplManagerRole)) {
         return defaultDashboardPath;
       }
 
@@ -264,6 +293,19 @@ GoRouter appRouter(Ref ref) {
       GoRoute(
         path: '/dpl/summary',
         builder: (context, state) => const DplSummaryShell(),
+      ),
+      // DPL Journey actors — each role lands on their own scanner-driven shell.
+      GoRoute(
+        path: '/dpl/security',
+        builder: (context, state) => const SecurityScannerScreen(),
+      ),
+      GoRoute(
+        path: '/dpl/qre',
+        builder: (context, state) => const QreScannerScreen(),
+      ),
+      GoRoute(
+        path: '/dpl/driver',
+        builder: (context, state) => const DriverHomeScreen(),
       ),
       // DPL Supervisor — Phase 2 shell with bottom nav.
       GoRoute(

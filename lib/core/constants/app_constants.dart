@@ -46,6 +46,13 @@ class AppConstants {
   /// invoice number, then forwards the whole trip to PDI + emails it.
   static const String roleDplDeo = 'DPL_DEO';
 
+  /// Scanner-only DPL roles. Each of these lands on its own scanner home
+  /// screen (not the shared Production Summary shell) and has no other
+  /// access into the DPL module.
+  static const String roleDplSecurity = 'DPL_SECURITY';
+  static const String roleDplQre = 'DPL_QRE';
+  static const String roleDplDriver = 'DPL_DRIVER';
+
   static const List<String> assignableRoles = <String>[
     roleAdmin,
     roleSupervisor,
@@ -79,6 +86,12 @@ class AppConstants {
         return 'DPL PDI';
       case roleDplDeo:
         return 'Dispatch DEO';
+      case roleDplSecurity:
+        return 'DPL Security';
+      case roleDplQre:
+        return 'DPL QRE';
+      case roleDplDriver:
+        return 'DPL Driver';
       default:
         return normalizeRole(role);
     }
@@ -112,6 +125,14 @@ class AppConstants {
 
   static bool isDplDeoRole(String role) => normalizeRole(role) == roleDplDeo;
 
+  static bool isDplSecurityRole(String role) =>
+      normalizeRole(role) == roleDplSecurity;
+
+  static bool isDplQreRole(String role) => normalizeRole(role) == roleDplQre;
+
+  static bool isDplDriverRole(String role) =>
+      normalizeRole(role) == roleDplDriver;
+
   /// Any of the downstream "summary-only" roles (Dispatch / QA / PDI /
   /// DEO). These users land on the Production Summary shell and have no
   /// other DPL access.
@@ -125,5 +146,8 @@ class AppConstants {
       isDplManagerRole(role) ||
       isDplSupervisorRole(role) ||
       isDplCustomerRole(role) ||
-      isDplSummaryViewerRole(role);
+      isDplSummaryViewerRole(role) ||
+      isDplSecurityRole(role) ||
+      isDplQreRole(role) ||
+      isDplDriverRole(role);
 }

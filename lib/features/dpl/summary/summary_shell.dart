@@ -6,6 +6,7 @@ import '../../auth/auth_provider.dart';
 import '../core/design/dpl_theme.dart';
 import '../core/widgets/dpl_app_bar.dart';
 import '../core/widgets/dpl_bottom_nav.dart';
+import '../core/widgets/dpl_dashboard_switcher.dart';
 import '../core/widgets/dpl_refresh_icon_button.dart';
 import 'providers/dispatch_slips_provider.dart';
 import 'providers/dispatch_trips_provider.dart';
@@ -62,6 +63,12 @@ class DplSummaryShell extends ConsumerWidget {
       backgroundColor: DplColors.pageBg,
       appBar: DplAppBar(
         title: titles[tabIndex],
+        // Full-width Production⇄Dispatch toggle band directly under the
+        // nav bar. Manager-only — Dispatch / DEO / PDI never see it (they
+        // can't reach the Production shell).
+        bottom: AppConstants.isDplManagerRole(role)
+            ? const DplDashboardSwitcher(current: DplDashboardMode.dispatch)
+            : null,
         actions: [
           // Dispatch role can pull the monthly Buffer Creation Plan as an
           // Excel workbook (Opn Stock at TML / Production at GA / Dispatch
