@@ -8,8 +8,8 @@ import '../../features/dashboard/admin_dashboard_screen.dart';
 import '../../features/dashboard/brin_dashboard_screen.dart';
 import '../../features/dashboard/operator_dashboard_screen.dart';
 import '../../features/dpl/journey/screens/driver_home_screen.dart';
-import '../../features/dpl/journey/screens/qre_scanner_screen.dart';
-import '../../features/dpl/journey/screens/security_scanner_screen.dart';
+import '../../features/dpl/journey/screens/qre_home_screen.dart';
+import '../../features/dpl/journey/screens/security_home_screen.dart';
 import '../../features/dpl/manager/manager_shell.dart';
 import '../../features/dpl/manager/screens/masters/downtime_reasons_master_screen.dart';
 import '../../features/dpl/manager/screens/masters/machines_master_screen.dart';
@@ -297,11 +297,11 @@ GoRouter appRouter(Ref ref) {
       // DPL Journey actors — each role lands on their own scanner-driven shell.
       GoRoute(
         path: '/dpl/security',
-        builder: (context, state) => const SecurityScannerScreen(),
+        builder: (context, state) => const SecurityHomeScreen(),
       ),
       GoRoute(
         path: '/dpl/qre',
-        builder: (context, state) => const QreScannerScreen(),
+        builder: (context, state) => const QreHomeScreen(),
       ),
       GoRoute(
         path: '/dpl/driver',

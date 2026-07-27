@@ -9,6 +9,7 @@ import '../../core/design/dpl_theme.dart';
 import '../../core/dpl_api_service.dart';
 import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_snack.dart';
+import '../providers/journey_session_state.dart';
 
 /// QRE's home screen at TATA — full-screen scanner that walks the QRE
 /// through the two-step receive:
@@ -115,6 +116,14 @@ class _QreScannerScreenState extends ConsumerState<QreScannerScreen> {
       DplSnacks.success(context, 'Dock-in recorded.');
     }
 
+    // Session-scope: record dock-in on the QRE home dashboard.
+    ref.read(qreRecentProvider.notifier).add(JourneyActivity(
+          tripId: tripId,
+          tripNumber: tripNo,
+          event: 'tata_dock_in',
+          at: DateTime.now(),
+        ));
+
     final completed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => _QreDockOutFormScreen(
@@ -132,6 +141,13 @@ class _QreScannerScreenState extends ConsumerState<QreScannerScreen> {
             ? 'Trip #$tripNo: Dock-Out recorded'
             : 'Dock-Out recorded.',
       );
+      // Session-scope: also record the dock-out on the home dashboard.
+      ref.read(qreRecentProvider.notifier).add(JourneyActivity(
+            tripId: tripId,
+            tripNumber: tripNo,
+            event: 'tata_dock_out',
+            at: DateTime.now(),
+          ));
     }
     await _restartScanner();
   }

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -222,6 +224,10 @@ class _DriverTripScreenState extends ConsumerState<DriverTripScreen> {
         label = 'Ready for Gate Out';
         break;
       case 'tata_gate_out':
+        c = DplColors.warning;
+        label = 'Returning · Awaiting Origin re-scan';
+        break;
+      case 'gate_in':
         c = DplColors.success;
         label = 'Trip Complete';
         break;
@@ -271,12 +277,21 @@ class _DriverTripScreenState extends ConsumerState<DriverTripScreen> {
       case 'tata_dock_out':
         return _gateOutButton();
       case 'tata_gate_out':
+        // Truck has left TATA. Driver's role is done actively — they
+        // just drive back. The trip closes only after Security scans
+        // the QR again at the origin gate ('gate_in').
+        return _showQrPanel(
+          qrToken,
+          caption:
+              'On arrival back at the Origin plant, show this same QR to Security for the final gate scan.',
+        );
+      case 'gate_in':
         return _passivePanel(
           icon: Icons.check_circle_rounded,
           color: DplColors.success,
           title: 'Trip complete',
           subtitle:
-              'All journey events recorded. You can safely leave TATA premises.',
+              'Return recorded at the Origin gate. All journey events done.',
         );
       default:
         return _passivePanel(
@@ -348,6 +363,15 @@ class _DriverTripScreenState extends ConsumerState<DriverTripScreen> {
             icon: const Icon(Icons.qr_code_scanner_rounded),
             label: const Text('Scan LECI barcode'),
             onPressed: _busy ? null : _openLeciScanner,
+          ),
+          const SizedBox(height: 8),
+          // Fallback for a smudged / unreadable barcode: photograph the
+          // LECI paper and type the truck no. The gate-in is recorded with
+          // the photo instead of a scanned barcode.
+          OutlinedButton.icon(
+            icon: const Icon(Icons.photo_camera_outlined),
+            label: const Text("Can't scan? Upload LECI photo"),
+            onPressed: _busy ? null : _openLeciPhotoUpload,
           ),
         ],
       ),
@@ -459,6 +483,50 @@ class _DriverTripScreenState extends ConsumerState<DriverTripScreen> {
       return;
     }
     DplSnacks.success(context, 'TATA Gate In recorded.');
+    await _load();
+  }
+
+  /// Fallback path when the LECI barcode won't scan: driver photographs
+  /// the paper + types the truck no, and the gate-in is recorded with the
+  /// image instead of a scanned barcode.
+  Future<void> _openLeciPhotoUpload() async {
+    final result = await showModalBottomSheet<_LeciPhotoResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _LeciPhotoSheet(),
+    );
+    if (!mounted || result == null) return;
+    await _submitLeciPhoto(result);
+  }
+
+  Future<void> _submitLeciPhoto(_LeciPhotoResult r) async {
+    setState(() => _busy = true);
+    final api = ref.read(dplApiServiceProvider);
+    final res = await api.tataGateInTrip(
+      widget.tripId,
+      // No scanned barcode on this path — the photo IS the evidence.
+      leciBarcode: '',
+      leciTruckNo: r.truckNo,
+      leciNo: r.leciNo,
+      leciPhotoBytes: r.bytes,
+      leciPhotoFilename: r.filename,
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (res.isError) {
+      final err = res.error ?? 'TATA Gate In failed';
+      final isMismatch = err.toLowerCase().contains('vehicle_mismatch') ||
+          err.toLowerCase().contains('mismatch');
+      DplSnacks.error(
+        context,
+        isMismatch
+            ? 'Vehicle number does not match this trip. Please verify.'
+            : err,
+      );
+      return;
+    }
+    DplSnacks.success(context, 'TATA Gate In recorded with LECI photo.');
     await _load();
   }
 
@@ -579,4 +647,273 @@ class _LeciScannerScreenState extends State<_LeciScannerScreen> {
 
 extension _FirstOrNull<T> on List<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+/// Result of the LECI photo-fallback sheet: the captured image + the
+/// manually-entered truck no (required) and optional LECI no.
+class _LeciPhotoResult {
+  final Uint8List bytes;
+  final String filename;
+  final String truckNo;
+  final String leciNo;
+  const _LeciPhotoResult({
+    required this.bytes,
+    required this.filename,
+    required this.truckNo,
+    required this.leciNo,
+  });
+}
+
+/// Bottom sheet for the "barcode won't scan" fallback: photograph the LECI
+/// paper + type the truck no. Pops a [_LeciPhotoResult] on confirm. Mirrors
+/// the trolley-photo capture UX (rear camera, retrieve-lost-data recovery
+/// for when Android kills the app behind the camera intent).
+class _LeciPhotoSheet extends StatefulWidget {
+  const _LeciPhotoSheet();
+
+  @override
+  State<_LeciPhotoSheet> createState() => _LeciPhotoSheetState();
+}
+
+class _LeciPhotoSheetState extends State<_LeciPhotoSheet> {
+  final _picker = ImagePicker();
+  final _truckCtrl = TextEditingController();
+  final _leciCtrl = TextEditingController();
+  Uint8List? _bytes;
+  String _filename = 'leci.jpg';
+  bool _capturing = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _tryRecoverLostShot();
+  }
+
+  @override
+  void dispose() {
+    _truckCtrl.dispose();
+    _leciCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _tryRecoverLostShot() async {
+    try {
+      final lost = await _picker.retrieveLostData();
+      if (lost.isEmpty ||
+          lost.file == null ||
+          lost.type != RetrieveType.image) {
+        return;
+      }
+      await _useXFile(lost.file!);
+    } catch (_) {
+      // Platform doesn't support retrieveLostData — safe to ignore.
+    }
+  }
+
+  Future<void> _useXFile(XFile picked) async {
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _bytes = bytes;
+      _filename = picked.name.isEmpty ? 'leci.jpg' : picked.name;
+      _capturing = false;
+      _error = null;
+    });
+  }
+
+  Future<void> _pick(ImageSource source) async {
+    setState(() {
+      _capturing = true;
+      _error = null;
+    });
+    try {
+      final picked = await _picker.pickImage(
+        source: source,
+        preferredCameraDevice: CameraDevice.rear,
+        imageQuality: 80,
+        maxWidth: 1600,
+      );
+      if (picked == null) {
+        if (!mounted) return;
+        setState(() => _capturing = false);
+        return;
+      }
+      await _useXFile(picked);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _capturing = false;
+        _error = 'Could not capture the photo: $e';
+      });
+    }
+  }
+
+  // Truck number softened to optional (2026-07-25). Photo is still the
+  // load-bearing evidence — submit is enabled the moment a photo is captured.
+  bool get _canSubmit => _bytes != null && !_capturing;
+
+  void _submit() {
+    if (!_canSubmit) return;
+    Navigator.of(context).pop(
+      _LeciPhotoResult(
+        bytes: _bytes!,
+        filename: _filename,
+        truckNo: _truckCtrl.text.trim(),
+        leciNo: _leciCtrl.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: DplColors.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Upload LECI photo',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  "Barcode won't scan? Snap a clear photo of the LECI paper "
+                  'and enter the truck number from it.',
+                  style: TextStyle(
+                    color: DplColors.textSecondary,
+                    fontSize: 12.5,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                AspectRatio(
+                  aspectRatio: 16 / 10,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: DplColors.neutralBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: DplColors.divider),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: _bytes != null
+                        ? Image.memory(_bytes!, fit: BoxFit.cover)
+                        : Center(
+                            child: _capturing
+                                ? const CircularProgressIndicator()
+                                : const Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.image_outlined,
+                                          size: 40,
+                                          color: DplColors.textTertiary),
+                                      SizedBox(height: 6),
+                                      Text('No photo yet',
+                                          style: TextStyle(
+                                              color: DplColors.textSecondary)),
+                                    ],
+                                  ),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _capturing
+                            ? null
+                            : () => _pick(ImageSource.camera),
+                        icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                        label: Text(_bytes == null ? 'Take photo' : 'Retake'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _capturing
+                            ? null
+                            : () => _pick(ImageSource.gallery),
+                        icon: const Icon(Icons.photo_library_outlined, size: 18),
+                        label: const Text('Gallery'),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _error!,
+                    style: const TextStyle(
+                      color: DplColors.error,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _truckCtrl,
+                  textCapitalization: TextCapitalization.characters,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    labelText: 'Truck number (optional)',
+                    prefixIcon:
+                        const Icon(Icons.local_shipping_outlined, size: 18),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _leciCtrl,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    labelText: 'LECI no (optional)',
+                    prefixIcon: const Icon(Icons.tag_rounded, size: 18),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _canSubmit ? _submit : null,
+                  icon: const Icon(Icons.check_rounded),
+                  label: const Text('Submit gate-in'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

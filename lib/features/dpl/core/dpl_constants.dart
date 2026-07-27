@@ -170,10 +170,17 @@ class DplPaths {
   static String tripJourney(int id) => '/dispatch/trips/$id/journey';
   static String tripDriver(int id) => '/dispatch/trips/$id/driver';
   static String tripGateOut(int id) => '/dispatch/trips/$id/gate-out';
+  static String tripGateIn(int id)  => '/dispatch/trips/$id/gate-in';
   static String tripTataGateIn(int id) => '/dispatch/trips/$id/tata-gate-in';
   static String tripTataDockIn(int id) => '/dispatch/trips/$id/tata-dock-in';
   static String tripTataDockOut(int id) => '/dispatch/trips/$id/tata-dock-out';
   static String tripTataGateOut(int id) => '/dispatch/trips/$id/tata-gate-out';
+
+  // Assign-Driver picker (dispatch/manager) + role-scoped pending-work
+  // lists (security/qre home dashboards).
+  static const String dispatchDrivers = '/dispatch/drivers';
+  static const String securityPendingGateOut = '/security/pending-gate-out';
+  static const String qrePendingDockIn = '/qre/pending-dock-in';
 
   /// `POST /dispatch/trips/:id/send-for-pdi` — DEO role. Stamps the
   /// trip's invoice no, records the DEO actor, and transitions all the

@@ -9,6 +9,9 @@ import '../../../../core/widgets/shimmer_skeleton.dart';
 import '../../../auth/auth_provider.dart';
 import '../../core/design/dpl_theme.dart';
 import '../../core/dpl_constants.dart';
+import '../../journey/screens/consolidated_slip_screen.dart';
+import '../../journey/widgets/assign_driver_button.dart';
+import '../../journey/widgets/trip_journey_drawer.dart';
 import '../../manager/widgets/empty_state.dart';
 import '../../manager/widgets/error_retry.dart';
 import '../../models/dpl_dispatch_slip.dart';
@@ -689,6 +692,20 @@ class _TripGroupCard extends StatelessWidget {
                   const Divider(height: 1, color: DplColors.divider),
                 _TripGroupSlipRow(slip: group.slips[i], dateFmt: dateFmt),
               ],
+              // Post-dispatch actions — only surface Assign Driver /
+              // Journey / Consolidated Slip once at least one slip on
+              // the trip has been physically dispatched (there is no
+              // trip-level 'dispatched' status; the signal lives on
+              // slip.status per recon).
+              if (group.slips
+                  .any((s) => s.status == DplDispatchSlipStatus.dispatched))
+                _TripCardActions(
+                  tripId: group.tripId,
+                  tripNumber: group.tripNumber,
+                  plantName: group.plantName,
+                  vehicleNo: group.slips.first.vehicleNo,
+                  accent: _accent,
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
                 child: Row(
@@ -1108,6 +1125,116 @@ class _Pagination extends StatelessWidget {
             onPressed: page.hasMore ? () => onChange(page.page + 1) : null,
             icon: const Icon(Icons.chevron_right_rounded),
             label: const Text('Next'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom action strip on a `_TripGroupCard` once at least one slip is
+/// dispatched — Assign Driver + Journey + Consolidated Slip pills.
+///
+/// Stateful because it lazy-fetches the trip's `driver_name` (the slip
+/// group only carries slip-scope fields; `driverName` lives on the
+/// trip object). Refetches when the picker returns "assigned" so the
+/// button label flips from "Assign Driver" to the chosen driver's name
+/// without a full inbox reload.
+class _TripCardActions extends ConsumerStatefulWidget {
+  final int tripId;
+  final int tripNumber;
+  final String plantName;
+  final String? vehicleNo;
+  final Color accent;
+
+  const _TripCardActions({
+    required this.tripId,
+    required this.tripNumber,
+    required this.plantName,
+    required this.vehicleNo,
+    required this.accent,
+  });
+
+  @override
+  ConsumerState<_TripCardActions> createState() => _TripCardActionsState();
+}
+
+class _TripCardActionsState extends ConsumerState<_TripCardActions> {
+  String? _driverName;
+  bool _hasLeftPlant = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshDriverInfo();
+  }
+
+  Future<void> _refreshDriverInfo() async {
+    final info = await fetchTripDriverInfo(ref, widget.tripId);
+    if (!mounted) return;
+    setState(() {
+      _driverName = info.driverName;
+      _hasLeftPlant = info.hasLeftPlant;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.accent;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 2,
+        children: [
+          AssignDriverButton(
+            tripId: widget.tripId,
+            currentDriverName: _driverName,
+            accent: accent,
+            locked: _hasLeftPlant,
+            onAssigned: _refreshDriverInfo,
+          ),
+          TextButton.icon(
+            style: TextButton.styleFrom(
+              foregroundColor: accent,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            icon: const Icon(Icons.route_rounded, size: 16),
+            label: const Text('Journey'),
+            onPressed: () => showTripJourneyDrawer(
+              context,
+              tripId: widget.tripId,
+              tripNumber: widget.tripNumber,
+              plantName: widget.plantName,
+              vehicleNo: widget.vehicleNo,
+            ),
+          ),
+          TextButton.icon(
+            style: TextButton.styleFrom(
+              foregroundColor: accent,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            icon: const Icon(Icons.qr_code_2_rounded, size: 16),
+            label: const Text('Slip'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ConsolidatedSlipScreen(tripId: widget.tripId),
+              ),
+            ),
           ),
         ],
       ),

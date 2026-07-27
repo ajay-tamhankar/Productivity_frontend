@@ -44,6 +44,7 @@ class _TripJourneyDrawerState extends ConsumerState<TripJourneyDrawer> {
     'tata_dock_in',
     'tata_dock_out',
     'tata_gate_out',
+    'gate_in',
   ];
 
   Future<List<DplTripJourneyEvent>>? _future;
@@ -346,6 +347,7 @@ class _TripJourneyDrawerState extends ConsumerState<TripJourneyDrawer> {
       case 'tata_dock_in':  return 'TATA — Dock In';
       case 'tata_dock_out': return 'TATA — Dock Out';
       case 'tata_gate_out': return 'TATA — Gate Out';
+      case 'gate_in':       return 'Return · Origin Gate In';
       default:              return stage;
     }
   }

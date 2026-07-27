@@ -9,6 +9,7 @@ import '../../core/design/dpl_theme.dart';
 import '../../core/dpl_api_service.dart';
 import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_snack.dart';
+import '../providers/journey_session_state.dart';
 
 /// Security's home screen — full-screen scanner + confirm sheet.
 ///
@@ -94,6 +95,7 @@ class _SecurityScannerScreenState extends ConsumerState<SecurityScannerScreen> {
       enableDrag: !_busy,
       builder: (ctx) => _ConfirmGateOutSheet(
         payload: payload,
+        tripId: _readInt(payload, const ['trip_id', 'tripId', 'id']),
         onConfirm: () async {
           final ok = await _submitGateOut(token: token, payload: payload);
           if (ctx.mounted) Navigator.of(ctx).pop(ok);
@@ -137,20 +139,71 @@ class _SecurityScannerScreenState extends ConsumerState<SecurityScannerScreen> {
     }
 
     setState(() => _busy = true);
-    final res = await ref.read(dplApiServiceProvider).gateOutTrip(
-          tripId,
-          qrToken: token,
-        );
+
+    // Smart-select outbound vs return based on the trip's journey. A
+    // trip that has already recorded 'tata_gate_out' is on its way
+    // back — this scan closes the loop (gate_in). Otherwise it's the
+    // first scan (gate_out). One round trip up front is cheaper than
+    // an optimistic gate-out-then-fallback dance and lets us render
+    // the correct snack copy.
+    final api = ref.read(dplApiServiceProvider);
+    final journeyRes = await api.listTripJourney(tripId);
+    if (!mounted) return false;
+    if (journeyRes.isError) {
+      DplSnacks.error(
+        context,
+        journeyRes.error ?? 'Could not read trip journey.',
+      );
+      setState(() => _busy = false);
+      return false;
+    }
+    final events = journeyRes.data ?? const [];
+    final eventNames = events.map((e) => e.event).toSet();
+    final isReturn = eventNames.contains('tata_gate_out') &&
+        !eventNames.contains('gate_in');
+    final alreadyClosed = eventNames.contains('gate_in');
+    final alreadyOutbound = eventNames.contains('gate_out') && !isReturn;
+
+    if (alreadyClosed) {
+      DplSnacks.warning(
+        context,
+        'This trip is already fully closed (Gate In recorded).',
+      );
+      setState(() => _busy = false);
+      return false;
+    }
+    if (alreadyOutbound && !isReturn) {
+      DplSnacks.warning(
+        context,
+        'This trip has already left the plant. Waiting for TATA Gate Out before return scan.',
+      );
+      setState(() => _busy = false);
+      return false;
+    }
+
+    final res = isReturn
+        ? await api.gateInTrip(tripId, qrToken: token)
+        : await api.gateOutTrip(tripId, qrToken: token);
     if (!mounted) return false;
 
     if (res.isError) {
-      if (res.code == 'ALREADY_RECORDED' || res.statusCode == 409) {
+      // Only ALREADY_RECORDED means "you already did this scan" — treat
+      // as a warning. Any OTHER 409 (QR_MISMATCH, INVALID_STATUS,
+      // VEHICLE_MISMATCH, TOKEN_STALE …) is a real error and needs
+      // the raw BE message so ops can act on it.
+      if (res.code == 'ALREADY_RECORDED') {
         DplSnacks.warning(
           context,
-          'This trip is already marked as Gate Out.',
+          isReturn
+              ? 'This trip is already marked as returned.'
+              : 'This trip is already marked as Gate Out.',
         );
       } else {
-        DplSnacks.error(context, res.error ?? 'Failed to record Gate Out.');
+        DplSnacks.error(
+          context,
+          res.error ??
+              (isReturn ? 'Failed to record return scan.' : 'Failed to record Gate Out.'),
+        );
       }
       setState(() => _busy = false);
       return false;
@@ -173,10 +226,13 @@ class _SecurityScannerScreenState extends ConsumerState<SecurityScannerScreen> {
     DplSnacks.success(
       context,
       tripNo != null
-          ? 'Trip #$tripNo: Gate Out recorded'
-          : 'Gate Out recorded.',
+          ? (isReturn
+              ? 'Trip #$tripNo: Return scan recorded · trip complete'
+              : 'Trip #$tripNo: Gate Out recorded')
+          : (isReturn ? 'Return scan recorded · trip complete' : 'Gate Out recorded.'),
     );
 
+    final now = DateTime.now();
     setState(() {
       _recent.insert(
         0,
@@ -185,7 +241,7 @@ class _SecurityScannerScreenState extends ConsumerState<SecurityScannerScreen> {
           tripNumber: tripNo,
           plant: plant,
           vehicleNo: vehicle,
-          at: DateTime.now(),
+          at: now,
         ),
       );
       if (_recent.length > 10) {
@@ -193,6 +249,18 @@ class _SecurityScannerScreenState extends ConsumerState<SecurityScannerScreen> {
       }
       _busy = false;
     });
+    // Session-scope: also push to the shared home-dashboard provider
+    // so the Security home screen can render the running counter +
+    // recent-activity list when the guard returns to it. Event name
+    // matches which transition just fired.
+    ref.read(securityRecentProvider.notifier).add(JourneyActivity(
+          tripId: tripId,
+          tripNumber: tripNo,
+          plant: plant,
+          vehicleNo: vehicle,
+          event: isReturn ? 'gate_in' : 'gate_out',
+          at: now,
+        ));
     return true;
   }
 
@@ -248,21 +316,62 @@ class _SecurityScannerScreenState extends ConsumerState<SecurityScannerScreen> {
 // Confirm bottom sheet
 // -----------------------------------------------------------------------------
 
-class _ConfirmGateOutSheet extends StatefulWidget {
+class _ConfirmGateOutSheet extends ConsumerStatefulWidget {
   final Map<String, dynamic> payload;
+  final int? tripId;
   final Future<void> Function() onConfirm;
 
   const _ConfirmGateOutSheet({
     required this.payload,
+    required this.tripId,
     required this.onConfirm,
   });
 
   @override
-  State<_ConfirmGateOutSheet> createState() => _ConfirmGateOutSheetState();
+  ConsumerState<_ConfirmGateOutSheet> createState() =>
+      _ConfirmGateOutSheetState();
 }
 
-class _ConfirmGateOutSheetState extends State<_ConfirmGateOutSheet> {
+class _ConfirmGateOutSheetState extends ConsumerState<_ConfirmGateOutSheet> {
   bool _submitting = false;
+
+  /// null = still fetching the trip's journey; true = "this scan is
+  /// the RETURN (gate_in)"; false = outbound (gate_out).
+  bool? _isReturn;
+  /// true once tata_gate_out AND gate_in are both on record — the sheet
+  /// still opens (guard already scanned before we could stop them) but
+  /// disables the confirm button and shows a "trip already closed" hint.
+  bool _alreadyClosed = false;
+  String? _stageFetchError;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveStage();
+  }
+
+  Future<void> _resolveStage() async {
+    final tid = widget.tripId;
+    if (tid == null) return; // sheet already shows the "old sheet" warning
+    final res = await ref.read(dplApiServiceProvider).listTripJourney(tid);
+    if (!mounted) return;
+    if (res.isError) {
+      setState(() {
+        _stageFetchError = res.error ?? 'Could not read trip stage';
+        _isReturn = false; // default to outbound copy; parent's submit
+                           // re-fetches so worst case the user sees a
+                           // "gate out" label and gets the right action
+      });
+      return;
+    }
+    final events = res.data ?? const [];
+    final names = events.map((e) => e.event).toSet();
+    setState(() {
+      _alreadyClosed = names.contains('gate_in');
+      _isReturn =
+          names.contains('tata_gate_out') && !names.contains('gate_in');
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -283,6 +392,26 @@ class _ConfirmGateOutSheetState extends State<_ConfirmGateOutSheet> {
       'vehicle',
     ]);
     final missing = tripNo == null;
+    final loading = _isReturn == null && !missing && _stageFetchError == null;
+    final isReturn = _isReturn == true;
+    final subtitle = missing
+        ? 'Confirm to record Gate Out.'
+        : loading
+            ? 'Checking trip stage…'
+            : _alreadyClosed
+                ? 'This trip is already fully closed.'
+                : isReturn
+                    ? 'Confirm to record RETURN scan (Origin Gate In).'
+                    : 'Confirm to record Gate Out.';
+    final buttonLabel = _submitting
+        ? 'Recording…'
+        : loading
+            ? 'Checking…'
+            : isReturn
+                ? 'Confirm Gate In (Return)'
+                : 'Confirm Gate Out';
+    final canSubmit =
+        !_submitting && !missing && !loading && !_alreadyClosed;
 
     return SafeArea(
       top: false,
@@ -335,7 +464,7 @@ class _ConfirmGateOutSheetState extends State<_ConfirmGateOutSheet> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Confirm to record Gate Out.',
+                        subtitle,
                         style: DplText.bodySm().copyWith(
                           color: DplColors.textSecondary,
                         ),
@@ -405,7 +534,7 @@ class _ConfirmGateOutSheetState extends State<_ConfirmGateOutSheet> {
                 Expanded(
                   flex: 2,
                   child: FilledButton.icon(
-                    onPressed: (_submitting || missing)
+                    onPressed: !canSubmit
                         ? null
                         : () async {
                             setState(() => _submitting = true);
@@ -413,7 +542,9 @@ class _ConfirmGateOutSheetState extends State<_ConfirmGateOutSheet> {
                             // Parent pops the sheet — no local pop.
                           },
                     style: FilledButton.styleFrom(
-                      backgroundColor: DplColors.primary,
+                      backgroundColor: isReturn
+                          ? DplColors.success
+                          : DplColors.primary,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     icon: _submitting
@@ -425,10 +556,12 @@ class _ConfirmGateOutSheetState extends State<_ConfirmGateOutSheet> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.check_rounded),
-                    label: Text(
-                      _submitting ? 'Recording…' : 'Confirm Gate Out',
-                    ),
+                        : Icon(
+                            isReturn
+                                ? Icons.flag_circle_rounded
+                                : Icons.check_rounded,
+                          ),
+                    label: Text(buttonLabel),
                   ),
                 ),
               ],

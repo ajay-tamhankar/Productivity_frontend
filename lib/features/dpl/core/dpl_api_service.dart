@@ -3076,33 +3076,96 @@ class DplApiService {
     );
   }
 
-  /// `POST /dispatch/trips/:id/tata-gate-in` — role: `dpl_driver`.
+  /// `POST /dispatch/trips/:id/gate-in` — role: `dpl_security`.
   ///
-  /// Driver arrives at the Tata plant gate and enters the LECI details
-  /// (barcode + truck no; [leciNo] and [leciRfid] optional depending on
-  /// the gate's process).
-  Future<DplApiResponse<DplTripJourneyEvent>> tataGateInTrip(
+  /// Return scan at the origin plant — the truck came back from TATA
+  /// and the guard scans the same trip QR one more time. BE enforces
+  /// that `tata_gate_out` is on record; this is the terminal event.
+  Future<DplApiResponse<DplTripJourneyEvent>> gateInTrip(
     int tripId, {
-    required String leciBarcode,
-    required String leciTruckNo,
-    String? leciNo,
-    String? leciRfid,
+    required String qrToken,
   }) {
     return _send<DplTripJourneyEvent>(
       () => _dio.post(
+        DplPaths.tripGateIn(tripId),
+        data: {'qr_token': qrToken},
+      ),
+      fallback: 'Failed to record gate-in (return).',
+      fromJson: _oneJourneyEvent,
+    );
+  }
+
+  /// `POST /dispatch/trips/:id/tata-gate-in` — role: `dpl_driver`.
+  ///
+  /// Driver arrives at the Tata plant gate and records the LECI details.
+  /// Two paths:
+  ///   * **Scan** — [leciBarcode] + [leciTruckNo] parsed from the scanned
+  ///     barcode ([leciNo] / [leciRfid] optional). Sent as JSON.
+  ///   * **Photo fallback** — when the barcode won't scan, the driver
+  ///     snaps the LECI paper and types the truck no. Pass
+  ///     [leciPhotoBytes] (+ [leciPhotoFilename]) with an empty
+  ///     [leciBarcode]; the request switches to multipart so the image
+  ///     rides along on the same gate-in call and the backend stores it.
+  Future<DplApiResponse<DplTripJourneyEvent>> tataGateInTrip(
+    int tripId, {
+    required String leciBarcode,
+    // leci_truck_no is optional (softened 2026-07-25). When empty the
+    // backend records tata_gate_in with verified=false and skips the
+    // plate cross-check.
+    String? leciTruckNo,
+    String? leciNo,
+    String? leciRfid,
+    Uint8List? leciPhotoBytes,
+    String leciPhotoFilename = 'leci.jpg',
+  }) {
+    final hasPhoto = leciPhotoBytes != null && leciPhotoBytes.isNotEmpty;
+    final truckNo = (leciTruckNo ?? '').trim();
+
+    final fields = <String, dynamic>{
+      'leci_barcode': leciBarcode,
+      if (truckNo.isNotEmpty) 'leci_truck_no': truckNo,
+      if (leciNo != null && leciNo.trim().isNotEmpty) 'leci_no': leciNo.trim(),
+      if (leciRfid != null && leciRfid.trim().isNotEmpty)
+        'leci_rfid': leciRfid.trim(),
+    };
+
+    return _send<DplTripJourneyEvent>(
+      () => _dio.post(
         DplPaths.tripTataGateIn(tripId),
-        data: {
-          'leci_barcode': leciBarcode,
-          'leci_truck_no': leciTruckNo,
-          if (leciNo != null && leciNo.trim().isNotEmpty)
-            'leci_no': leciNo.trim(),
-          if (leciRfid != null && leciRfid.trim().isNotEmpty)
-            'leci_rfid': leciRfid.trim(),
-        },
+        data: hasPhoto
+            ? FormData.fromMap({
+                ...fields,
+                'leci_photo': MultipartFile.fromBytes(
+                  leciPhotoBytes,
+                  filename: leciPhotoFilename,
+                  // The backend's image upload filter only accepts
+                  // image/jpeg|png|webp; without an explicit content-type
+                  // Dio sends application/octet-stream and the part is
+                  // rejected. Derive it from the file extension.
+                  contentType: _leciPhotoMediaType(leciPhotoFilename),
+                ),
+              })
+            : fields,
       ),
       fallback: 'Failed to record Tata gate-in.',
       fromJson: _oneJourneyEvent,
     );
+  }
+
+  /// Maps a LECI-photo filename to the image media type the backend
+  /// accepts. Defaults to JPEG (the camera-capture case).
+  DioMediaType _leciPhotoMediaType(String filename) {
+    final ext = filename.toLowerCase().split('.').last;
+    switch (ext) {
+      case 'png':
+        return DioMediaType('image', 'png');
+      case 'webp':
+        return DioMediaType('image', 'webp');
+      case 'jpg':
+      case 'jpeg':
+      default:
+        return DioMediaType('image', 'jpeg');
+    }
   }
 
   /// `POST /dispatch/trips/:id/tata-dock-in` — role: `dpl_qre`.
@@ -3209,6 +3272,90 @@ class DplApiService {
     }
     throw const FormatException(
       'Expected object response for journey event.',
+    );
+  }
+
+  /// `GET /dispatch/drivers` — roles: dispatch / deo / manager. Returns
+  /// every active `dpl_driver` in the caller's org for the Assign-Driver
+  /// bottom sheet.
+  Future<DplApiResponse<List<DplDriverUser>>> listDrivers() {
+    return _send<List<DplDriverUser>>(
+      () => _dio.get(DplPaths.dispatchDrivers),
+      fallback: 'Failed to load drivers.',
+      fromJson: (data) => _parseListEnvelope(data)
+          .map(DplDriverUser.fromJson)
+          .toList(),
+    );
+  }
+
+  /// `GET /security/pending-gate-out` — role: `dpl_security`.
+  /// Trips fully dispatched, waiting for the guard's gate-out scan.
+  Future<DplApiResponse<List<DplTrip>>> getSecurityPendingGateOut() {
+    return _send<List<DplTrip>>(
+      () => _dio.get(DplPaths.securityPendingGateOut),
+      fallback: 'Failed to load pending gate-out list.',
+      fromJson: (data) => _parseListEnvelope(data)
+          .map(DplTrip.fromJson)
+          .toList(),
+    );
+  }
+
+  /// `GET /qre/pending-dock-in` — role: `dpl_qre`.
+  /// Trips that reached the TATA gate but haven't docked in yet.
+  Future<DplApiResponse<List<DplTrip>>> getQrePendingDockIn() {
+    return _send<List<DplTrip>>(
+      () => _dio.get(DplPaths.qrePendingDockIn),
+      fallback: 'Failed to load pending dock-in list.',
+      fromJson: (data) => _parseListEnvelope(data)
+          .map(DplTrip.fromJson)
+          .toList(),
+    );
+  }
+
+  /// Shared list-envelope parser — accepts either a bare List or an
+  /// object wrapping the list under one of the standard keys.
+  List<Map<String, dynamic>> _parseListEnvelope(dynamic data) {
+    List<dynamic>? raw;
+    if (data is List) {
+      raw = data;
+    } else if (data is Map) {
+      for (final key in const ['trips', 'items', 'data', 'rows', 'drivers', 'results']) {
+        final v = data[key];
+        if (v is List) {
+          raw = v;
+          break;
+        }
+      }
+    }
+    if (raw == null) return const <Map<String, dynamic>>[];
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+}
+
+/// Lightweight user summary returned by `GET /dispatch/drivers` — just
+/// enough to render a picker row without pulling a full user record.
+class DplDriverUser {
+  final int id;
+  final String name;
+  final String? email;
+  final String? employeeCode;
+
+  const DplDriverUser({
+    required this.id,
+    required this.name,
+    this.email,
+    this.employeeCode,
+  });
+
+  factory DplDriverUser.fromJson(Map<String, dynamic> json) {
+    return DplDriverUser(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      name: (json['name']?.toString() ?? '').trim(),
+      email: json['email']?.toString(),
+      employeeCode: (json['employee_code'] ?? json['employeeCode'])?.toString(),
     );
   }
 }

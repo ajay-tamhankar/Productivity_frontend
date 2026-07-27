@@ -15,6 +15,8 @@ import '../../core/dpl_constants.dart';
 import '../../core/dpl_organization_provider.dart';
 import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_snack.dart';
+import '../../journey/screens/consolidated_slip_screen.dart';
+import '../../journey/widgets/trip_journey_drawer.dart';
 import '../../models/dpl_dispatch_slip.dart';
 import '../providers/dispatch_slips_provider.dart';
 import '../services/dispatch_slip_pdf.dart';
@@ -132,6 +134,34 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
       appBar: DplAppBar(
         title: 'Trip #${widget.tripNumber}',
         actions: [
+          // Post-dispatch actions — only surface once at least one slip
+          // on this trip has been mark-dispatched (there is no trip-level
+          // 'dispatched' status; the signal is on slip.status per recon).
+          if (widget.tripId != null &&
+              slips.any(
+                  (s) => s.status == DplDispatchSlipStatus.dispatched)) ...[
+            IconButton(
+              tooltip: 'View trip journey',
+              icon: const Icon(Icons.route_rounded),
+              onPressed: () => showTripJourneyDrawer(
+                context,
+                tripId: widget.tripId!,
+                tripNumber: widget.tripNumber,
+                plantName: widget.plantName,
+                vehicleNo: slips.isNotEmpty ? slips.first.vehicleNo : null,
+              ),
+            ),
+            IconButton(
+              tooltip: 'Consolidated slip',
+              icon: const Icon(Icons.qr_code_2_rounded),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      ConsolidatedSlipScreen(tripId: widget.tripId!),
+                ),
+              ),
+            ),
+          ],
           IconButton(
             tooltip: _emailing
                 ? 'Emailing trip PDF…'

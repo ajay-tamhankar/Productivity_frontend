@@ -4,9 +4,13 @@ lets test
 A new Flutter project.
 login details 
 Role	        Email	                   Password	         
-dpl_dispatch	dispatch@vistarlogitek.com	ChangeMe@123 
-dpl_qa	        qa@vistarlogitek.com	    ChangeMe@123	
-dpl_pdi	        pdi@vistarlogitek.com	    ChangeMe@123	
+dpl_dispatch	                dispatch@vistarlogitek.com	 
+dpl_qa	                        qa@vistarlogitek.com	    ChangeMe@123	
+dpl_pdi	                        pdi@vistarlogitek.com	    ChangeMe@123	
+Role	                        Email	                        Password	Role string
+Security (origin plant gate)	security@vistarlogitek.com	ChangeMe@123	dpl_security
+QRE (TATA quality)	            qre.tata@vistarlogitek.com	ChangeMe@123	dpl_qre
+Driver	                        driver1@vistarlogitek.com	ChangeMe@123	dpl_driver
 
 
 A "bucket" = one unique (organization, machine, part)

@@ -202,6 +202,11 @@ class DplTrip {
   final DateTime? driverAssignedAt;
   final String? driverAssignedByName;
 
+  /// True once the trip has gate-outed (left our plant). The backend blocks
+  /// driver reassignment past this point, so the card shows the driver as a
+  /// locked chip instead of a tappable "Assign Driver".
+  final bool hasLeftPlant;
+
   // Rolled-up counts the backend computes for the list view. Optional
   // because POST /dispatch/trips may omit them (FE derives from plans).
   final int? planCount;
@@ -245,6 +250,7 @@ class DplTrip {
     this.driverName,
     this.driverAssignedAt,
     this.driverAssignedByName,
+    this.hasLeftPlant = false,
   });
 
   factory DplTrip.fromJson(Map<String, dynamic> json) {
@@ -323,6 +329,7 @@ class DplTrip {
           : (json['driverAssignedByName'] is String
               ? json['driverAssignedByName'] as String
               : null),
+      hasLeftPlant: (json['has_left_plant'] ?? json['hasLeftPlant']) == true,
     );
   }
 }
