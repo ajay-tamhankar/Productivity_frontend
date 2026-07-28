@@ -303,32 +303,53 @@ class _DriverPickerSheetState extends ConsumerState<_DriverPickerSheet> {
   Widget _driverTile(DplDriverUser d) {
     final busy = _busyDriverId != null;
     final thisBusy = _busyDriverId == d.id;
+    // Busy on ANOTHER trip → unavailable. A driver committed to THIS trip
+    // (activeTripId == this trip) stays selectable — re-picking is a no-op.
+    final busyElsewhere =
+        d.activeTripId != null && d.activeTripId != widget.tripId;
     return ListTile(
-      leading: const CircleAvatar(
-        backgroundColor: DplColors.primaryTint,
-        child: Icon(Icons.local_shipping_rounded,
-            color: DplColors.primary, size: 20),
+      enabled: !busyElsewhere,
+      leading: CircleAvatar(
+        backgroundColor:
+            busyElsewhere ? DplColors.divider : DplColors.primaryTint,
+        child: Icon(
+          busyElsewhere ? Icons.lock_rounded : Icons.local_shipping_rounded,
+          color: busyElsewhere ? DplColors.textSecondary : DplColors.primary,
+          size: 20,
+        ),
       ),
       title: Text(
         d.name.isNotEmpty ? d.name : 'Driver #${d.id}',
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
-      subtitle: Text(
-        [
-          if ((d.employeeCode ?? '').isNotEmpty) d.employeeCode,
-          if ((d.email ?? '').isNotEmpty) d.email,
-        ].whereType<String>().join(' · '),
-        style: const TextStyle(fontSize: 12),
-      ),
+      subtitle: busyElsewhere
+          ? Text(
+              'On trip #${d.activeTripNumber ?? d.activeTripId} — unavailable',
+              style: const TextStyle(
+                fontSize: 12,
+                color: DplColors.error,
+                fontWeight: FontWeight.w600,
+              ),
+            )
+          : Text(
+              [
+                if ((d.employeeCode ?? '').isNotEmpty) d.employeeCode,
+                if ((d.email ?? '').isNotEmpty) d.email,
+              ].whereType<String>().join(' · '),
+              style: const TextStyle(fontSize: 12),
+            ),
       trailing: thisBusy
           ? const SizedBox(
               width: 20,
               height: 20,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          : const Icon(Icons.chevron_right_rounded,
-              color: DplColors.textSecondary),
-      onTap: busy ? null : () => _assign(d),
+          : (busyElsewhere
+              ? const Icon(Icons.block_rounded,
+                  color: DplColors.textSecondary, size: 18)
+              : const Icon(Icons.chevron_right_rounded,
+                  color: DplColors.textSecondary)),
+      onTap: (busy || busyElsewhere) ? null : () => _assign(d),
     );
   }
 }

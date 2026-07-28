@@ -3343,19 +3343,34 @@ class DplDriverUser {
   final String? email;
   final String? employeeCode;
 
+  /// The trip this driver is currently committed to (assigned + not yet
+  /// completed/cancelled), or null when free. A driver can be on at most
+  /// one active trip; the picker disables a busy driver.
+  final int? activeTripId;
+  final int? activeTripNumber;
+
   const DplDriverUser({
     required this.id,
     required this.name,
     this.email,
     this.employeeCode,
+    this.activeTripId,
+    this.activeTripNumber,
   });
 
+  /// True when the driver is already out on an active trip.
+  bool get isBusy => activeTripId != null;
+
   factory DplDriverUser.fromJson(Map<String, dynamic> json) {
+    final rawTripId = json['active_trip_id'] ?? json['activeTripId'];
+    final rawTripNo = json['active_trip_number'] ?? json['activeTripNumber'];
     return DplDriverUser(
       id: (json['id'] as num?)?.toInt() ?? 0,
       name: (json['name']?.toString() ?? '').trim(),
       email: json['email']?.toString(),
       employeeCode: (json['employee_code'] ?? json['employeeCode'])?.toString(),
+      activeTripId: rawTripId is num ? rawTripId.toInt() : null,
+      activeTripNumber: rawTripNo is num ? rawTripNo.toInt() : null,
     );
   }
 }
