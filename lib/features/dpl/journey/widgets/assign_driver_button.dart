@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/design/dpl_theme.dart';
 import '../../core/dpl_api_service.dart';
 import '../../core/widgets/dpl_snack.dart';
+import '../../models/dpl_trip_dispatch_readiness.dart';
 
 /// Compact "Assign driver" pill that renders on the trip card. When the
 /// trip has no driver yet it says "Assign Driver"; once assigned it
@@ -24,6 +25,13 @@ class AssignDriverButton extends ConsumerWidget {
   /// locked chip instead of a picker that would only 409.
   final bool locked;
 
+  /// Dispatch-completeness of the trip. When non-null and not `ready`, the
+  /// button renders as a disabled "why not" chip instead of opening the
+  /// picker: the backend rejects assignment on a trip whose slips aren't
+  /// all dispatched (`TRIP_NOT_DISPATCHED`), because such a trip can never
+  /// gate out and would strand the driver.
+  final TripDispatchReadiness? readiness;
+
   const AssignDriverButton({
     super.key,
     required this.tripId,
@@ -31,6 +39,7 @@ class AssignDriverButton extends ConsumerWidget {
     this.currentDriverName,
     this.onAssigned,
     this.locked = false,
+    this.readiness,
   });
 
   @override
@@ -70,6 +79,21 @@ class AssignDriverButton extends ConsumerWidget {
       );
     }
 
+    // First assignment onto a trip that isn't dispatch-complete → the backend
+    // refuses with TRIP_NOT_DISPATCHED. Don't offer an action that cannot
+    // succeed; show why instead, and let a tap explain in full.
+    //
+    // The `!hasDriver` guard is load-bearing and mirrors the backend, which
+    // only applies the readiness check when trip.driver_user_id is null. A
+    // trip that ALREADY has a driver stays swappable even when not ready:
+    // readiness can regress after a valid assignment (slipping batch 2 puts a
+    // fresh pending slip on the trip), and since there is no unassign
+    // endpoint, blocking the swap would trap that driver with no way out.
+    final r = readiness;
+    if (!hasDriver && r != null && !r.ready) {
+      return _BlockedChip(reason: r);
+    }
+
     return TextButton.icon(
       style: TextButton.styleFrom(
         foregroundColor: accent,
@@ -107,6 +131,60 @@ class AssignDriverButton extends ConsumerWidget {
     if (result != null && context.mounted) {
       onAssigned?.call();
     }
+  }
+}
+
+/// Disabled stand-in for "Assign Driver" on a trip whose slips aren't all
+/// dispatched yet.
+///
+/// Rendered greyed rather than hidden on purpose: a dispatcher looking for
+/// the button needs to see that it exists and learn *why* it isn't
+/// available. Hiding it would just read as a missing feature. Tapping opens
+/// the full reason, since the chip only has room for the short form.
+class _BlockedChip extends StatelessWidget {
+  final TripDispatchReadiness reason;
+  const _BlockedChip({required this.reason});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      style: TextButton.styleFrom(
+        foregroundColor: DplColors.textSecondary,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        minimumSize: const Size(0, 32),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+      ),
+      icon: const Icon(Icons.lock_clock_rounded, size: 16),
+      label: Text(reason.shortReason, overflow: TextOverflow.ellipsis),
+      onPressed: () => showDialog<void>(
+        context: context,
+        // Pop through the DIALOG's context, never this chip's. The chip sits
+        // in a lazily-built trip card and is routinely unmounted while the
+        // dialog is open: _TripCardActions starts with a null driver name and
+        // fetches it asynchronously, so a card whose trip already has a driver
+        // renders this chip for one frame, then swaps to the driver button
+        // when the fetch lands — deactivating this element. Closing over the
+        // outer context would then make "Got it" throw ("Looking up a
+        // deactivated widget's ancestor is unsafe") and silently stop working.
+        builder: (dialogCtx) => AlertDialog(
+          icon: const Icon(Icons.local_shipping_outlined,
+              color: DplColors.warning, size: 32),
+          title: const Text("Can't assign a driver yet"),
+          content: Text(
+            reason.blockReason,
+            style: const TextStyle(fontSize: 13, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(),
+              child: const Text('Got it'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -151,6 +229,47 @@ class _DriverPickerSheetState extends ConsumerState<_DriverPickerSheet> {
     setState(() => _busyDriverId = null);
     if (res.isError) {
       final err = res.error ?? 'Failed to assign driver';
+      // TRIP_NOT_DISPATCHED and DRIVER_BUSY are refusals the dispatcher has
+      // to read and act on, not transient failures — and both carry a long,
+      // specific explanation from the server. A 4-second snackbar is the
+      // wrong surface for that, so they get a dialog that waits for
+      // acknowledgement. The FE normally blocks the first case before the
+      // picker opens; this covers the race where slips changed underneath,
+      // and any other entry point.
+      if (res.code == 'TRIP_NOT_DISPATCHED' || res.code == 'DRIVER_BUSY') {
+        await showDialog<void>(
+          context: context,
+          // Same rule as _BlockedChip: pop through the dialog's own context.
+          // Safe here today (the picker sheet outlives the dialog), but
+          // closing over an outer context is the kind of thing that breaks
+          // silently the moment this widget is reused elsewhere.
+          builder: (dialogCtx) => AlertDialog(
+            icon: Icon(
+              res.code == 'DRIVER_BUSY'
+                  ? Icons.person_off_outlined
+                  : Icons.local_shipping_outlined,
+              color: DplColors.warning,
+              size: 32,
+            ),
+            title: Text(
+              res.code == 'DRIVER_BUSY'
+                  ? 'Driver is already on a trip'
+                  : "Can't assign a driver yet",
+            ),
+            content: Text(
+              err,
+              style: const TextStyle(fontSize: 13, height: 1.4),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(),
+                child: const Text('Got it'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
       DplSnacks.error(context, err);
       return;
     }

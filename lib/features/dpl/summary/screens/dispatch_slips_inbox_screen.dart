@@ -15,6 +15,7 @@ import '../../journey/widgets/trip_journey_drawer.dart';
 import '../../manager/widgets/empty_state.dart';
 import '../../manager/widgets/error_retry.dart';
 import '../../models/dpl_dispatch_slip.dart';
+import '../../models/dpl_trip_dispatch_readiness.dart';
 import '../../tracking/screens/trip_track_map_screen.dart';
 import '../providers/dispatch_slips_provider.dart';
 import '../widgets/dispatch_slip_status_badge.dart';
@@ -716,6 +717,9 @@ class _TripGroupCard extends StatelessWidget {
                   plantName: group.plantName,
                   vehicleNo: group.slips.first.vehicleNo,
                   accent: _accent,
+                  // Same rule the backend enforces on assignDriver /
+                  // gateOut: every non-rejected slip must be dispatched.
+                  readiness: TripDispatchReadiness.of(group.slips),
                 ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
@@ -1157,6 +1161,7 @@ class _TripCardActions extends ConsumerStatefulWidget {
   final String plantName;
   final String? vehicleNo;
   final Color accent;
+  final TripDispatchReadiness readiness;
 
   const _TripCardActions({
     required this.tripId,
@@ -1164,6 +1169,7 @@ class _TripCardActions extends ConsumerStatefulWidget {
     required this.plantName,
     required this.vehicleNo,
     required this.accent,
+    required this.readiness,
   });
 
   @override
@@ -1224,6 +1230,7 @@ class _TripCardActionsState extends ConsumerState<_TripCardActions> {
             currentDriverName: _driverName,
             accent: accent,
             locked: _hasLeftPlant,
+            readiness: widget.readiness,
             onAssigned: _refreshDriverInfo,
           ),
           TextButton.icon(
