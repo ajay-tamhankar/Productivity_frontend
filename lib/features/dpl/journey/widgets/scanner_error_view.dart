@@ -57,11 +57,18 @@ class ScannerErrorView extends StatelessWidget {
               'phone it is Settings → Apps → Vistar Pulse → Permissions.',
         );
       case MobileScannerErrorCode.unsupported:
+        // NotFoundError. The browser enumerated zero video inputs — this is
+        // not a permission problem, the camera is absent as far as the OS is
+        // concerned. On laptops that is usually a privacy shutter or an
+        // Fn-key kill switch, which physically de-enumerates the camera
+        // (Windows then reports it as a phantom device, Code 45). Flipping
+        // it back makes the camera reappear and Retry works without a reload.
         return const _Copy(
           icon: Icons.videocam_off_outlined,
-          title: 'No usable camera found',
-          body: 'This device has no camera the browser can open. Use the '
-              'Vistar Pulse app on the handheld, or plug in a webcam.',
+          title: 'No camera detected',
+          body: 'The device has no camera switched on. Check the privacy '
+              'shutter or the camera Fn-key on the keyboard, then tap Retry. '
+              'Otherwise use the Vistar Pulse app on the handheld.',
         );
       case MobileScannerErrorCode.controllerAlreadyInitialized:
         return const _Copy(
