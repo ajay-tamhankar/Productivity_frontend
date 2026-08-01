@@ -74,6 +74,20 @@ dependencies:
   # scanned token and renders the verified slip in human-readable form
   # (names, not IDs).
   mobile_scanner: ^6.0.10
+  # ── Live trip tracking (driver → manager breadcrumb map).
+  # `geolocator` supplies the position stream AND, on Android, the
+  # foreground-service + notification that keeps the stream alive with the
+  # screen off. That foreground service is why we only ever need
+  # while-in-use location — no ACCESS_BACKGROUND_LOCATION, so no Play
+  # Store background-location declaration. See
+  # `lib/features/dpl/tracking/services/trip_location_tracker.dart`.
+  geolocator: ^14.0.2
+  # OpenStreetMap tile renderer — deliberately NOT google_maps_flutter:
+  # no API key, no billing account, no per-load cost. Tile fetches must
+  # carry our real user-agent per the OSM tile usage policy (set in
+  # `trip_track_map_screen.dart`).
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
 
 dev_dependencies:
   flutter_test:

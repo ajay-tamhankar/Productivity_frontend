@@ -15,6 +15,7 @@ import '../../journey/widgets/trip_journey_drawer.dart';
 import '../../manager/widgets/empty_state.dart';
 import '../../manager/widgets/error_retry.dart';
 import '../../models/dpl_dispatch_slip.dart';
+import '../../tracking/screens/trip_track_map_screen.dart';
 import '../providers/dispatch_slips_provider.dart';
 import '../widgets/dispatch_slip_status_badge.dart';
 import 'dispatch_slip_detail_screen.dart';
@@ -186,10 +187,20 @@ class _DispatchSlipsInboxScreenState
                       );
                     }
                     final row = rows[i];
+                    // Identity keys are REQUIRED here, not cosmetic. These
+                    // cards own per-trip state fetched on init (the driver
+                    // chip). Without a key Flutter reuses the Element at a
+                    // given index across rebuilds — switching status tabs or
+                    // paginating then leaves a card showing the driver of
+                    // whichever trip previously occupied that slot.
                     if (row is _TripGroupRow) {
-                      return _TripGroupCard(group: row);
+                      return _TripGroupCard(
+                        key: ValueKey('trip-${row.tripId}'),
+                        group: row,
+                      );
                     }
-                    return _SlipRowCard(slip: (row as _LooseSlipRow).slip);
+                    final slip = (row as _LooseSlipRow).slip;
+                    return _SlipRowCard(key: ValueKey('slip-${slip.id}'), slip: slip);
                   },
                 );
               },
@@ -546,7 +557,7 @@ class _SearchBar extends StatelessWidget {
 /// + the multi-page "Print all" action.
 class _TripGroupCard extends StatelessWidget {
   final _TripGroupRow group;
-  const _TripGroupCard({required this.group});
+  const _TripGroupCard({super.key, required this.group});
 
   Color get _accent =>
       _SlipRowCard._tripPalette[group.tripId.abs() % _SlipRowCard._tripPalette.length];
@@ -848,7 +859,7 @@ class _StatusPip extends StatelessWidget {
 
 class _SlipRowCard extends StatelessWidget {
   final DplDispatchSlip slip;
-  const _SlipRowCard({required this.slip});
+  const _SlipRowCard({super.key, required this.slip});
 
   /// Stable color picked from [_tripPalette] so every slip cut from
   /// the same trip carries the same accent. Hashing the trip id keeps
@@ -1169,9 +1180,30 @@ class _TripCardActionsState extends ConsumerState<_TripCardActions> {
     _refreshDriverInfo();
   }
 
+  /// The inbox list can hand this State a different trip without ever
+  /// disposing it — Flutter reuses Elements by position, and the driver
+  /// chip is fetched once in [initState]. The keys on the cards make that
+  /// reuse identity-correct, but this covers the case regardless: if the
+  /// trip under us changes, drop the stale driver and refetch.
+  @override
+  void didUpdateWidget(covariant _TripCardActions oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tripId != widget.tripId) {
+      setState(() {
+        _driverName = null;
+        _hasLeftPlant = false;
+      });
+      _refreshDriverInfo();
+    }
+  }
+
   Future<void> _refreshDriverInfo() async {
-    final info = await fetchTripDriverInfo(ref, widget.tripId);
-    if (!mounted) return;
+    // Capture the trip this request is for. Two fetches can be in flight
+    // after a rapid rebuild, and the slower one must not overwrite the
+    // newer trip's driver with the older trip's answer.
+    final requestedTripId = widget.tripId;
+    final info = await fetchTripDriverInfo(ref, requestedTripId);
+    if (!mounted || requestedTripId != widget.tripId) return;
     setState(() {
       _driverName = info.driverName;
       _hasLeftPlant = info.hasLeftPlant;
@@ -1233,6 +1265,31 @@ class _TripCardActionsState extends ConsumerState<_TripCardActions> {
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ConsolidatedSlipScreen(tripId: widget.tripId),
+              ),
+            ),
+          ),
+          TextButton.icon(
+            style: TextButton.styleFrom(
+              foregroundColor: accent,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              textStyle: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            icon: const Icon(Icons.location_on_rounded, size: 16),
+            label: const Text('Track Location'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => TripTrackMapScreen(
+                  tripId: widget.tripId,
+                  tripNumber: widget.tripNumber,
+                  plantName: widget.plantName,
+                  vehicleNo: widget.vehicleNo,
+                ),
               ),
             ),
           ),

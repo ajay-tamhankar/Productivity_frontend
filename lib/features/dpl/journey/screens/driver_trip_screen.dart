@@ -13,6 +13,9 @@ import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_snack.dart';
 import '../../models/dpl_consolidated_slip.dart';
 import '../../models/dpl_trip_journey_event.dart';
+import '../../tracking/services/trip_location_tracker.dart';
+import '../../tracking/widgets/driver_share_location_card.dart';
+import '../widgets/scanner_error_view.dart';
 import '../widgets/trip_journey_drawer.dart';
 
 /// Driver's single-trip cockpit. Shows the QR (for Security / QRE to
@@ -74,6 +77,7 @@ class _DriverTripScreenState extends ConsumerState<DriverTripScreen> {
         _events = jRes.data ?? const [];
         _loading = false;
       });
+      _syncTracking();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -86,6 +90,35 @@ class _DriverTripScreenState extends ConsumerState<DriverTripScreen> {
   String get _currentStage {
     if (_events.isEmpty) return 'dispatched';
     return _events.map((e) => e.event).last;
+  }
+
+  /// The trip has come back through our own gate — nothing left to track.
+  bool get _tripClosed => _currentStage == 'gate_in';
+
+  /// Sharing is offered from the moment the truck leaves our plant until
+  /// it is scanned back in. Before gate-out it's still parked in the
+  /// yard, so there is nothing worth tracking.
+  bool get _inTrackingWindow => !_tripClosed && _currentStage != 'dispatched';
+
+  /// Keeps the tracker in step with the journey, which the driver does
+  /// not drive alone — Security and the QRE move the trip forward from
+  /// their own devices, and this screen learns about it on the 15s poll.
+  ///
+  ///   * trip closed  → stop sharing, no matter who closed it.
+  ///   * mid-journey  → re-arm after an app kill / phone reboot. Only
+  ///     resumes a share the driver had already switched on (the tracker
+  ///     checks its own persisted trip id), never starts one unasked.
+  void _syncTracking() {
+    final tracker = ref.read(tripLocationTrackerProvider.notifier);
+    if (_tripClosed) {
+      if (ref.read(tripLocationTrackerProvider).isTracking(widget.tripId)) {
+        unawaited(tracker.stop());
+      }
+      return;
+    }
+    if (_inTrackingWindow) {
+      unawaited(tracker.resumeIfInterrupted(widget.tripId));
+    }
   }
 
   @override
@@ -151,6 +184,13 @@ class _DriverTripScreenState extends ConsumerState<DriverTripScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           _header(trip, stage),
+          if (_inTrackingWindow || _tripClosed) ...[
+            const SizedBox(height: 12),
+            DriverShareLocationCard(
+              tripId: widget.tripId,
+              tripClosed: _tripClosed,
+            ),
+          ],
           const SizedBox(height: 16),
           _stageBody(stage, qrToken),
         ],
@@ -640,6 +680,8 @@ class _LeciScannerScreenState extends State<_LeciScannerScreen> {
           final parsed = _parseLeci(raw);
           Navigator.of(context).pop(parsed);
         },
+        errorBuilder: (_, err, _) =>
+            ScannerErrorView(error: err, onRetry: _controller.start),
       ),
     );
   }

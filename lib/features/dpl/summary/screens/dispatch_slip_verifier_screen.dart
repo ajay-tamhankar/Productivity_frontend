@@ -6,6 +6,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../core/design/dpl_theme.dart';
 import '../../core/dpl_api_service.dart';
 import '../../core/widgets/dpl_app_bar.dart';
+import '../../journey/widgets/scanner_error_view.dart';
 import '../../manager/widgets/error_retry.dart';
 import '../../models/dpl_dispatch_slip.dart';
 
@@ -172,7 +173,12 @@ class _ScannerView extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        MobileScanner(controller: controller, onDetect: onDetect),
+        MobileScanner(
+          controller: controller,
+          onDetect: onDetect,
+          errorBuilder: (_, err, _) =>
+              ScannerErrorView(error: err, onRetry: controller.start),
+        ),
         // Soft scrim + framed scan window so the user knows where to
         // hold the QR.
         IgnorePointer(

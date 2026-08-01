@@ -19,6 +19,7 @@ import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_snack.dart';
 import '../../manager/widgets/error_retry.dart';
 import '../../models/dpl_dispatch_slip.dart';
+import '../../journey/widgets/scanner_error_view.dart';
 import '../providers/dispatch_slips_provider.dart';
 import '../services/dispatch_slip_pdf.dart';
 import '../widgets/dispatch_slip_actions.dart';
@@ -2473,7 +2474,12 @@ class _SlipScanGateScreenState extends State<_SlipScanGateScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          MobileScanner(controller: _controller, onDetect: _onDetect),
+          MobileScanner(
+            controller: _controller,
+            onDetect: _onDetect,
+            errorBuilder: (_, err, _) =>
+                ScannerErrorView(error: err, onRetry: _controller.start),
+          ),
           IgnorePointer(child: CustomPaint(painter: _ScanGateOverlayPainter())),
           Positioned(
             left: 0,

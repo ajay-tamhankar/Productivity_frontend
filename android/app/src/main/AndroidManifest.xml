@@ -7,6 +7,29 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
+
+    <!-- Live trip tracking (driver role only, and only between gate-out
+         and the closing gate scan).
+
+         NOTE the permission that is deliberately ABSENT here:
+         ACCESS_BACKGROUND_LOCATION. We never request it. The position
+         stream runs inside geolocator's foreground service (declared by
+         geolocator_android with foregroundServiceType="location") and
+         Android counts a running foreground service as *while-in-use*
+         access — so screen-off tracking works on FINE_LOCATION alone.
+
+         That is what keeps this feature off the Play Console's
+         background-location declaration + review track. If anyone ever
+         adds ACCESS_BACKGROUND_LOCATION here, the app cannot be
+         published without a justification form and a demo video. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <!-- Android 14+ requires the typed companion to FOREGROUND_SERVICE. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <!-- Keeps the CPU alive between fixes with the screen off. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-feature android:name="android.hardware.location.gps" android:required="false"/>
     <application
         android:label="Vistar Pulse"
         android:name="${applicationName}"

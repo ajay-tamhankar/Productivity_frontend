@@ -34,6 +34,7 @@ import '../models/dpl_dispatch_slip.dart';
 import '../models/dpl_dispatch_slips_bulk.dart';
 import '../models/dpl_dispatch_trip.dart';
 import '../models/dpl_trip_journey_event.dart';
+import '../models/dpl_trip_location.dart';
 import '../models/dpl_identity.dart';
 import '../models/dpl_part_field.dart';
 import '../models/dpl_plant.dart';
@@ -3027,6 +3028,76 @@ class DplApiService {
             .map((e) =>
                 DplTripJourneyEvent.fromJson(Map<String, dynamic>.from(e)))
             .toList();
+      },
+    );
+  }
+
+  /// `POST /dispatch/trips/:id/locations` — Driver. Flushes a batch of
+  /// GPS fixes captured while the trip was in flight.
+  ///
+  /// Batched on purpose: the plant→TATA run has dead zones, so the
+  /// tracker queues locally and hands over everything it accumulated in
+  /// one request when signal returns. The server is expected to be
+  /// idempotent on `(trip_id, recorded_at)` — the queue only clears
+  /// after a 2xx, so a response lost in transit replays the same rows.
+  ///
+  /// Resolves to the number of fixes the server accepted.
+  Future<DplApiResponse<int>> postTripLocations(
+    int tripId,
+    List<DplTripLocation> fixes,
+  ) {
+    return _send<int>(
+      () => _dio.post(
+        DplPaths.tripLocations(tripId),
+        data: {'locations': [for (final f in fixes) f.toJson()]},
+      ),
+      fallback: 'Failed to upload location.',
+      fromJson: (data) {
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          final n = parseIntOrNull(map['accepted'] ?? map['count']);
+          if (n != null) return n;
+        }
+        if (data is List) return data.length;
+        // Accepted, but the server didn't say how many — assume all of
+        // them so the caller clears its queue instead of replaying.
+        return fixes.length;
+      },
+    );
+  }
+
+  /// `GET /dispatch/trips/:id/locations` — Dispatch / manager. Breadcrumb
+  /// trail for the track map, oldest-first.
+  ///
+  /// [since] asks for fixes recorded strictly after that instant so the
+  /// map can poll incrementally instead of refetching the whole trail.
+  Future<DplApiResponse<DplTripTrack>> getTripTrack(
+    int tripId, {
+    DateTime? since,
+    int? limit,
+  }) {
+    return _send<DplTripTrack>(
+      () => _dio.get(
+        DplPaths.tripLocations(tripId),
+        queryParameters: _cleanQuery({
+          'since': since?.toUtc().toIso8601String(),
+          'limit': limit,
+        }),
+      ),
+      fallback: 'Failed to load trip track.',
+      fromJson: (data) {
+        if (data is List) {
+          return DplTripTrack.fromPointList(data, tripId: tripId);
+        }
+        if (data is Map) {
+          return DplTripTrack.fromJson(
+            Map<String, dynamic>.from(data),
+            tripId: tripId,
+          );
+        }
+        // No body / null data is a legitimate "nothing recorded yet"
+        // rather than a parse failure — render the empty state.
+        return DplTripTrack(tripId: tripId);
       },
     );
   }

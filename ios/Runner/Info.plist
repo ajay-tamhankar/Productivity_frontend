@@ -6,6 +6,18 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Vistar Pulse uses the camera to scan dispatch slip QR codes for verification and to capture selfies for the identity-verification gate.</string>
+	<!-- Live trip tracking. "When In Use" only — NSLocationAlwaysAndWhenInUse
+	     is deliberately not requested. Combined with the `location`
+	     background mode below and geolocator's
+	     allowBackgroundLocationUpdates, when-in-use is sufficient for
+	     screen-off tracking, and it shows the blue status-bar indicator
+	     the whole time so the driver always knows sharing is running. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Vistar Pulse shares your location with dispatch while you are running an assigned trip, so they can see where the vehicle is. Sharing only runs when you switch it on and stops automatically when the trip is closed.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

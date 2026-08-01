@@ -10,6 +10,7 @@ import '../../core/dpl_api_service.dart';
 import '../../core/widgets/dpl_app_bar.dart';
 import '../../core/widgets/dpl_snack.dart';
 import '../providers/journey_session_state.dart';
+import '../widgets/scanner_error_view.dart';
 
 /// Security's home screen — full-screen scanner + confirm sheet.
 ///
@@ -286,7 +287,14 @@ class _SecurityScannerScreenState extends ConsumerState<SecurityScannerScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          MobileScanner(controller: _controller, onDetect: _onDetect),
+          MobileScanner(
+            controller: _controller,
+            onDetect: _onDetect,
+            errorBuilder: (_, err, _) => ScannerErrorView(
+              error: err,
+              onRetry: _controller.start,
+            ),
+          ),
           const IgnorePointer(
             child: _ScannerFrameOverlay(),
           ),

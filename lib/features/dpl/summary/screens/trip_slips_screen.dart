@@ -18,6 +18,7 @@ import '../../core/widgets/dpl_snack.dart';
 import '../../journey/screens/consolidated_slip_screen.dart';
 import '../../journey/widgets/trip_journey_drawer.dart';
 import '../../models/dpl_dispatch_slip.dart';
+import '../../tracking/screens/trip_track_map_screen.dart';
 import '../providers/dispatch_slips_provider.dart';
 import '../services/dispatch_slip_pdf.dart';
 import '../widgets/dispatch_slip_status_badge.dart';
@@ -158,6 +159,21 @@ class _TripSlipsScreenState extends ConsumerState<TripSlipsScreen> {
                 MaterialPageRoute(
                   builder: (_) =>
                       ConsolidatedSlipScreen(tripId: widget.tripId!),
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Track location',
+              icon: const Icon(Icons.location_on_rounded),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => TripTrackMapScreen(
+                    tripId: widget.tripId!,
+                    tripNumber: widget.tripNumber,
+                    plantName: widget.plantName,
+                    vehicleNo:
+                        slips.isNotEmpty ? slips.first.vehicleNo : null,
+                  ),
                 ),
               ),
             ),

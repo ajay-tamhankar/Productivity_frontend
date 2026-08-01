@@ -176,6 +176,13 @@ class DplPaths {
   static String tripTataDockOut(int id) => '/dispatch/trips/$id/tata-dock-out';
   static String tripTataGateOut(int id) => '/dispatch/trips/$id/tata-gate-out';
 
+  /// Live trip tracking. One path, both directions:
+  ///   * `POST` — driver app flushes a **batch** of GPS fixes (batched so
+  ///     a dead-zone backlog uploads in one request when signal returns).
+  ///   * `GET`  — dispatch/manager reads the breadcrumb trail for the
+  ///     track map. Supports `?since=<iso8601>` for incremental polling.
+  static String tripLocations(int id) => '/dispatch/trips/$id/locations';
+
   // Assign-Driver picker (dispatch/manager) + role-scoped pending-work
   // lists (security/qre home dashboards).
   static const String dispatchDrivers = '/dispatch/drivers';
