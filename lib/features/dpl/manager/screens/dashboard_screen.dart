@@ -934,7 +934,7 @@ class _KpiCard extends StatelessWidget {
                 height: 24,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(7),
                 ),
                 child: Icon(icon, color: color, size: 14),
@@ -1067,7 +1067,7 @@ class _KpiCardSimple extends StatelessWidget {
                 height: 24,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(7),
                 ),
                 child: Icon(icon, color: color, size: 14),

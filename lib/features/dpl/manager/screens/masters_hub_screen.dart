@@ -24,7 +24,7 @@ class DplMastersHubScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.95),
+              color: Colors.white.withValues(alpha: 0.95),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xFFE2EAF6)),
             ),
@@ -168,7 +168,7 @@ class _OptionCard extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.95),
+            color: Colors.white.withValues(alpha: 0.95),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: const Color(0xFFE2EAF6)),
           ),
@@ -178,7 +178,7 @@ class _OptionCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.13),
+                  color: color.withValues(alpha: 0.13),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, color: color),

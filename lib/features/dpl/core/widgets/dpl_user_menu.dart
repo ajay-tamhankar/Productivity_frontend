@@ -55,7 +55,7 @@ class DplUserMenu extends ConsumerWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: _primary.withOpacity(0.25),
+                  color: _primary.withValues(alpha: 0.25),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -276,10 +276,10 @@ class _Header extends StatelessWidget {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.85),
+                    color: Colors.white.withValues(alpha: 0.85),
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(
-                      color: DplUserMenu._primary.withOpacity(0.25),
+                      color: DplUserMenu._primary.withValues(alpha: 0.25),
                     ),
                   ),
                   child: Text(

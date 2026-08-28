@@ -278,8 +278,8 @@ class _DriverTripScreenState extends ConsumerState<DriverTripScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: c.withOpacity(0.10),
-        border: Border.all(color: c.withOpacity(0.30)),
+        color: c.withValues(alpha: 0.10),
+        border: Border.all(color: c.withValues(alpha: 0.30)),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(

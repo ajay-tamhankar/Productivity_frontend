@@ -411,7 +411,7 @@ class _DriverPickerSheetState extends ConsumerState<_DriverPickerSheet> {
         return ListView.separated(
           padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: drivers.length,
-          separatorBuilder: (_, __) =>
+          separatorBuilder: (_, _) =>
               const Divider(height: 1, color: DplColors.divider),
           itemBuilder: (_, i) => _driverTile(drivers[i]),
         );

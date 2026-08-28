@@ -88,6 +88,11 @@ dependencies:
   # `trip_track_map_screen.dart`).
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
+  # Vistar Workspace launcher — opens the sibling Vistar web apps
+  # (KRA, VTMS, Vistar Hire, …) in the browser / an external tab with a
+  # signed SSO hand-off appended. See
+  # `lib/features/workspace/services/vistar_sso_handoff.dart`.
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

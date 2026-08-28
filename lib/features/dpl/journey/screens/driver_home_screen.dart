@@ -92,7 +92,7 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
             child: ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: trips.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (_, i) => _tripCard(trips[i]),
             ),
           );
@@ -159,9 +159,9 @@ class _DriverHomeScreenState extends ConsumerState<DriverHomeScreen> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: DplColors.primary.withOpacity(0.10),
+                      color: DplColors.primary.withValues(alpha: 0.10),
                       border:
-                          Border.all(color: DplColors.primary.withOpacity(0.30)),
+                          Border.all(color: DplColors.primary.withValues(alpha: 0.30)),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(

@@ -938,8 +938,7 @@ class _LabelValue extends StatelessWidget {
     required this.label,
     required this.value,
     this.subValue,
-    this.mono = false,
-  });
+  }) : mono = false;
 
   @override
   Widget build(BuildContext context) {

@@ -36,7 +36,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   /// Active login flow — drives field labels, validator, and which
   /// backend method gets called on Sign In.
-  _LoginFlow _flow = _LoginFlow.productivity;
+  ///
+  /// Defaults to Vistar Pulse: it is the primary flow, so the classic
+  /// Productivity form (and the Vistar Workspace launcher reachable from
+  /// it) is one tap away rather than the landing state.
+  _LoginFlow _flow = _LoginFlow.vistarPulse;
 
   /// Selected organization for the Vistar Pulse flow. Required before
   /// Sign In is enabled; cleared when the flow toggles back to classic
@@ -183,7 +187,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           });
         }
         return DropdownButtonFormField<int>(
-          value: _selectedOrgId,
+          initialValue: _selectedOrgId,
           isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'Organization',
@@ -194,10 +198,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             for (final DplOrganization org in orgs)
               DropdownMenuItem<int>(
                 value: org.id,
-                child: Text(
-                  org.displayLabel,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                child: Text(org.displayLabel, overflow: TextOverflow.ellipsis),
               ),
           ],
           onChanged: submitting
@@ -252,7 +253,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           );
       }
 
-      final justSucceeded = previous?.isLoading == true && next.hasValue && next.value != null;
+      final justSucceeded =
+          previous?.isLoading == true && next.hasValue && next.value != null;
       if (justSucceeded) {
         final username = next.value!.username;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -290,7 +292,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       width: 220,
                       height: 220,
                       decoration: BoxDecoration(
-                        color: _kBrandPurple.withOpacity(0.12),
+                        color: _kBrandPurple.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -302,7 +304,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       width: 260,
                       height: 260,
                       decoration: BoxDecoration(
-                        color: _kBrandOrange.withOpacity(0.12),
+                        color: _kBrandOrange.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -319,7 +321,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         constraints: BoxConstraints(maxWidth: cardWidth),
                         child: Card(
                           elevation: 0,
-                          color: Colors.white.withOpacity(0.93),
+                          color: Colors.white.withValues(alpha: 0.93),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(28),
                           ),
@@ -332,7 +334,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     ? AutovalidateMode.onUserInteraction
                                     : AutovalidateMode.disabled,
                                 child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
                                     Center(
                                       child: VistarLogo(
@@ -345,10 +348,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       _flow == _LoginFlow.vistarPulse
                                           ? 'Vistar Pulse'
                                           : 'Productivity',
-                                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .headlineSmall
+                                          ?.copyWith(
                                             fontWeight: FontWeight.w800,
                                             letterSpacing: 0.2,
-                                            color: _flow == _LoginFlow.vistarPulse
+                                            color:
+                                                _flow == _LoginFlow.vistarPulse
                                                 ? _kBrandPurpleDark
                                                 : _kBrandOrange,
                                           ),
@@ -358,7 +365,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       _flow == _LoginFlow.vistarPulse
                                           ? 'Sign in to manage daily production loading, shifts, and downtime on the shop floor.'
                                           : 'Sign in to track classic production entries, quality, and operator activity.',
-                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
                                             color: const Color(0xFF5F6B7A),
                                             height: 1.4,
                                           ),
@@ -372,7 +382,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                           ButtonSegment<_LoginFlow>(
                                             value: _LoginFlow.productivity,
                                             label: Text('Productivity'),
-                                            icon: Icon(Icons.bar_chart_outlined),
+                                            icon: Icon(
+                                              Icons.bar_chart_outlined,
+                                            ),
                                           ),
                                           ButtonSegment<_LoginFlow>(
                                             value: _LoginFlow.vistarPulse,
@@ -386,25 +398,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                             : (s) => _onFlowChanged(s.first),
                                         showSelectedIcon: false,
                                         style: ButtonStyle(
-                                          backgroundColor: WidgetStateProperty
-                                              .resolveWith<Color?>((states) {
-                                            if (states.contains(WidgetState.selected)) {
-                                              return _flow == _LoginFlow.vistarPulse
-                                                  ? _kBrandPurple
-                                                  : _kBrandOrange;
-                                            }
-                                            return Colors.white;
-                                          }),
-                                          foregroundColor: WidgetStateProperty
-                                              .resolveWith<Color?>((states) {
-                                            if (states.contains(WidgetState.selected)) {
-                                              return Colors.white;
-                                            }
-                                            return const Color(0xFF5F6B7A);
-                                          }),
+                                          backgroundColor:
+                                              WidgetStateProperty.resolveWith<
+                                                Color?
+                                              >((states) {
+                                                if (states.contains(
+                                                  WidgetState.selected,
+                                                )) {
+                                                  return _flow ==
+                                                          _LoginFlow.vistarPulse
+                                                      ? _kBrandPurple
+                                                      : _kBrandOrange;
+                                                }
+                                                return Colors.white;
+                                              }),
+                                          foregroundColor:
+                                              WidgetStateProperty.resolveWith<
+                                                Color?
+                                              >((states) {
+                                                if (states.contains(
+                                                  WidgetState.selected,
+                                                )) {
+                                                  return Colors.white;
+                                                }
+                                                return const Color(0xFF5F6B7A);
+                                              }),
                                           side: WidgetStateProperty.all(
                                             BorderSide(
-                                              color: _flow == _LoginFlow.vistarPulse
+                                              color:
+                                                  _flow ==
+                                                      _LoginFlow.vistarPulse
                                                   ? _kBrandPurple
                                                   : _kBrandOrange,
                                               width: 1.4,
@@ -428,14 +451,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         ),
                                         decoration: BoxDecoration(
                                           color: const Color(0xFFFFE9E8),
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                           border: Border.all(
                                             color: const Color(0xFFFFB1AC),
                                           ),
                                         ),
                                         child: Row(
                                           children: [
-                                            const Icon(Icons.error_outline, color: Color(0xFFB3261E)),
+                                            const Icon(
+                                              Icons.error_outline,
+                                              color: Color(0xFFB3261E),
+                                            ),
                                             const SizedBox(width: 8),
                                             Expanded(
                                               child: Text(
@@ -463,11 +491,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                             ? AutofillHints.email
                                             : AutofillHints.username,
                                       ],
-                                      keyboardType: _flow == _LoginFlow.vistarPulse
+                                      keyboardType:
+                                          _flow == _LoginFlow.vistarPulse
                                           ? TextInputType.emailAddress
                                           : TextInputType.text,
                                       textInputAction: TextInputAction.next,
-                                      onFieldSubmitted: (_) => _passwordFocusNode.requestFocus(),
+                                      onFieldSubmitted: (_) =>
+                                          _passwordFocusNode.requestFocus(),
                                       enabled: !isLoading,
                                       onChanged: (_) {
                                         if (_inlineError != null) {
@@ -475,10 +505,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         }
                                       },
                                       decoration: InputDecoration(
-                                        labelText: _flow == _LoginFlow.vistarPulse
+                                        labelText:
+                                            _flow == _LoginFlow.vistarPulse
                                             ? 'Email'
                                             : 'Username',
-                                        hintText: _flow == _LoginFlow.vistarPulse
+                                        hintText:
+                                            _flow == _LoginFlow.vistarPulse
                                             ? 'name@vistarlogitek.com'
                                             : 'Enter your username',
                                         prefixIcon: Icon(
@@ -493,7 +525,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     TextFormField(
                                       controller: _passwordController,
                                       focusNode: _passwordFocusNode,
-                                      autofillHints: const [AutofillHints.password],
+                                      autofillHints: const [
+                                        AutofillHints.password,
+                                      ],
                                       textInputAction: TextInputAction.done,
                                       enabled: !isLoading,
                                       obscureText: _obscurePassword,
@@ -506,10 +540,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       decoration: InputDecoration(
                                         labelText: 'Password',
                                         hintText: 'Enter your password',
-                                        prefixIcon: const Icon(Icons.lock_outline),
+                                        prefixIcon: const Icon(
+                                          Icons.lock_outline,
+                                        ),
                                         suffixIcon: IconButton(
                                           onPressed: () => setState(
-                                            () => _obscurePassword = !_obscurePassword,
+                                            () => _obscurePassword =
+                                                !_obscurePassword,
                                           ),
                                           icon: Icon(
                                             _obscurePassword
@@ -528,11 +565,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         style: FilledButton.styleFrom(
                                           backgroundColor:
                                               _flow == _LoginFlow.vistarPulse
-                                                  ? _kBrandPurple
-                                                  : _kBrandOrange,
+                                              ? _kBrandPurple
+                                              : _kBrandOrange,
                                           foregroundColor: Colors.white,
                                           shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(14),
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
                                           ),
                                         ),
                                         child: isLoading

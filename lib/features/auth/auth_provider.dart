@@ -5,6 +5,8 @@ import '../../data/models/user_model.dart';
 import '../../data/repositories/local_storage_repository.dart';
 import '../dpl/core/dpl_api_service.dart';
 import '../dpl/core/dpl_organization_provider.dart';
+import '../workspace/services/workspace_credentials.dart';
+import '../workspace/workspace_account.dart';
 import 'auth_repository.dart';
 
 part 'auth_provider.g.dart';
@@ -46,6 +48,15 @@ class AuthController extends _$AuthController {
   }
 
   Future<void> login(String username, String password) async {
+    // Vistar Workspace portal account. Recognised locally — and before
+    // the network call — so the app launcher stays reachable even when
+    // the Productivity backend is down. See [VistarWorkspaceAccount] for
+    // the trust caveat and the path to a server-issued role.
+    if (VistarWorkspaceAccount.matches(username, password)) {
+      await _signInToWorkspace(username, password);
+      return;
+    }
+
     state = const AsyncValue.loading();
     try {
       final repo = ref.read(authRepositoryProvider);
@@ -71,8 +82,45 @@ class AuthController extends _$AuthController {
     }
   }
 
+  /// Opens a local session for the Vistar Workspace portal account. No
+  /// network call is made — the launcher only renders links — but the
+  /// session is persisted under the same prefs keys as every other role
+  /// so a page refresh lands the user back on `/apps`.
+  Future<void> _signInToWorkspace(String username, String password) async {
+    state = const AsyncValue.loading();
+    try {
+      // Hold what the user typed, in memory only, so tapping a tile can
+      // sign them into that app instead of showing its login form. See
+      // [WorkspaceCredentialsStore] for why this is never persisted.
+      ref.read(workspaceCredentialsProvider.notifier).set(username, password);
+
+      final prefs = ref.read(localStorageRepositoryProvider);
+      await prefs.saveToken(VistarWorkspaceAccount.localSessionToken);
+      await prefs.saveUserSession(
+        userId: VistarWorkspaceAccount.userId,
+        username: VistarWorkspaceAccount.username,
+        name: VistarWorkspaceAccount.displayName,
+        role: AppConstants.roleVistarWorkspace,
+      );
+
+      state = AsyncValue.data(UserModel(
+        id: VistarWorkspaceAccount.userId,
+        username: VistarWorkspaceAccount.username,
+        name: VistarWorkspaceAccount.displayName,
+        role: AppConstants.roleVistarWorkspace,
+        token: VistarWorkspaceAccount.localSessionToken,
+      ));
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
   Future<void> logout() async {
     state = const AsyncValue.loading();
+    // Drop the launcher's in-memory credentials first — nothing should
+    // outlive the session that could still sign the user into a
+    // sibling app.
+    ref.read(workspaceCredentialsProvider.notifier).clear();
     final prefs = ref.read(localStorageRepositoryProvider);
     await prefs.clearAll();
     // `clearAll()` already wipes prefs, but the active-org notifier

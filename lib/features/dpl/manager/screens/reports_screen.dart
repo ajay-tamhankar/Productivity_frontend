@@ -849,7 +849,7 @@ class _KpiCard extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: color, size: 20),
@@ -1011,7 +1011,7 @@ class _RankBadge extends StatelessWidget {
       height: 24,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.18),
+        color: color.withValues(alpha: 0.18),
         shape: BoxShape.circle,
         border: Border.all(color: color, width: 1.4),
       ),
@@ -1381,7 +1381,7 @@ class _DowntimeReasonRow extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
+                color: color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
@@ -3977,7 +3977,7 @@ class _DailyLogDateSection extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: _achievementColor(totals.achievementPct)
-                        .withOpacity(0.12),
+                        .withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -4060,7 +4060,7 @@ class _DailyLogRowTile extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: _kPrimary.withOpacity(0.10),
+                  color: _kPrimary.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(

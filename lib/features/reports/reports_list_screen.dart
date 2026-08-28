@@ -711,7 +711,7 @@ class _ReportDetailScreenState extends ConsumerState<ReportDetailScreen> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.96),
+                    color: Colors.white.withValues(alpha: 0.96),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: const Color(0xFFE2EAF6)),
                   ),
@@ -955,7 +955,7 @@ class _ReportsHero extends StatelessWidget {
           Text(
             'Explore $reportCount report views with cleaner insights and faster actions.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.white.withOpacity(0.92),
+              color: Colors.white.withValues(alpha: 0.92),
             ),
           ),
         ],
@@ -979,7 +979,7 @@ class _ReportCard extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.95),
+            color: Colors.white.withValues(alpha: 0.95),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: const Color(0xFFE2EAF6)),
           ),
@@ -989,7 +989,7 @@ class _ReportCard extends StatelessWidget {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: meta.accent.withOpacity(0.12),
+                  color: meta.accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(meta.icon, color: meta.accent),
@@ -1032,7 +1032,7 @@ class _ReportHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -1042,7 +1042,7 @@ class _ReportHeader extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xFF185ADB).withOpacity(0.12),
+              color: const Color(0xFF185ADB).withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
@@ -1085,7 +1085,7 @@ class _StatCard extends StatelessWidget {
       width: 156,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -1565,7 +1565,7 @@ class _StateCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -1624,7 +1624,7 @@ class _EntryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.96),
+        color: Colors.white.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -1737,9 +1737,9 @@ class _EntryActionButton extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.10),
+            color: color.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: color.withOpacity(0.28)),
+            border: Border.all(color: color.withValues(alpha: 0.28)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1822,7 +1822,7 @@ class _Pager extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),

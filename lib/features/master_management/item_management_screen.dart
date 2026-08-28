@@ -260,7 +260,7 @@ class _ItemManagementScreenState extends ConsumerState<ItemManagementScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.95),
+                    color: Colors.white.withValues(alpha: 0.95),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: const Color(0xFFE2EAF6)),
                   ),
@@ -311,7 +311,7 @@ class _ItemCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.96),
+        color: Colors.white.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -374,9 +374,9 @@ class _ItemActionChip extends StatelessWidget {
       child: Ink(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.10),
+          color: color.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: color.withOpacity(0.25)),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

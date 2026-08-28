@@ -32,6 +32,7 @@ import '../../features/dpl/supervisor/screens/machine_plan_screen.dart';
 import '../../features/dpl/supervisor/screens/plan_execution_screen.dart';
 import '../../features/dpl/supervisor/screens/supervisor_shell.dart';
 import '../../features/production_entry/production_entry_screen.dart';
+import '../../features/workspace/workspace_screen.dart';
 import '../constants/app_constants.dart';
 
 part 'app_router.g.dart';
@@ -57,6 +58,7 @@ GoRouter appRouter(Ref ref) {
       const dplSecurityPath = '/dpl/security';
       const dplQrePath = '/dpl/qre';
       const dplDriverPath = '/dpl/driver';
+      const workspacePath = '/apps';
 
       final isAuth = authState.value != null;
       final isLoggingIn = state.matchedLocation == loginPath;
@@ -71,8 +73,11 @@ GoRouter appRouter(Ref ref) {
       final isDplSecurityRole = AppConstants.isDplSecurityRole(role);
       final isDplQreRole = AppConstants.isDplQreRole(role);
       final isDplDriverRole = AppConstants.isDplDriverRole(role);
+      final isWorkspaceRole = AppConstants.isVistarWorkspaceRole(role);
 
-      final defaultDashboardPath = isDplManagerRole
+      final defaultDashboardPath = isWorkspaceRole
+          ? workspacePath
+          : isDplManagerRole
           ? dplManagerPath
           : isDplSupervisorRole
               ? dplSupervisorPath
@@ -110,9 +115,16 @@ GoRouter appRouter(Ref ref) {
       if (state.matchedLocation == brinDashboardPath && !isBrinRole) {
         return defaultDashboardPath;
       }
+      // The Workspace launcher belongs to the portal role alone — every
+      // other role gets bounced to their own dashboard.
+      if (state.matchedLocation.startsWith(workspacePath) &&
+          !isWorkspaceRole) {
+        return defaultDashboardPath;
+      }
       if (state.matchedLocation == operatorDashboardPath &&
           (isAdminRole ||
               isBrinRole ||
+              isWorkspaceRole ||
               isDplManagerRole ||
               isDplSupervisorRole ||
               isDplCustomerRole ||
@@ -187,6 +199,11 @@ GoRouter appRouter(Ref ref) {
       GoRoute(
         path: '/new-entry',
         builder: (context, state) => const ProductionEntryScreen(),
+      ),
+      // Vistar Workspace — the launcher for the wider Vistar app family.
+      GoRoute(
+        path: '/apps',
+        builder: (context, state) => const WorkspaceScreen(),
       ),
       // DPL Manager — shell with bottom nav for 4 tabs.
       GoRoute(

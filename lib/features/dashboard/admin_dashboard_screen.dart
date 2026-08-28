@@ -244,7 +244,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
                     child: CircleAvatar(
                       radius: 16,
                       backgroundColor:
-                          Theme.of(context).colorScheme.primary.withOpacity(0.14),
+                          Theme.of(context).colorScheme.primary.withValues(alpha: 0.14),
                       child: Text(
                         userInitial,
                         style: const TextStyle(fontWeight: FontWeight.w700),
@@ -259,7 +259,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.10),
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     alignment: Alignment.center,
@@ -377,7 +377,7 @@ class _ManagementHubScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.95),
+              color: Colors.white.withValues(alpha: 0.95),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xFFE2EAF6)),
             ),
@@ -459,7 +459,7 @@ class _ManagementOptionCard extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.95),
+            color: Colors.white.withValues(alpha: 0.95),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: const Color(0xFFE2EAF6)),
           ),
@@ -469,7 +469,7 @@ class _ManagementOptionCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: option.accent.withOpacity(0.13),
+                  color: option.accent.withValues(alpha: 0.13),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(option.icon, color: option.accent),
@@ -791,7 +791,7 @@ class _AdminHomeView extends ConsumerWidget {
                       radius: 16,
                       backgroundColor: Theme.of(
                         context,
-                      ).colorScheme.primary.withOpacity(0.14),
+                      ).colorScheme.primary.withValues(alpha: 0.14),
                       child: Text(
                         userInitial,
                         style: const TextStyle(fontWeight: FontWeight.w700),
@@ -808,7 +808,7 @@ class _AdminHomeView extends ConsumerWidget {
                     decoration: BoxDecoration(
                       color: Theme.of(
                         context,
-                      ).colorScheme.primary.withOpacity(0.10),
+                      ).colorScheme.primary.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     alignment: Alignment.center,
@@ -906,7 +906,7 @@ class _AdminHomeView extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -1042,7 +1042,7 @@ class _AdminHomeView extends ConsumerWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, color: color),
@@ -1129,7 +1129,7 @@ class _AdminDashboardLoadingView extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.95),
+                  color: Colors.white.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: const Wrap(
@@ -1153,7 +1153,7 @@ class _AdminDashboardLoadingView extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.95),
+                        color: Colors.white.withValues(alpha: 0.95),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Row(
@@ -1184,7 +1184,7 @@ class _AdminDashboardLoadingView extends StatelessWidget {
               Container(
                 height: 250,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.95),
+                  color: Colors.white.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
@@ -1194,7 +1194,7 @@ class _AdminDashboardLoadingView extends StatelessWidget {
               Container(
                 height: 250,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.95),
+                  color: Colors.white.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
@@ -1204,7 +1204,7 @@ class _AdminDashboardLoadingView extends StatelessWidget {
               Container(
                 height: 250,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.95),
+                  color: Colors.white.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),

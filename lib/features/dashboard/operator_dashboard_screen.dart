@@ -183,7 +183,7 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
                       radius: 16,
                       backgroundColor: Theme.of(
                         context,
-                      ).colorScheme.primary.withOpacity(0.14),
+                      ).colorScheme.primary.withValues(alpha: 0.14),
                       child: Text(
                         userInitial,
                         style: const TextStyle(fontWeight: FontWeight.w700),
@@ -200,7 +200,7 @@ class _OperatorHomeViewState extends ConsumerState<_OperatorHomeView>
                     decoration: BoxDecoration(
                       color: Theme.of(
                         context,
-                      ).colorScheme.primary.withOpacity(0.10),
+                      ).colorScheme.primary.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     alignment: Alignment.center,
@@ -383,7 +383,7 @@ class _HeroStatsBanner extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F3A8A).withOpacity(0.24),
+            color: const Color(0xFF0F3A8A).withValues(alpha: 0.24),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -403,7 +403,7 @@ class _HeroStatsBanner extends StatelessWidget {
           Text(
             'Track your output and maintain quality targets in real time.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.white.withOpacity(0.9),
+              color: Colors.white.withValues(alpha: 0.9),
               height: 1.35,
             ),
           ),
@@ -447,9 +447,9 @@ class _HeroBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.14),
+        color: Colors.white.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.2)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -595,7 +595,7 @@ class _ProductivitySnapshotCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.94),
+        color: Colors.white.withValues(alpha: 0.94),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -608,7 +608,7 @@ class _ProductivitySnapshotCard extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF00897B).withOpacity(0.12),
+                  color: const Color(0xFF00897B).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -751,7 +751,7 @@ class _ProductivitySnapshotLoadingCard extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.94),
+          color: Colors.white.withValues(alpha: 0.94),
           borderRadius: BorderRadius.circular(18),
         ),
         child: const Column(
@@ -793,7 +793,7 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.94),
+        color: Colors.white.withValues(alpha: 0.94),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -803,7 +803,7 @@ class _StatCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: color),
@@ -857,7 +857,7 @@ class _RejectionReasonCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.94),
+        color: Colors.white.withValues(alpha: 0.94),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -927,7 +927,7 @@ class _StatsLoadingView extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.94),
+                        color: Colors.white.withValues(alpha: 0.94),
                         borderRadius: BorderRadius.circular(18),
                       ),
                       child: const Row(
@@ -959,7 +959,7 @@ class _StatsLoadingView extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.94),
+              color: Colors.white.withValues(alpha: 0.94),
               borderRadius: BorderRadius.circular(18),
             ),
             child: const Column(
@@ -992,7 +992,7 @@ class _EntriesLoadingView extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.95),
+              color: Colors.white.withValues(alpha: 0.95),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xFFE3EAF5)),
             ),
@@ -1086,7 +1086,7 @@ class _SectionEmptyCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.94),
+        color: Colors.white.withValues(alpha: 0.94),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -1131,7 +1131,7 @@ class _OperatorEntryCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE3EAF5)),
       ),
@@ -1142,7 +1142,7 @@ class _OperatorEntryCard extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFF185ADB).withOpacity(0.12),
+              color: const Color(0xFF185ADB).withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(

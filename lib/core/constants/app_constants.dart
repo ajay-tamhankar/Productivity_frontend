@@ -6,7 +6,7 @@ class AppConstants {
   // Base URL for the Daily Production Loading (DPL) module. The DPL
   // endpoints live under a parallel path on the same backend host.
   static const String dplApiBaseUrl =
-      'https://vistar-crm.onrender.com/api/v1/dpl';
+      'https://api.vistarlogitek.com/api/v1/dpl';
 
   // Shared Preferences Keys
   static const String tokenKey = 'AUTH_TOKEN';
@@ -30,6 +30,7 @@ class AppConstants {
   static const String roleOperator = 'OPERATOR';
   static const String roleDplManager = 'DPL_MANAGER';
   static const String roleDplSupervisor = 'DPL_SUPERVISOR';
+
   /// Read-only DPL viewer — sees the Manager Dashboard + Plans tab but
   /// cannot create / edit / delete anything.
   static const String roleDplCustomer = 'DPL_CUSTOMER';
@@ -45,6 +46,11 @@ class AppConstants {
   /// the slips Dispatch cuts (status `pending_deo`), stamps the trip's
   /// invoice number, then forwards the whole trip to PDI + emails it.
   static const String roleDplDeo = 'DPL_DEO';
+
+  /// Vistar Workspace portal user. Lands on `/apps` — the launcher for
+  /// the wider Vistar app family (KRA, VTMS, Vistar Hire, …). Holds no
+  /// production data access of its own.
+  static const String roleVistarWorkspace = 'VISTAR_WORKSPACE';
 
   /// Scanner-only DPL roles. Each of these lands on its own scanner home
   /// screen (not the shared Production Summary shell) and has no other
@@ -92,6 +98,8 @@ class AppConstants {
         return 'DPL QRE';
       case roleDplDriver:
         return 'DPL Driver';
+      case roleVistarWorkspace:
+        return 'Vistar Workspace';
       default:
         return normalizeRole(role);
     }
@@ -132,6 +140,9 @@ class AppConstants {
 
   static bool isDplDriverRole(String role) =>
       normalizeRole(role) == roleDplDriver;
+
+  static bool isVistarWorkspaceRole(String role) =>
+      normalizeRole(role) == roleVistarWorkspace;
 
   /// Any of the downstream "summary-only" roles (Dispatch / QA / PDI /
   /// DEO). These users land on the Production Summary shell and have no

@@ -325,8 +325,8 @@ class _TripJourneyDrawerState extends ConsumerState<TripJourneyDrawer> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: c.withOpacity(0.10),
-        border: Border.all(color: c.withOpacity(0.30)),
+        color: c.withValues(alpha: 0.10),
+        border: Border.all(color: c.withValues(alpha: 0.30)),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
@@ -365,7 +365,7 @@ class _TripJourneyDrawerState extends ConsumerState<TripJourneyDrawer> {
   String _formatTime(DateTime? t) {
     if (t == null) return '—';
     final ist = t.toUtc().add(const Duration(hours: 5, minutes: 30));
-    return DateFormat('dd MMM yyyy · HH:mm').format(ist) + ' IST';
+    return '${DateFormat('dd MMM yyyy · HH:mm').format(ist)} IST';
   }
 }
 

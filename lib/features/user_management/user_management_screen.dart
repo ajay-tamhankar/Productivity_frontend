@@ -306,7 +306,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.95),
+                  color: Colors.white.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFFE2EAF6)),
                 ),
@@ -319,7 +319,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.96),
+                  color: Colors.white.withValues(alpha: 0.96),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFFE2EAF6)),
                 ),
@@ -372,7 +372,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 28),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.95),
+                    color: Colors.white.withValues(alpha: 0.95),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: const Color(0xFFE2EAF6)),
                   ),
@@ -386,7 +386,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.95),
+                    color: Colors.white.withValues(alpha: 0.95),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: const Color(0xFFE2EAF6)),
                   ),
@@ -445,7 +445,7 @@ class _UserCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.96),
+        color: Colors.white.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -465,9 +465,9 @@ class _UserCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: roleColor.withOpacity(0.12),
+                  color: roleColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: roleColor.withOpacity(0.24)),
+                  border: Border.all(color: roleColor.withValues(alpha: 0.24)),
                 ),
                 child: Text(
                   role,
@@ -540,9 +540,9 @@ class _ActionChip extends StatelessWidget {
       child: Ink(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.10),
+          color: color.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: color.withOpacity(0.25)),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

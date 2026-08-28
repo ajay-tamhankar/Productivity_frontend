@@ -25,10 +25,8 @@ class _AppShimmerState extends State<AppShimmer>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: widget.duration,
-    )..repeat();
+    _controller = AnimationController(vsync: this, duration: widget.duration)
+      ..repeat();
   }
 
   @override
@@ -40,9 +38,11 @@ class _AppShimmerState extends State<AppShimmer>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final baseColor = widget.baseColor ??
+    final baseColor =
+        widget.baseColor ??
         (isDark ? const Color(0xFF2A3442) : const Color(0xFFE3EBF7));
-    final highlightColor = widget.highlightColor ??
+    final highlightColor =
+        widget.highlightColor ??
         (isDark ? const Color(0xFF3A4656) : const Color(0xFFF6FAFF));
 
     return AnimatedBuilder(
@@ -56,9 +56,9 @@ class _AppShimmerState extends State<AppShimmer>
               begin: Alignment(-1.0 + (2 * _controller.value), 0),
               end: Alignment(0.0 + (2 * _controller.value), 0),
               colors: <Color>[
-                baseColor.withOpacity(0.95),
-                highlightColor.withOpacity(0.98),
-                baseColor.withOpacity(0.95),
+                baseColor.withValues(alpha: 0.95),
+                highlightColor.withValues(alpha: 0.98),
+                baseColor.withValues(alpha: 0.95),
               ],
               stops: const <double>[0.25, 0.5, 0.75],
             ).createShader(bounds);
@@ -93,10 +93,7 @@ class SkeletonBox extends StatelessWidget {
       width: width,
       height: height,
       margin: margin,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: borderRadius,
-      ),
+      decoration: BoxDecoration(color: color, borderRadius: borderRadius),
     );
   }
 }
@@ -137,11 +134,7 @@ class ShimmerButtonDots extends StatelessWidget {
   final double size;
   final double spacing;
 
-  const ShimmerButtonDots({
-    super.key,
-    this.size = 7,
-    this.spacing = 4,
-  });
+  const ShimmerButtonDots({super.key, this.size = 7, this.spacing = 4});
 
   @override
   Widget build(BuildContext context) {
@@ -213,7 +206,7 @@ class SkeletonCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.02),
+          color: Colors.white.withValues(alpha: 0.02),
           borderRadius: borderRadius,
         ),
         child: Column(
@@ -225,9 +218,17 @@ class SkeletonCard extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                SkeletonBox(height: 10, width: 60, borderRadius: BorderRadius.circular(999)),
+                SkeletonBox(
+                  height: 10,
+                  width: 60,
+                  borderRadius: BorderRadius.circular(999),
+                ),
                 const SizedBox(width: 8),
-                SkeletonBox(height: 10, width: 60, borderRadius: BorderRadius.circular(999)),
+                SkeletonBox(
+                  height: 10,
+                  width: 60,
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ],
             ),
           ],

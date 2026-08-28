@@ -336,7 +336,7 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.95),
+                color: Colors.white.withValues(alpha: 0.95),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0xFFE2EAF6)),
               ),
@@ -349,7 +349,7 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.96),
+                color: Colors.white.withValues(alpha: 0.96),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0xFFE2EAF6)),
               ),
@@ -394,7 +394,7 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 30),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.95),
+                  color: Colors.white.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFFE2EAF6)),
                 ),
@@ -408,7 +408,7 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.95),
+                  color: Colors.white.withValues(alpha: 0.95),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFFE2EAF6)),
                 ),
@@ -448,7 +448,7 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.96),
+                  color: Colors.white.withValues(alpha: 0.96),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFFE2EAF6)),
                 ),
@@ -559,7 +559,7 @@ class _ReviewActionsScreenState extends ConsumerState<ReviewActionsScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.95),
+                color: Colors.white.withValues(alpha: 0.95),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0xFFE2EAF6)),
               ),
@@ -722,7 +722,7 @@ class _ReviewEntryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.96),
+        color: Colors.white.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2EAF6)),
       ),
@@ -810,9 +810,9 @@ class _MiniAction extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.10),
+          color: color.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: color.withOpacity(0.26)),
+          border: Border.all(color: color.withValues(alpha: 0.26)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

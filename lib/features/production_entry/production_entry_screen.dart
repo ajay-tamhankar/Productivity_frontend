@@ -577,7 +577,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                 width: 220,
                 height: 220,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1546A0).withOpacity(0.08),
+                  color: const Color(0xFF1546A0).withValues(alpha: 0.08),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -589,7 +589,7 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                 width: 250,
                 height: 250,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A8D78).withOpacity(0.08),
+                  color: const Color(0xFF1A8D78).withValues(alpha: 0.08),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -602,12 +602,12 @@ class _ProductionEntryScreenState extends ConsumerState<ProductionEntryScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.50),
+                      color: Colors.white.withValues(alpha: 0.50),
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.white.withOpacity(0.8)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.8)),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF0F3A8A).withOpacity(0.10),
+                          color: const Color(0xFF0F3A8A).withValues(alpha: 0.10),
                           blurRadius: 22,
                           offset: const Offset(0, 12),
                         ),
@@ -1388,7 +1388,7 @@ class _HeadCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF153A8A).withOpacity(0.25),
+            color: const Color(0xFF153A8A).withValues(alpha: 0.25),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -1401,7 +1401,7 @@ class _HeadCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.16),
+              color: Colors.white.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(Icons.factory_outlined, color: Colors.white),
@@ -1446,12 +1446,12 @@ class _Section extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.94),
+        color: Colors.white.withValues(alpha: 0.94),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFE0E9F7)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F3A8A).withOpacity(0.06),
+            color: const Color(0xFF0F3A8A).withValues(alpha: 0.06),
             blurRadius: 14,
             offset: const Offset(0, 6),
           ),
@@ -1491,9 +1491,9 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.20)),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
