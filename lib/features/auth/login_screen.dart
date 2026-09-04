@@ -153,9 +153,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Could not load organizations.',
-              style: TextStyle(color: Color(0xFF5F6B7A)),
+            // Expanded so the message yields space to the Retry button
+            // instead of overflowing the decorator on narrow screens.
+            const Expanded(
+              child: Text(
+                'Could not load organizations.',
+                style: TextStyle(color: Color(0xFF5F6B7A)),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             TextButton(
               onPressed: submitting

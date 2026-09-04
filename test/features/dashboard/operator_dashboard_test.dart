@@ -7,41 +7,78 @@ import 'package:productivity_tracker/data/api_services/api_client.dart';
 import '../../helpers/mock_api_client.dart';
 
 void main() {
-  testWidgets('OperatorDashboardScreen displays recent entries and navigation', (WidgetTester tester) async {
+  Future<void> pumpDashboard(
+    WidgetTester tester, {
+    Size size = const Size(1000, 800),
+  }) async {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          apiClientProvider.overrideWithValue(MockApiClient()),
-        ],
-        child: const MaterialApp(
-          home: OperatorDashboardScreen(),
-        ),
+        overrides: [apiClientProvider.overrideWithValue(MockApiClient())],
+        child: const MaterialApp(home: OperatorDashboardScreen()),
       ),
     );
-
     // Initial load - wait for API
     await tester.pumpAndSettle();
+  }
+
+  testWidgets('OperatorDashboardScreen displays recent entries', (
+    tester,
+  ) async {
+    await pumpDashboard(tester);
 
     expect(find.text('Operator Dashboard'), findsWidgets);
-    expect(find.text('Your Recent Entries'), findsOneWidget);
-    
-    // Check for mock items
-    expect(find.textContaining('ITEM-100'), findsOneWidget);
-    
-    // Check for FAB
-    expect(find.byType(FloatingActionButton), findsOneWidget);
-    expect(find.text('New Entry'), findsOneWidget);
 
-    // Verify Bottom Navigation Bar exists
-    expect(find.byType(NavigationBar), findsOneWidget);
-    expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Settings'), findsOneWidget);
-
-    // Navigate to settings tab
-    await tester.tap(find.text('Settings').last);
+    // The body is a lazy ListView, so the feed section is only built once it
+    // scrolls into view - the stats and productivity cards come first.
+    await tester.scrollUntilVisible(find.text('Recent Entries'), 300);
     await tester.pumpAndSettle();
 
-    // Verify settings screen is displayed
-    expect(find.text('Settings'), findsWidgets);
+    expect(find.text('Recent Entries'), findsOneWidget);
+
+    // Check for mock items
+    expect(find.textContaining('ITEM-100'), findsOneWidget);
+  });
+
+  testWidgets('OperatorDashboardScreen exposes the Log Shift action', (
+    tester,
+  ) async {
+    await pumpDashboard(tester);
+
+    expect(find.byType(FloatingActionButton), findsOneWidget);
+    expect(find.text('Log Shift'), findsOneWidget);
+  });
+
+  testWidgets('wide layout puts account actions directly in the app bar', (
+    tester,
+  ) async {
+    await pumpDashboard(tester, size: const Size(1000, 800));
+
+    expect(find.byTooltip('Refresh'), findsOneWidget);
+    expect(find.byTooltip('Change Password'), findsOneWidget);
+    expect(find.byTooltip('Logout'), findsOneWidget);
+
+    // Navigation lives in the app bar now; there is no bottom navigation bar.
+    expect(find.byType(NavigationBar), findsNothing);
+  });
+
+  testWidgets('compact layout collapses account actions into a menu', (
+    tester,
+  ) async {
+    // Below the 760px breakpoint the actions fold into a popup menu.
+    await pumpDashboard(tester, size: const Size(700, 900));
+
+    final menu = find.byWidgetPredicate((w) => w is PopupMenuButton);
+    expect(menu, findsOneWidget);
+
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Refresh'), findsOneWidget);
+    expect(find.text('Change Password'), findsOneWidget);
+    expect(find.text('Logout'), findsOneWidget);
   });
 }
