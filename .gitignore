@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Captured tool output (`flutter test` / `flutter analyze` dumps).
+# Anchored to the repo root so intentional fixtures further down, such as
+# test/fixtures/expected_output.txt, stay tracked.
+/*_output.txt
+/*_output.json
